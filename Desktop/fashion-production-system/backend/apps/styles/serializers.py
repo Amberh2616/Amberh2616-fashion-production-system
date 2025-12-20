@@ -1,0 +1,193 @@
+"""
+Styles Serializers - v2.2.1
+"""
+
+from rest_framework import serializers
+from .models import Style, StyleRevision, BOMItem, Measurement, ConstructionStep
+
+
+# ========== Verified Data Serializers (DB Objects) ==========
+
+class BOMItemSerializer(serializers.ModelSerializer):
+    """Verified BOM Item (from DB)"""
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    consumption_maturity_display = serializers.CharField(
+        source='get_consumption_maturity_display', read_only=True
+    )
+
+    class Meta:
+        model = BOMItem
+        fields = [
+            'id', 'revision', 'item_number', 'category', 'category_display',
+            'material_name', 'supplier', 'color', 'color_code',
+            'consumption', 'consumption_maturity', 'consumption_maturity_display',
+            'unit', 'placement', 'wastage_rate', 'unit_price',
+            'ai_confidence', 'is_verified',
+        ]
+
+
+class MeasurementSerializer(serializers.ModelSerializer):
+    """Verified Measurement (from DB)"""
+    class Meta:
+        model = Measurement
+        fields = [
+            'id', 'revision', 'point_name', 'point_code', 'values',
+            'tolerance_plus', 'tolerance_minus', 'unit',
+            'ai_confidence', 'is_verified',
+        ]
+
+
+class ConstructionStepSerializer(serializers.ModelSerializer):
+    """Verified Construction Step (from DB)"""
+    class Meta:
+        model = ConstructionStep
+        fields = [
+            'id', 'revision', 'step_number', 'description',
+            'stitch_type', 'machine_type',
+            'ai_confidence', 'is_verified',
+        ]
+
+
+# ========== Draft Data Serializers (JSON) ==========
+
+class DraftDataSerializer(serializers.Serializer):
+    """Draft data from AI extraction (JSON structure)"""
+    bom_data = serializers.JSONField(required=False, allow_null=True)
+    measurement_data = serializers.JSONField(required=False, allow_null=True)
+    construction_data = serializers.JSONField(required=False, allow_null=True)
+
+
+# ========== StyleRevision Serializers ==========
+
+class StyleRevisionSerializer(serializers.ModelSerializer):
+    """Full StyleRevision with verified data"""
+    bom_items = BOMItemSerializer(many=True, read_only=True)
+    measurements = MeasurementSerializer(many=True, read_only=True)
+    construction_steps = ConstructionStepSerializer(many=True, read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = StyleRevision
+        fields = [
+            'id', 'style', 'revision_label', 'status', 'status_display',
+            'notes', 'changes_from_previous',
+            'draft_bom_data', 'draft_measurement_data', 'draft_construction_data',
+            'previous_revision',
+            'created_at', 'updated_at', 'approved_at', 'approved_by',
+            # Related data
+            'bom_items', 'measurements', 'construction_steps',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class StyleRevisionListSerializer(serializers.ModelSerializer):
+    """Lightweight revision list serializer"""
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    bom_count = serializers.SerializerMethodField()
+    has_draft_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StyleRevision
+        fields = [
+            'id', 'revision_label', 'status', 'status_display',
+            'created_at', 'approved_at',
+            'bom_count', 'has_draft_data',
+        ]
+
+    def get_bom_count(self, obj):
+        return obj.bom_items.count()
+
+    def get_has_draft_data(self, obj):
+        return bool(obj.draft_bom_data or obj.draft_measurement_data or obj.draft_construction_data)
+
+
+# ========== Style Serializers ==========
+
+class StyleSerializer(serializers.ModelSerializer):
+    """Full Style with all revisions"""
+    revisions = StyleRevisionListSerializer(many=True, read_only=True)
+    current_revision_label = serializers.CharField(
+        source='current_revision.revision_label', read_only=True, allow_null=True
+    )
+    current_revision_status = serializers.CharField(
+        source='current_revision.status', read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = Style
+        fields = [
+            'id', 'organization', 'style_number', 'style_name',
+            'season', 'customer',
+            'current_revision', 'current_revision_label', 'current_revision_status',
+            'created_at', 'updated_at', 'created_by',
+            'revisions',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class StyleListSerializer(serializers.ModelSerializer):
+    """Lightweight style list serializer"""
+    current_revision_label = serializers.CharField(
+        source='current_revision.revision_label', read_only=True, allow_null=True
+    )
+    current_revision_status = serializers.CharField(
+        source='current_revision.status', read_only=True, allow_null=True
+    )
+    revision_count = serializers.SerializerMethodField()
+    # TODO: Add risk calculation
+    risk = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Style
+        fields = [
+            'id', 'style_number', 'style_name', 'season', 'customer',
+            'current_revision_label', 'current_revision_status',
+            'revision_count', 'risk', 'created_at',
+        ]
+
+    def get_revision_count(self, obj):
+        return obj.revisions.count()
+
+    def get_risk(self, obj):
+        """Calculate risk badges"""
+        from .services import compute_risk_badges
+        return compute_risk_badges(obj)
+
+
+# ========== Intake Serializers ==========
+
+class IntakeBulkCreateItemSerializer(serializers.Serializer):
+    """Single item in bulk create request"""
+    style_number = serializers.CharField(max_length=50)
+    style_name = serializers.CharField(max_length=200)
+    season = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    customer = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    revision_label = serializers.CharField(max_length=20, default='Rev A')
+    source = serializers.ChoiceField(
+        choices=[('customer', 'Customer'), ('internal', 'Internal')],
+        default='customer'
+    )
+
+
+class IntakeBulkCreateRequestSerializer(serializers.Serializer):
+    """Bulk create styles + revisions request"""
+    items = IntakeBulkCreateItemSerializer(many=True)
+    options = serializers.DictField(required=False, default=dict)
+
+
+class IntakeBulkCreateResultItemSerializer(serializers.Serializer):
+    """Single item result in bulk create response"""
+    index = serializers.IntegerField()
+    style_id = serializers.UUIDField(required=False, allow_null=True)
+    style_number = serializers.CharField()
+    revision_id = serializers.UUIDField(required=False, allow_null=True)
+    revision_label = serializers.CharField()
+    created = serializers.BooleanField()
+    status = serializers.ChoiceField(choices=['success', 'skipped', 'error'])
+    errors = serializers.ListField(child=serializers.DictField(), default=list)
+
+
+class IntakeBulkCreateResponseSerializer(serializers.Serializer):
+    """Bulk create response"""
+    data = IntakeBulkCreateResultItemSerializer(many=True)
+    meta = serializers.DictField()
