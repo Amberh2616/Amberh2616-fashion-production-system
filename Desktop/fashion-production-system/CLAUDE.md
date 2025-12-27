@@ -410,6 +410,31 @@ url = s3.generate_presigned_url(
   - Block list displaying with translations
   - Edit/Save functionality ready for testing
 
+- [x] **Batch Testing Capability** (2025-12-27 晚上)
+  - Created `seed_10_revisions.py` command
+  - 10 test revisions generated with realistic data
+  - Revisions list page working at `/dashboard/revisions`
+
+- [x] **Bilingual Overlay System Design** (2025-12-27 晚上) ⭐ NEW
+  - Problem identified: "如何確認 100% 翻譯完成？"
+  - Solution: 雙語疊層 + Coverage Check + Preview PDF
+  - 3-Phase plan created (UI → Preview PDF → Finalize/Lock)
+  - Phase 1 components完成 (4 files created)
+
+- [x] **Phase 1 Integration Complete** (2025-12-27 23:00) ✅
+  - ✅ BilingualOverlay.tsx - 主疊層組件
+  - ✅ BlockOverlayItem.tsx - 單個 block 渲染（inline/card 模式）
+  - ✅ CoveragePanel.tsx - 翻譯完整性統計
+  - ✅ canRenderInline.ts - bbox 容納判斷邏輯
+  - ✅ react-pdf 安裝和配置完成（69 packages）
+  - ✅ 替換 iframe → react-pdf（Document + Page）
+  - ✅ 完整整合到 review 頁面
+  - ✅ Auto scale + renderTextLayer=false
+  - ✅ Coverage Panel 顯示統計（Total/Translated/Missing）
+  - ✅ Show Missing Only 篩選功能
+  - ✅ Next Missing 快速跳轉功能
+  - ⏳ 等待用戶測試驗證
+
 - [ ] **User Acceptance Testing (Pending)**
   - Translation quality validation needed
   - Editing workflow testing needed
@@ -421,14 +446,21 @@ url = s3.generate_presigned_url(
   - Level 2: Order BOM (order instance layer) ⭐ critical
   - Level 3: PO (procurement layer with price freeze)
 
-- [x] **Key Field Additions Designed**
+- [x] **Initial Design Complete** (see `1227-01.txt`)
   - `supplier_article_no` - Procurement identification key
   - `source_type` & `source_ref` - Evidence tracking
   - `po_type` - RFQ vs Production distinction
   - Price freeze mechanism in POLine (COPY not reference)
 
-- [x] **Gating Rules Defined**
-  - RFQ PO: Allows pre_estimate/confirmed/locked
+- [x] **Critical Corrections Applied** ⚠️ (see `BOM-PO-DESIGN-CORRECTIONS.md`)
+  - #1: Supplier normalization (prevent grouping errors)
+  - #2: Auto-recalc totals + lock mechanism
+  - #3: RFQ gating - reject unknown (not just pre_estimate)
+  - #4: Currency field required (USD/NTD/CNY)
+  - #5: Unit standardization (yd/m/cm/pc)
+
+- [x] **Gating Rules Corrected**
+  - RFQ PO: Allows pre_estimate/confirmed/locked (NOT unknown ❌)
   - Production PO: Requires confirmed/locked only
   - Validation logic: All fabric/trim must be confirmed before Production PO
 
@@ -445,17 +477,28 @@ url = s3.generate_presigned_url(
   - Ready to start Phase 1 migrations
   - Awaiting user confirmation to proceed
 
-### 🎯 Current Focus (2025-12-27)
+### 🎯 Current Focus (2025-12-27 晚上更新)
 
-**Two Parallel Tracks:**
+**Three Parallel Tracks:**
 
-**Track A: Draft Review UI Validation** (90% → 100%)
-- Status: System working, awaiting real-world usage feedback
+**Track A: Bilingual Overlay System** (Phase 1 完成 ✅)
+- Status: 100% 實作完成，等待用戶測試驗證
+- Completed: react-pdf + BilingualOverlay + CoveragePanel 完整整合
+- Features:
+  - ✅ 原文在上、中文在下（視覺驗證）
+  - ✅ 自動檢測漏翻（Coverage Check）
+  - ✅ Inline/Card 模式自動切換
+  - ✅ Show Missing Only 篩選
+  - ✅ Next Missing 快速跳轉
+- Next: 用戶測試 → Phase 2 (Preview PDF) 或 Phase 3 (Finalize)
+
+**Track B: Draft Review UI Validation** (90% → 95%)
+- Status: Batch testing capability ready (10 test revisions)
 - Blocker: Need user to test editing workflow with real tech pack
 - Next: User acceptance testing → decision on UI improvements
 
-**Track B: BOM → PO Implementation** (Design 100% → Implementation 0%)
-- Status: Complete design approved, ready to implement
+**Track C: BOM → PO Implementation** (Design 100% → Implementation 0%)
+- Status: Complete design approved (with 5 critical corrections)
 - Blocker: Awaiting user "go" signal to start Phase 1
 - Next: Django migrations for new fields (30 min task)
 

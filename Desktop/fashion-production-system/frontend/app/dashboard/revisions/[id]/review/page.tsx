@@ -1,19 +1,29 @@
 'use client';
 
 /**
- * Block-Based Draft Review Page
+ * Block-Based Draft Review Page (with Bilingual Overlay)
  * Route: /dashboard/revisions/[id]/review
  *
  * Layout:
- * - Left (60%): PDF viewer with bbox highlights
- * - Right (40%): Block editor sidebar
+ * - Left (60%): PDF viewer with bilingual overlay (原文 + 中文)
+ * - Right (40%): Coverage Panel + Block editor sidebar
  */
 
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
 import { useDraft, useUpdateDraftBlock } from '@/lib/hooks/useDraft';
-import type { DraftBlock } from '@/lib/types/revision';
+import type { DraftBlock as DraftBlockType } from '@/lib/types/revision';
 import { approveRevision } from '@/lib/api/approve';
+import { BilingualOverlay } from '@/components/review/BilingualOverlay';
+import { CoveragePanel } from '@/components/review/CoveragePanel';
+import type { DraftBlock } from '@/components/review/BlockOverlayItem';
+
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function DraftReviewPage() {
   const params = useParams();
@@ -26,6 +36,12 @@ export default function DraftReviewPage() {
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [isApproving, setIsApproving] = useState(false);
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
+
+  // PDF render states
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageWidth, setPageWidth] = useState<number>(0);
+  const [scale, setScale] = useState<number>(1.0);
 
   // Loading state
   if (isLoading) {
@@ -67,12 +83,15 @@ export default function DraftReviewPage() {
     p.blocks.map(b => ({ ...b, page_number: p.page_number }))
   );
 
+  // Convert to BilingualOverlay format
+  const currentPageBlocks: DraftBlock[] = currentPageData?.blocks || [];
+
   // Get selected block for bbox highlighting
   const selectedBlock = selectedBlockId
     ? allBlocksWithPage.find(b => b.id === selectedBlockId)
     : null;
 
-  const handleBlockClick = (block: DraftBlock) => {
+  const handleBlockClick = (block: DraftBlockType) => {
     setSelectedBlockId(block.id);
     // Find which page this block belongs to
     const blockPage = revision.pages.find(p =>
@@ -83,7 +102,7 @@ export default function DraftReviewPage() {
     }
   };
 
-  const handleEditStart = (block: DraftBlock) => {
+  const handleEditStart = (block: DraftBlockType) => {
     setEditingBlockId(block.id);
     setEditValue(block.edited_text || block.translated_text || block.source_text);
   };
@@ -95,7 +114,6 @@ export default function DraftReviewPage() {
         editedText: editValue,
       });
       setEditingBlockId(null);
-      // Mutation will auto-refetch data via onSuccess
     } catch (error) {
       console.error('Failed to save block edit:', error);
       alert('Failed to save changes. Please try again.');
@@ -119,7 +137,6 @@ export default function DraftReviewPage() {
     try {
       await approveRevision(revisionId);
       alert('✅ Revision approved successfully!');
-      // Refetch to get updated status
       refetch();
     } catch (error) {
       console.error('Failed to approve revision:', error);
@@ -129,9 +146,40 @@ export default function DraftReviewPage() {
     }
   };
 
+  const jumpNextMissing = () => {
+    const missingBlocks = allBlocksWithPage.filter(b =>
+      !((b.edited_text || b.translated_text || "").trim())
+    );
+    if (missingBlocks.length === 0) return;
+
+    // Find first missing on current page or next page
+    const currentPageMissing = missingBlocks.find(b => b.page_number === currentPage);
+    if (currentPageMissing) {
+      setSelectedBlockId(currentPageMissing.id);
+    } else {
+      // Jump to first missing block
+      const firstMissing = missingBlocks[0];
+      setCurrentPage(firstMissing.page_number!);
+      setSelectedBlockId(firstMissing.id);
+    }
+  };
+
+  function onDocumentLoadSuccess({ numPages: nextNumPages }: { numPages: number }) {
+    setNumPages(nextNumPages);
+  }
+
+  function onPageLoadSuccess(page: any) {
+    const viewport = page.getViewport({ scale: 1 });
+    setPageWidth(viewport.width);
+    // Auto scale to fit container (假設容器寬度約 800px)
+    const containerWidth = 800;
+    const autoScale = containerWidth / viewport.width;
+    setScale(autoScale);
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Left: PDF Viewer */}
+      {/* Left: PDF Viewer with Bilingual Overlay */}
       <div className="w-[60%] bg-white border-r border-gray-200 flex flex-col">
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -153,7 +201,7 @@ export default function DraftReviewPage() {
               </span>
             </div>
             <p className="text-sm text-gray-500">
-              Page {currentPage} of {revision.page_count}
+              Page {currentPage} of {numPages || revision.page_count}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -165,8 +213,8 @@ export default function DraftReviewPage() {
               ← Prev
             </button>
             <button
-              onClick={() => setCurrentPage(p => Math.min(revision.page_count, p + 1))}
-              disabled={currentPage === revision.page_count}
+              onClick={() => setCurrentPage(p => Math.min(numPages || revision.page_count, p + 1))}
+              disabled={currentPage === (numPages || revision.page_count)}
               className="px-3 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
             >
               Next →
@@ -174,17 +222,43 @@ export default function DraftReviewPage() {
           </div>
         </div>
 
-        {/* PDF Content */}
+        {/* PDF Content with Overlay */}
         <div className="flex-1 overflow-auto p-6">
-          {/* PDF Embed */}
-          <div className="bg-gray-100 rounded-lg overflow-hidden">
+          <div className="bg-gray-100 rounded-lg overflow-hidden inline-block">
             {revision.file_url ? (
-              <iframe
-                src={`${revision.file_url}#page=${currentPage}`}
-                className="w-full"
-                style={{ height: 'calc(100vh - 200px)', border: 'none' }}
-                title="PDF Viewer"
-              />
+              <div style={{ position: 'relative' }}>
+                <Document
+                  file={revision.file_url}
+                  onLoadSuccess={onDocumentLoadSuccess}
+                  loading={
+                    <div className="flex items-center justify-center p-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    </div>
+                  }
+                  error={
+                    <div className="flex items-center justify-center p-12 text-red-600">
+                      Failed to load PDF
+                    </div>
+                  }
+                >
+                  <Page
+                    pageNumber={currentPage}
+                    scale={scale}
+                    renderTextLayer={false}  // 關鍵：避免文字層干擾
+                    renderAnnotationLayer={false}
+                    onLoadSuccess={onPageLoadSuccess}
+                  />
+                </Document>
+
+                {/* 🆕 Bilingual Overlay */}
+                <BilingualOverlay
+                  blocks={currentPageBlocks}
+                  scale={scale}
+                  selectedId={selectedBlockId}
+                  onSelect={(id) => setSelectedBlockId(id)}
+                  showMissingOnly={showMissingOnly}
+                />
+              </div>
             ) : (
               <div className="flex items-center justify-center bg-gray-200 rounded-lg" style={{ height: 'calc(100vh - 200px)' }}>
                 <div className="text-center text-gray-500">
@@ -198,64 +272,40 @@ export default function DraftReviewPage() {
             )}
           </div>
 
-          {/* BBox Visual Guide (below PDF) */}
-          {selectedBlock && selectedBlock.page_number === currentPage && currentPageData && (
-            <div className="mt-4 p-4 bg-red-50 border-2 border-red-500 rounded-lg">
-              <div className="flex items-start gap-4">
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-red-900 mb-2">
-                    🎯 Selected Block Location
-                  </p>
-                  <div className="text-xs text-red-800 space-y-1">
-                    <p><span className="font-medium">Position:</span> ({selectedBlock.bbox.x.toFixed(0)}, {selectedBlock.bbox.y.toFixed(0)})</p>
-                    <p><span className="font-medium">Size:</span> {selectedBlock.bbox.width.toFixed(0)}×{selectedBlock.bbox.height.toFixed(0)}px</p>
-                    <p><span className="font-medium">Text:</span> "{selectedBlock.source_text.substring(0, 50)}{selectedBlock.source_text.length > 50 ? '...' : ''}"</p>
-                  </div>
-                </div>
-                <div className="flex-shrink-0">
-                  {/* Mini visualization */}
-                  <svg width="120" height="120" className="border border-red-300 rounded bg-white">
-                    <rect
-                      x={selectedBlock.bbox.x / currentPageData.width * 120}
-                      y={selectedBlock.bbox.y / currentPageData.height * 120}
-                      width={Math.min(selectedBlock.bbox.width / currentPageData.width * 120, 50)}
-                      height={Math.min(selectedBlock.bbox.height / currentPageData.height * 120, 20)}
-                      fill="rgba(239, 68, 68, 0.3)"
-                      stroke="rgb(239, 68, 68)"
-                      strokeWidth="2"
-                    />
-                    <text x="60" y="10" textAnchor="middle" fontSize="8" fill="#666">Page {currentPage}</text>
-                  </svg>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Page Info */}
           {currentPageData && (
             <div className="mt-4 p-4 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-800">
                 <span className="font-medium">{currentPageData.blocks.length}</span> blocks on this page
                 <span className="mx-2">•</span>
-                <span className="text-blue-600">{currentPageData.width}×{currentPageData.height}px</span>
+                <span className="text-blue-600">Scale: {(scale * 100).toFixed(0)}%</span>
               </p>
-              {selectedBlock && selectedBlock.page_number === currentPage && (
-                <p className="text-sm text-red-600 mt-2">
-                  <span className="font-medium">Selected:</span> {selectedBlock.source_text.substring(0, 40)}
-                  {selectedBlock.source_text.length > 40 ? '...' : ''}
-                </p>
-              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Right: Block Editor Sidebar */}
+      {/* Right: Coverage Panel + Block Editor Sidebar */}
       <div className="w-[40%] flex flex-col">
+        {/* 🆕 Coverage Panel */}
+        <div className="px-4 pt-4">
+          <CoveragePanel
+            blocksAll={allBlocksWithPage}
+            showMissingOnly={showMissingOnly}
+            onToggleMissingOnly={() => setShowMissingOnly(v => !v)}
+            onJumpNextMissing={jumpNextMissing}
+          />
+        </div>
+
         {/* Sidebar Header */}
         <div className="border-b border-gray-200 px-6 py-4 bg-white">
           <h2 className="text-lg font-semibold text-gray-900">Blocks</h2>
-          <p className="text-sm text-gray-500">{allBlocksWithPage.length} total blocks</p>
+          <p className="text-sm text-gray-500">
+            {showMissingOnly
+              ? `${allBlocksWithPage.filter(b => !((b.edited_text || b.translated_text || "").trim())).length} missing blocks`
+              : `${allBlocksWithPage.length} total blocks`
+            }
+          </p>
         </div>
 
         {/* Block List */}
@@ -265,7 +315,13 @@ export default function DraftReviewPage() {
               <p>No blocks on this page</p>
             </div>
           ) : (
-            currentPageData?.blocks.map((block, idx) => (
+            currentPageData?.blocks
+              .filter(block => {
+                if (!showMissingOnly) return true;
+                const finalText = ((block.edited_text || block.translated_text || "") + "").trim();
+                return finalText.length === 0;
+              })
+              .map((block, idx) => (
               <div
                 key={block.id}
                 className={`
@@ -282,7 +338,6 @@ export default function DraftReviewPage() {
                     <span className="text-xs font-mono text-gray-400">
                       Block #{idx + 1}
                     </span>
-                    {/* SELECT BUTTON - Primary way to select a block */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -313,12 +368,6 @@ export default function DraftReviewPage() {
                       {block.status}
                     </span>
                   </div>
-                </div>
-
-                {/* BBox Info */}
-                <div className="text-xs text-gray-500 mb-3">
-                  Position: ({block.bbox.x.toFixed(0)}, {block.bbox.y.toFixed(0)}) •
-                  Size: {block.bbox.width.toFixed(0)}×{block.bbox.height.toFixed(0)}
                 </div>
 
                 {/* Source Text (Read-only) */}

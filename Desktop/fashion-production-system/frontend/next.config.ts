@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Next.js 16 使用 Turbopack，不需要額外配置 react-pdf
+  // react-pdf 會自動處理 worker
 };
 
 export default nextConfig;
