@@ -8,7 +8,7 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'styles', views.StyleViewSet, basename='styles')
-router.register(r'revisions', views.StyleRevisionViewSet, basename='revisions')
+router.register(r'style-revisions', views.StyleRevisionViewSet, basename='style-revisions')  # Fix: Avoid conflict with parsing/revisions
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -1,9 +1,15 @@
 """
 Parsing Serializers - v2.2.1
+
+Block-Based Parsing:
+- source_text 永遠只讀
+- edited_text 才是使用者可改的
+- bbox 拆成前端好用的結構輸出
 """
 
 from rest_framework import serializers
 from .models import ExtractionRun, DraftReviewItem
+from .models_blocks import Revision, RevisionPage, DraftBlock
 
 
 class ParseTriggerSerializer(serializers.Serializer):
@@ -68,3 +74,141 @@ class ExtractionRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExtractionRun
         fields = '__all__'
+
+
+# ============================================
+# Block-Based Parsing Serializers
+# ============================================
+
+class DraftBlockSerializer(serializers.ModelSerializer):
+    """
+    核心 Serializer：DraftBlock
+
+    規則：
+    - source_text: 只讀（AI 解析結果，不可覆寫）
+    - translated_text: 只讀（AI 翻譯，不可覆寫）
+    - edited_text: 可寫（人工修正）
+    - bbox: SerializerMethodField（DB 是 flat，API 是 nested）
+    """
+    bbox = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DraftBlock
+        fields = [
+            "id",
+            "block_type",
+            "bbox",
+            "source_text",
+            "translated_text",
+            "edited_text",
+            "status",
+        ]
+        read_only_fields = [
+            "id",
+            "source_text",
+            "translated_text",
+        ]
+
+    def get_bbox(self, obj):
+        """
+        將 DB 的 flat bbox 轉成 nested 結構
+
+        DB:  bbox_x, bbox_y, bbox_width, bbox_height
+        API: {"x": 90, "y": 120, "width": 280, "height": 40}
+        """
+        return {
+            "x": obj.bbox_x,
+            "y": obj.bbox_y,
+            "width": obj.bbox_width,
+            "height": obj.bbox_height,
+        }
+
+
+class DraftBlockPatchSerializer(serializers.ModelSerializer):
+    """
+    PATCH 專用 Serializer
+
+    用途：
+    - PATCH /api/v2/draft-blocks/{id}/
+    - 只能改「審稿結果」
+    - 絕對改不到原文與 bbox
+    """
+    class Meta:
+        model = DraftBlock
+        fields = [
+            "edited_text",
+            "status",
+        ]
+
+
+class RevisionPageSerializer(serializers.ModelSerializer):
+    """
+    頁面級 Serializer
+
+    規則：
+    - Page 是 UI 的 scroll / viewport 單位
+    - blocks 永遠跟著 page 回傳
+    """
+    blocks = DraftBlockSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RevisionPage
+        fields = [
+            "page_number",
+            "width",
+            "height",
+            "blocks",
+        ]
+
+
+class RevisionSerializer(serializers.ModelSerializer):
+    """
+    整份文件 Serializer
+
+    規則：
+    - 前端進 Draft Review UI 只 call 一支 API
+    - 不需要再另外 call page / block
+    """
+    pages = RevisionPageSerializer(many=True, read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Revision
+        fields = [
+            "id",
+            "filename",
+            "page_count",
+            "status",
+            "file_url",
+            "pages",
+        ]
+
+    def get_file_url(self, obj):
+        """
+        回傳 PDF 檔案的 URL
+
+        Dev:  http://127.0.0.1:8000/media/techpacks/xxx.pdf
+        Prod: S3 presigned URL (Phase 2)
+        """
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+
+class RevisionListSerializer(serializers.ModelSerializer):
+    """
+    列表用的輕量 Serializer（不含 pages）
+    """
+    class Meta:
+        model = Revision
+        fields = [
+            "id",
+            "filename",
+            "page_count",
+            "status",
+            "created_at",
+            "updated_at",
+        ]

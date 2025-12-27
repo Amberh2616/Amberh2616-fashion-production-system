@@ -8,15 +8,15 @@ import {
   getTechPacks,
   getTechPackDetail,
   uploadTechPack,
-  updateTechPack,
-  deleteTechPack,
-  parseTechPack,
+  // updateTechPack,         // TODO: Implement in techpack.ts
+  // deleteTechPack,         // TODO: Implement in techpack.ts
+  // parseTechPack,          // TODO: Implement in techpack.ts
   approveTechPack,
-  updateBOMItem,
-  updateMeasurement,
-  updateConstructionStep,
+  // updateBOMItem,          // TODO: Implement in techpack.ts
+  // updateMeasurement,      // TODO: Implement in techpack.ts
+  // updateConstructionStep, // TODO: Implement in techpack.ts
   type TechPack,
-  type UploadTechPackData,
+  // type UploadTechPackData, // TODO: Define in techpack.ts
 } from '../api/techpack';
 
 // ============================================================================
@@ -90,14 +90,12 @@ export function useUploadTechPack() {
   });
 }
 
-/**
- * Update Tech Pack
- */
+/*
+// TODO: Uncomment when API functions are implemented
 export function useUpdateTechPack(id: string) {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: (data: Partial<UploadTechPackData>) => updateTechPack(id, data),
+    mutationFn: (data: Partial<any>) => updateTechPack(id, data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: techPackKeys.lists() });
       queryClient.setQueryData(techPackKeys.detail(id), data);
@@ -105,12 +103,8 @@ export function useUpdateTechPack(id: string) {
   });
 }
 
-/**
- * Delete Tech Pack
- */
 export function useDeleteTechPack() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (id: string) => deleteTechPack(id),
     onSuccess: () => {
@@ -119,20 +113,16 @@ export function useDeleteTechPack() {
   });
 }
 
-/**
- * Manually trigger AI parsing
- */
 export function useParseTechPack(id: string) {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: () => parseTechPack(id),
     onSuccess: () => {
-      // Immediately refetch detail to see parsing status
       queryClient.invalidateQueries({ queryKey: techPackKeys.detail(id) });
     },
   });
 }
+*/
 
 /**
  * Approve AI draft
@@ -154,12 +144,10 @@ export function useApproveTechPack(id: string) {
   });
 }
 
-/**
- * Update BOM Item
- */
+/*
+// TODO: Uncomment when API functions are implemented
 export function useUpdateBOMItem(techPackId: string) {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => updateBOMItem(id, data),
     onSuccess: () => {
@@ -168,12 +156,8 @@ export function useUpdateBOMItem(techPackId: string) {
   });
 }
 
-/**
- * Update Measurement
- */
 export function useUpdateMeasurement(techPackId: string) {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => updateMeasurement(id, data),
     onSuccess: () => {
@@ -182,12 +166,8 @@ export function useUpdateMeasurement(techPackId: string) {
   });
 }
 
-/**
- * Update Construction Step
- */
 export function useUpdateConstructionStep(techPackId: string) {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => updateConstructionStep(id, data),
     onSuccess: () => {
@@ -195,3 +175,4 @@ export function useUpdateConstructionStep(techPackId: string) {
     },
   });
 }
+*/

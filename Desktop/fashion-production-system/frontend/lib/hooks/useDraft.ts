@@ -1,22 +1,23 @@
 /**
- * Draft Review Hooks - v2.2.1
+ * Draft Review Hooks - Block-Based Revision API
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DraftResponse, DraftEdit } from '@/lib/types/draft';
+import { Revision, RevisionResponse } from '@/lib/types/revision';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v2';
 
-// ===== Fetch Draft Data =====
+// ===== Fetch Revision Data =====
 export function useDraft(revisionId: string) {
   return useQuery({
     queryKey: ['draft', revisionId],
-    queryFn: async (): Promise<DraftResponse> => {
-      const res = await fetch(`${API_BASE}/revisions/${revisionId}/draft/`);
+    queryFn: async (): Promise<RevisionResponse> => {
+      const res = await fetch(`${API_BASE}/revisions/${revisionId}/`);
       if (!res.ok) {
-        throw new Error(`Failed to fetch draft: ${res.statusText}`);
+        throw new Error(`Failed to fetch revision: ${res.statusText}`);
       }
-      return res.json();
+      const data: Revision = await res.json();
+      return { data };
     },
     enabled: !!revisionId,
     staleTime: 30000, // 30 seconds
@@ -24,28 +25,29 @@ export function useDraft(revisionId: string) {
   });
 }
 
-// ===== Update Draft Data (PATCH) =====
-export function useUpdateDraft(revisionId: string) {
+// ===== Update Single Draft Block (PATCH) =====
+export function useUpdateDraftBlock(revisionId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (edits: DraftEdit[]) => {
-      const res = await fetch(`${API_BASE}/revisions/${revisionId}/draft/`, {
+    mutationFn: async ({ blockId, editedText }: { blockId: string; editedText: string }) => {
+      const res = await fetch(`${API_BASE}/draft-blocks/${blockId}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ edits }),
+        body: JSON.stringify({ edited_text: editedText }),
       });
 
       if (!res.ok) {
-        throw new Error(`Failed to update draft: ${res.statusText}`);
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.detail || `Failed to update block: ${res.statusText}`);
       }
 
       return res.json();
     },
     onSuccess: () => {
-      // Invalidate draft query to refetch
+      // Invalidate draft query to refetch all blocks
       queryClient.invalidateQueries({ queryKey: ['draft', revisionId] });
     },
   });
