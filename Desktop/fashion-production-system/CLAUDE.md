@@ -1,7 +1,7 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2025-12-27
-**Project Status:** v2.2.1 Sprint 1 - Block-Based Parsing Architecture Mismatch Found
+**Last Updated:** 2025-12-27 15:30
+**Project Status:** v2.2.1 Sprint 1 - Draft Review UI Testing (90%) + BOM Design Complete
 **Version:** 2.2.1
 
 > 📘 **Technical Reference:** See `CLAUDE-TECHNICAL.md` for API specs, commands, environment variables, and tech stack details.
@@ -387,52 +387,134 @@ url = s3.generate_presigned_url(
 - [x] CORS configuration verified
 - [x] API endpoint path corrected
 - [x] Type definitions created
+- [x] Architecture mismatch identified
 
-### ⚠️ Critical Issue: Architecture Mismatch
+#### Session 2025-12-27 Progress ⭐ NEW
 
-**Problem:** Frontend UI expects `BOMDraft` + `MeasurementDraft` + `ConstructionDraft` model, but backend provides `pages[]` + `blocks[]` block-based model.
+**Major Milestone 1: Draft Review UI Real Testing (90% Complete)**
+- [x] **Block Extraction Working**
+  - 7 complete callout blocks extracted (not 26 word fragments)
+  - Full sentences: "binding with encased elastic topstitch"
+  - Test Revision ID: `d3be25b0-01e5-4e3d-afe8-ca9578f1ebb2`
 
-**Root Cause:**
-- Frontend Draft Review UI built for **old StyleRevision model** (BOM/Measurement/Construction tabs)
-- Backend implemented with **new block-based model** (PDF pages + callout blocks)
-- Fundamentally different approaches
+- [x] **AI Translation Functional**
+  - OpenAI GPT-4o Mini integration working
+  - Examples:
+    - "binding with encased elastic topstitch" → "包邊搭配包覆彈性上車縫"
+    - "neckline binding with encased elastic" → "頸線包邊搭配包覆彈性帶"
+    - "inner shelf bra layer (see details" → "內襯胸墊層（詳情請參閱）"
 
-**Impact:**
-- Page loads but shows "Loading draft data..." indefinitely
-- Data arrives but doesn't match UI expectations
-- All review components need rewrite
+- [x] **Review Page Accessible**
+  - URL: http://localhost:3000/dashboard/revisions/{id}/review
+  - PDF viewer rendering correctly
+  - Block list displaying with translations
+  - Edit/Save functionality ready for testing
 
-### 📋 Next Steps (工程最低返工風險排序)
+- [ ] **User Acceptance Testing (Pending)**
+  - Translation quality validation needed
+  - Editing workflow testing needed
+  - Repeatability assessment (10+ tech packs scenario)
 
-#### 🥇 P0 - Draft Review UI 驗收
-**原因：必須用真實使用流程驗證 Block 粒度 × bbox × API 結構是否真的能被人用**
-- Create block-based Draft Review UI
-- Test with real PDF
-- Verify editing workflow
-- 15 acceptance criteria must pass
+**Major Milestone 2: BOM → PO Complete System Design**
+- [x] **Three-Layer Architecture Finalized**
+  - Level 1: Revision BOM (template layer)
+  - Level 2: Order BOM (order instance layer) ⭐ critical
+  - Level 3: PO (procurement layer with price freeze)
 
-#### 🥈 P1 - PDF Upload / Serving
-**原因：機械性工作，不影響資料結構**
-- Upload API implementation
-- File storage integration
-- Real PDF integration test
+- [x] **Key Field Additions Designed**
+  - `supplier_article_no` - Procurement identification key
+  - `source_type` & `source_ref` - Evidence tracking
+  - `po_type` - RFQ vs Production distinction
+  - Price freeze mechanism in POLine (COPY not reference)
 
-### 📝 Technical Debt
+- [x] **Gating Rules Defined**
+  - RFQ PO: Allows pre_estimate/confirmed/locked
+  - Production PO: Requires confirmed/locked only
+  - Validation logic: All fabric/trim must be confirmed before Production PO
 
-1. **Disabled Features**
-   - `/dashboard/techpacks` page (placeholder)
-   - `/dashboard/techpacks/[id]/review` page (placeholder)
-   - 6 API mutation hooks commented out
+- [x] **Implementation Plan (6 Phases)**
+  - Phase 1: Model field additions (0.5 day)
+  - Phase 2: BOM editor page (2 days)
+  - Phase 3: Order creation + auto BOM copy (1 day)
+  - Phase 4: RFQ PO generation (1 day)
+  - Phase 5: Production PO + gating (1 day)
+  - Phase 6: Marker/Trim backfill (optional)
 
-2. **Incomplete Features**
-   - Draft Review UI (incompatible with backend)
-   - Block editing (backend ready, frontend not connected)
-   - PDF viewer integration (not wired)
+- [ ] **Implementation Start (Awaiting Approval)**
+  - Complete design documented in `1227-01.txt`
+  - Ready to start Phase 1 migrations
+  - Awaiting user confirmation to proceed
 
-3. **Documentation Gaps**
-   - No API docs for block-based endpoints
-   - No user guide for Draft Review workflow
-   - No testing plan
+### 🎯 Current Focus (2025-12-27)
+
+**Two Parallel Tracks:**
+
+**Track A: Draft Review UI Validation** (90% → 100%)
+- Status: System working, awaiting real-world usage feedback
+- Blocker: Need user to test editing workflow with real tech pack
+- Next: User acceptance testing → decision on UI improvements
+
+**Track B: BOM → PO Implementation** (Design 100% → Implementation 0%)
+- Status: Complete design approved, ready to implement
+- Blocker: Awaiting user "go" signal to start Phase 1
+- Next: Django migrations for new fields (30 min task)
+
+### 📋 Next Steps (Updated 2025-12-27)
+
+#### 🥇 Track A: Draft Review UI - Final Validation (5 min)
+**Status:** 90% complete, system working, need real usage test
+
+**Action Items:**
+1. [ ] Test editing workflow (change 2-3 translations)
+2. [ ] Evaluate translation quality (AI output usable?)
+3. [ ] Assess textarea UX (need larger edit area?)
+4. [ ] Answer: Would you use this for 10 tech packs tomorrow?
+
+**Deliverable:** User feedback → UI improvement decisions
+
+---
+
+#### 🥈 Track B: BOM → PO - Phase 1 Implementation (30 min)
+**Status:** Design 100% complete, ready to start implementation
+
+**Phase 1 Tasks:**
+1. [ ] Add `supplier_article_no` to BOMItem model
+2. [ ] Add fields to OrderItemBOM:
+   - material_name, supplier, supplier_article_no, category
+   - source_type, source_ref
+3. [ ] Add `po_type` to PurchaseOrder model
+4. [ ] Add `supplier_article_no` to POLine model
+5. [ ] Run migrations
+6. [ ] Test new fields in Django admin
+
+**Deliverable:** Database schema updated, ready for Phase 2
+
+**Awaiting:** User confirmation to proceed ("開始")
+
+---
+
+#### 🥉 P2 - Documentation Update (15 min)
+- [ ] Update DATABASE-SCHEMA with new fields
+- [ ] Document BOM → PO workflow in API-SPEC
+- [ ] Create BOM Phase 1-6 implementation checklist
+
+### 📝 Technical Debt (Updated 2025-12-27)
+
+1. **Disabled Features (Low Priority)**
+   - `/dashboard/techpacks` page (placeholder) - Not needed for MVP
+   - `/dashboard/techpacks/[id]/review` page (placeholder) - Replaced by `/revisions/[id]/review`
+   - 6 API mutation hooks commented out - Will implement if needed
+
+2. **Pending User Testing**
+   - ✅ Draft Review UI functional (90% complete)
+   - ⏳ Awaiting real-world usage feedback
+   - ⏳ Translation quality assessment
+   - ⏳ Editing workflow validation
+
+3. **Documentation Gaps (P2)**
+   - Block-based API endpoints (working but not documented)
+   - BOM → PO workflow documentation
+   - User guide for Draft Review workflow
 
 ---
 
