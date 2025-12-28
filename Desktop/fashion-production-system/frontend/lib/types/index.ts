@@ -4,6 +4,7 @@
 
 export * from './style';
 export * from './document';
+export * from './bom';
 
 /**
  * Common Types

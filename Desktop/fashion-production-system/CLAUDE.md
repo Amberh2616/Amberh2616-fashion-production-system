@@ -1,7 +1,7 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2025-12-27 15:30
-**Project Status:** v2.2.1 Sprint 1 - Draft Review UI Testing (90%) + BOM Design Complete
+**Last Updated:** 2025-12-28 20:30
+**Project Status:** Phase 2-2 Backend Complete (100%) - BOM Editor 90% + Costing APIs Tested
 **Version:** 2.2.1
 
 > 📘 **Technical Reference:** See `CLAUDE-TECHNICAL.md` for API specs, commands, environment variables, and tech stack details.
@@ -35,8 +35,169 @@ AI System:   1 person → 300+ styles → 70-80% automation
 
 然後用流程把資料推進：
 ```
-文件 → AI 結構化 → 人工審核 → 可運算資料 → 自動生成單據
-       (draft)     (verified)   (OrderItemBOM)  (MWO/PO PDF)
+文件 → AI 結構化 → 人工審核 → 可運算資料 → 報價/下單
+       (draft)     (verified)   (BOM/Costing)  (Sample/Bulk PO)
+```
+
+---
+
+## 🔒 核心名詞定義（系統統一語言）
+
+### 1. **BOM（Bill of Materials）物料清單**
+- **定義**：定義「一件衣服需要用哪些料、用多少」
+- **階段**：開發 / 報價前
+- **狀態**：Draft → Confirmed
+- **來源**：Tech Pack AI 解析 + 人工確認
+- **包含**：material_name, supplier, consumption, unit_price, leadtime
+- **本質**：技術與成本基礎資料（跨所有階段共用）
+
+### 2. **Costing / Quote（成衣報價）**
+- **定義**：計算一件衣服的成本與報價
+- **類型**：
+  - **Sample Costing**：樣品報價（小量、高價）
+  - **Bulk Costing**：大貨報價（大量、低價、FOB）
+- **輸入**：BOM（consumption + unit_price）
+- **輸出**：FOB 價格
+- **階段**：客戶下單前
+- **版本**：v1 / v2 / v3（可多版本）
+- **本質**：報價計算與版本管理
+
+### 3. **Sample（樣衣）**
+- **定義**：確認款式、版型、工藝的試樣
+- **類型**：
+  - Proto Sample（初樣）
+  - Fit Sample（版型樣）
+  - Sales Sample（業務樣）
+- **階段**：BULK PO 之前
+- **特點**：需要調料（T2 PO for Sample）、需要報價（Sample Costing）
+
+### 4. **BULK PO（大貨成衣訂單）** ⭐ 關鍵分水嶺
+- **定義**：客戶下給你的「大貨成衣訂單」
+- **內容**：Style / Color / Size / Qty / 交期
+- **來源**：客戶（外部）
+- **時間點**：報價被接受後
+- **用途**：決定要做多少件衣服 → 作為 T2 PO 的依據
+- **本質**：成衣訂單（你要出貨給客戶的）
+
+### 5. **PP Sample（Pre-Production Sample）產前樣**
+- **定義**：大貨上線前最後確認
+- **時間點**：收到 BULK PO 之後、大貨生產之前
+- **用料**：用大貨的料、大貨的工藝、大貨的包裝
+- **目的**：鎖定所有規格（PP Meeting）
+- **本質**：產前鎖定行為（不是開發階段的樣衣）
+
+### 6. **T2 PO（對供應商的採購單）**
+- **定義**：你對布廠/副料廠（Tier 2 供應商）下的採購單
+- **類型**：
+  - **T2 PO for Sample**：樣品物料採購（小量、急、貴）
+  - **T2 PO for Bulk**：大貨物料採購（大量、正常交期）
+- **依據**：
+  - Sample: BOM × 樣品數量
+  - Bulk: BULK PO Qty × BOM consumption
+- **本質**：採購單（只對供應商）
+
+### 7. **MWO (Manufacturing Work Order) 製造單**
+- **定義**：給工廠的生產指令
+- **類型**：
+  - Sample MWO（樣衣製造單）
+  - Bulk MWO（大貨製造單）
+- **內容**：Style, BOM, Construction, QC points, Qty, Due date
+
+---
+
+## 🧭 完整系統流程（雙線整合）
+
+### **階段 1：開發與樣衣（BULK PO 之前）**
+
+```
+Tech Pack Upload
+      ↓
+AI Parse → Draft BOM
+      ↓
+BOM Confirmation (consumption + unit_price)
+      ↓
+┌──────────────────────────────────────┐
+│   多次樣衣循環（Proto → Fit → Sales）  │
+│                                      │
+│   Sample Costing #1 (樣品報價)        │
+│         ↓                            │
+│   T2 PO for Sample #1 (調料)         │
+│         ↓                            │
+│   Proto Sample 製作                  │
+│         ↓                            │
+│   客戶確認 → 需要修改                 │
+│         ↓                            │
+│   BOM 調整 → Sample Costing #2       │
+│         ↓                            │
+│   Fit Sample 製作                    │
+│         ↓                            │
+│   客戶確認 ✅                         │
+└──────────────────────────────────────┘
+```
+
+### **階段 2：報價談判（BULK PO 之前）**
+
+```
+BOM Confirmed (consumption 鎖定)
+      ↓
+Bulk Costing v1 (大貨報價)
+├─ Material cost (大量採購價)
+├─ Labor (大貨工價)
+├─ Overhead + Freight
+└─ FOB Price: $15/pc
+      ↓
+發報價給客戶
+      ↓
+客戶談判：「太貴了，能降嗎？」
+      ↓
+Bulk Costing v2 (調整報價)
+└─ FOB Price: $14.50/pc
+      ↓
+客戶確認報價 ✅
+```
+
+### **階段 3：收到 BULK PO ←────── 【關鍵分水嶺】**
+
+```
+BULK PO Received
+├─ Style: LW1FLPS
+├─ Color: Black, White
+├─ Size: XS:500, S:1000, M:1500, L:800, XL:200
+├─ Total: 4000 pcs
+├─ FOB Price: $14.50/pc
+└─ Delivery: 2025-03-15
+```
+
+### **階段 4：產前確認（BULK PO 之後）**
+
+```
+T2 PO for Bulk (大貨物料採購)
+├─ Nulu Fabric: 2100 yds
+├─ Lead time: 72 days
+└─ Expected: 2025-02-10
+      ↓
+PP Sample 製作（用大貨料）
+      ↓
+PP Meeting（產前會議）
+├─ 鎖定 BOM consumption ✅
+├─ 鎖定工藝 ✅
+└─ 鎖定包裝 ✅
+      ↓
+PP Sample 確認 ✅
+```
+
+### **階段 5：大貨生產（PP 確認後）**
+
+```
+Material Tracking (物料到貨)
+      ↓
+Bulk MWO (大貨製造單)
+      ↓
+Production Tracking
+├─ Cutting → Sewing → Ironing → Packing
+└─ QC Inspection
+      ↓
+Shipping
 ```
 
 ---
@@ -69,509 +230,326 @@ AI System:   1 person → 300+ styles → 70-80% automation
 +----------------------------------+
 ```
 
-**Key Insight:** AI 輸出 `change_plan`（建議 patch），系統顯示成「可套用的建議」，你按「Apply」才寫入 verified。這樣做到：人+AI 協作、但你永遠是最後決策者。
+---
+
+## System Architecture (Modules)
+
+### **Phase 1-2: Foundation (BULK PO 之前)**
+1. **Intake（文件中心）** - Tech Pack 上傳與管理
+2. **AI Parsing（結構化解析）** - Tech Pack → BOM/Measurement/Construction
+3. **Draft Review（審稿系統）** - 雙語疊層、AI 翻譯、人工校正
+4. **BOM Management（物料清單）** - 用量與價格管理
+5. **Costing（報價系統）** - Sample Costing / Bulk Costing
+
+### **Phase 3-4: Order Management (BULK PO 階段)**
+6. **Sample Management** - Proto/Fit/Sales 樣衣追蹤
+7. **BULK PO** - 大貨訂單管理
+8. **PP Sample** - 產前樣確認
+
+### **Phase 5-6: Production (大貨生產)**
+9. **T2 PO** - 物料採購與追蹤
+10. **MWO** - 製造單生成
+11. **Production** - 生產追蹤
+12. **Shipping** - 出貨追蹤
 
 ---
 
-## System Architecture (6 Core Modules)
+## Phase 2 規劃（當前重點）⭐
 
-### 1. Intake（文件中心）
-- 上傳、綁定 style/revision
-- 檔案版本管理
-- 下載（presigned URL）
-- 檔案去重（SHA256 hash）
+### **Phase 2 定位**
 
-### 2. AI Parsing（結構化解析）
-- Tech Pack → BOM/Measurement/Construction
-- 多策略 pipeline（規則/表格偵測/Vision LLM）
-- 輸出：Evidence + Confidence + Issues
-- Cost tracking per extraction
+> **Phase 2 = 在「沒有 BULK PO」的世界裡，完成 BOM → Costing（Sample & Bulk）的可用系統**
 
-### 3. Draft Review（你每天工作的主畫面）⭐ CORE
-- 左 40%：PDF viewer（可點擊頁面）
-- 右 60%：資料表（BOM/Measurement/Construction tabs）
-- AI Issue 清單（缺欄位、衝突、低信心）
-- 修正後寫入 verified
-- Approve → 解鎖訂單建立
+### **Phase 2 邊界鎖定**
 
-### 4. Orders（大貨/訂單管理）
-- SalesOrder + SalesOrderItem（款色尺量）
-- 建立 item 後自動生成 OrderItemBOM（訂單級 BOM）
-- 尺碼分配（size breakdown）
+#### ✅ Phase 2 允許存在
+- BOM（通用，Draft/Confirmed）
+- CostSheet（Sample Costing / Bulk Costing）
+- CostLine（Lite，snapshot only）
 
-### 5. Consumption（用量成熟度管理）⭐ KEY DESIGN
-- OrderItemBOM（訂單級 BOM，真正用於計算 PO）
-- 三段值：pre_estimate / confirmed / locked
-- Marker Report 回填主料用量
-- Sample Trim Measurement 回填副料用量
-- Trim Rule Library 估算（Phase 1 先 20 條規則）
-
-### 6. Documents Output（單據產出）
-- MWO PDF（製造單，中文，給工廠）
-- PO PDF（採購單，按供應商分組）
-- Email 草稿（先不自動寄，Phase 2）
+#### ❌ Phase 2 嚴格禁止
+- BULK PO（Phase 4）
+- T2 PO for Sample/Bulk（Phase 3/4）
+- PP Sample（Phase 4）
+- Production/MWO（Phase 5）
+- 任何 qty × consumption 計算
 
 ---
 
-## The Consumption Maturity Problem（用量成熟度生命週期）
+### **Phase 2 數據模型**
 
-### Why This Matters
-
-Tech Pack 常常沒用量，或用量不準：
-- 主料（Fabric）：要等 Marker Report（排版圖）才知道實際用量
-- 副料（Trim）：要等樣衣實測或用規則估算
-
-**系統必須支撐這個成熟過程：**
-
-```
-unknown → pre_estimate → confirmed → locked
-   ↓           ↓             ↓          ↓
-客人沒給    估算值(RFQ可用)  有證據    PP前鎖定(Prod PO用)
-```
-
-### Gating Rules（關鍵控管）
-
-| PO Type | Fabric 用量要求 | Trim 用量要求 |
-|---------|---------------|-------------|
-| **RFQ（詢價單）** | unknown/pre_estimate/confirmed/locked（都可以） | 同左 |
-| **Production（正式生產單）** | confirmed/locked（必須有證據）| confirmed/locked（必須有證據）|
-
-**這個設計是整個系統的核心邏輯！**
-
----
-
-## Data Layer Architecture（資料層設計）
-
-### Two-Level BOM Architecture（兩層 BOM 架構）⭐
-
-```
-Level 1: Revision BOM（模板層）
-├─ BOMItem (template from tech pack)
-├─ Measurement (size spec)
-└─ ConstructionStep (process)
-
-Level 2: Order BOM（訂單實例層）
-└─ OrderItemBOM (order-specific instance)
-   ├─ Links to: BOMItem (template)
-   ├─ Contains: pre_estimate_value / confirmed_value / locked_value
-   ├─ Evidence: marker_document / sample_measurement_record
-   └─ This is where PO calculations happen!
-```
-
-**為什麼要兩層？**
-- 同款不同訂單：用量/供應商/證據 可能不同
-- 支援：Marker 回填、樣衣實測回填、用量鎖定後再生成 Production PO
-- 追溯性：可以查到「這張 PO 是基於哪個證據、哪個用量值」
-
----
-
-## MVP Must-Have: 7 Core Pages
-
-### 1. Styles 列表（300 款表格）
-- 篩選：季、狀態、客戶、due date
-- 多選 → Batch Parse
-- Status badges: uploaded/parsing/draft/approved
-
-### 2. Style 詳細頁
-- Revisions 列表（Rev A/B/C）
-- 最新狀態、文件列表
-- Quick actions
-
-### 3. Upload/Intake 頁
-- 拖拉上傳 tech pack/bom/spec/artwork
-- 自動綁定 style + revision
-- 檔案去重提示
-
-### 4. Parse Run 狀態頁
-- 顯示 AI 進度（0-100%）
-- 成本追蹤（$1.23）
-- 失敗原因（哪裡出錯）
-
-### 5. Draft Review 主頁（最重要！）⭐
-```
-+---------------------------------------------------------------+
-|  LW1FLPS - Nulu Cami Tank                    Status: Draft    |
-+---------------------------------------------------------------+
-|                                                               |
-|  [LEFT 40%]                  |  [RIGHT 60%]                   |
-|  Original Tech Pack PDF      |  AI Results + Edit Area        |
-|  (Scrollable, Zoomable)      |                                |
-|                              |  Tabs:                         |
-|  Click BOM page ->           |  +---------------------------+  |
-|  Right side jumps to BOM     |  | BOM | Measurement |       |  |
-|                              |  | Construction              |  |
-|                              |  +---------------------------+  |
-|  +-------------------+       |                                |
-|  | [PDF Viewer]      |       |  AI Issues:                    |
-|  |                   |       |  +---------------------------+  |
-|  | Page 3/12         |       |  | ! Missing: Fabric code    |  |
-|  |                   |       |  | ! Conflict: Usage = 0     |  |
-|  +-------------------+       |  | i Low confidence: 65%     |  |
-|                              |  +---------------------------+  |
-|  [< Prev] [Next >]           |  [Approve] [Save Draft]       |
-+------------------------------+--------------------------------+
-```
-
-### 6. Order 建立/管理頁
-- 輸入大貨 PO 資訊
-- 建立 order items
-- 尺碼量分配（XS:200, S:400...）
-- 自動生成 OrderItemBOM
-
-### 7. MWO/PO 產出中心
-- 選多款 → Batch 生成 MWO/PO PDF
-- 下載、版本管理
-- 重新計算（手動觸發）
-
----
-
-## End-to-End Workflow（實際每天怎麼用）
-
-### Day 1: Upload & Parse
-```
-1. 選擇「整個資料夾」上傳（50 份 tech pack PDF）
-   → 系統自動建 style + revision + document
-
-2. 在 Styles 列表多選 50 款 → [Batch Parse]
-   → AI 解析中（3-5 分鐘/款）
-   → 喝咖啡等通知
-```
-
-### Day 2: Review & Approve
-```
-3. 進 Draft Review 頁面（一款一款看）
-   → 快速修正缺欄位/衝突（2-3 issues/款）
-   → [Approve Revision]（完成 40 款）
-```
-
-### Day 3: Create Orders
-```
-4. 收到大貨訂單 → 建 SalesOrder
-   → 建 SalesOrderItem（連到 approved revision）
-   → 系統自動生成 OrderItemBOM（用量 status = pre_estimate）
-```
-
-### Day 4: RFQ PO
-```
-5. [Generate PO Drafts - RFQ]
-   → 用 pre_estimate 生成 PO
-   → 按供應商分組（Eclat, YKK, TrimCo）
-   → 下載 PDF → 發給供應商詢價
-```
-
-### Day 5: Marker & Sample
-```
-6. 收到 Marker Report（主料排版圖）
-   → 上傳 + 解析
-   → 自動回填 OrderItemBOM.confirmed_value
-
-7. 樣衣打好 → 實測副料（鬆緊帶、拉鍊）
-   → 輸入測量值
-   → 回填 OrderItemBOM.confirmed_value
-```
-
-### Day 6: Lock & Production PO
-```
-8. PP 前確認用量無誤 → [Lock Consumption]
-   → OrderItemBOM.consumption_status = locked
-
-9. [Generate PO Drafts - Production]
-   → 系統檢查：fabric/trim 都 confirmed/locked？
-   → 生成 Production PO（最終下單量）
-   → 下載 PDF → 發給供應商正式下單
-```
-
-### Day 7: Generate MWO
-```
-10. [Batch Generate MWO]（20-50 款）
-    → 製造單 PDF（中文，給工廠）
-    → 包含：BOM + 尺寸表 + 工序 + QC points
-    → 下載 → Email 給工廠
-```
-
-**重點：用 Batch 對 20-50 款一批做，不會一次 300 款全跑完！**
-
----
-
-## Important Reminders for Development
-
-### 1. AI is Always a Draft
-- All AI output → draft first
-- 顯示 confidence scores
-- Flag items < 70% confidence
-- 人工修正後才寫入 verified
-
-### 2. Two-Level BOM is Critical
-- BOMItem = Revision 模板（不能直接用於 PO）
-- OrderItemBOM = Order 實例（真正計算 PO 的地方）
-- 不要搞混！
-
-### 3. Consumption Gating is Non-Negotiable
+#### 1. BOMItem（擴展版）
 ```python
-def generate_po(po_type):
-    if po_type == "Production":
-        for line in order_item_bom:
-            if line.category == "fabric":
-                assert line.consumption_status in ["confirmed", "locked"]
-            if line.category == "trim":
-                assert line.consumption_status in ["confirmed", "locked"]
+class BOMItem(models.Model):
+    revision = ForeignKey(Revision)
+
+    # 物料識別
+    material_name, supplier, category, unit
+    supplier_article_no, color
+
+    # 用量與成本
+    consumption = DecimalField  # per garment
+    unit_price = DecimalField
+    wastage_rate, leadtime_days
+
+    # 狀態
+    consumption_status = CharField  # draft/confirmed
+    material_status = CharField
+
+    # 元數據
+    ai_confidence, is_verified
 ```
 
-### 4. Batch Operations, Not One-by-One
-- 一次處理 20-50 款（不是 300 款）
-- Progress tracking per item
-- Failure 不能影響其他 items
-
-### 5. Presigned URLs for Security
+#### 2. CostSheet（Sample & Bulk 共用）
 ```python
-# BAD: 不要這樣做
-file.url = "https://bucket.s3.amazonaws.com/techpack.pdf"
+class CostSheet(models.Model):
+    revision = ForeignKey(Revision)
+    costing_type = CharField  # sample/bulk
+    version_no = IntegerField
+    is_current = BooleanField
 
-# GOOD: 用 presigned URL
-url = s3.generate_presigned_url(
-    'get_object',
-    Params={'Bucket': bucket, 'Key': key},
-    ExpiresIn=900  # 15 minutes
-)
+    # 成本輸入
+    labor_cost, overhead_cost, freight_cost
+
+    # 定價參數
+    margin_pct = DecimalField  # 30%
+    wastage_pct = DecimalField  # 5%
+
+    # 計算結果快照
+    material_cost, total_cost, unit_price
 ```
 
-### 6. Async PDF Generation
-- PDF 生成可能 5-30 秒（含圖片、表格）
-- 一定要用 Celery 非同步
-- API 立即回 `{"status": "generating", "task_id": "..."}`
+#### 3. CostLine（Lite - Snapshot Only）
+```python
+class CostLine(models.Model):
+    cost_sheet = ForeignKey(CostSheet)
+    bom_item = ForeignKey(BOMItem)
 
-### 7. Version Control Matters
-- StyleRevision 鏈結 `previous_revision_id`
-- 產生 diff（detected_changes JSON）
-- 追溯「哪一版導致哪次下單」
+    # 快照（報價當下）
+    material_name, supplier, category, unit
+    consumption, unit_price
 
----
-
-## Current Status (2025-12-27)
-
-### ✅ Completed
-
-#### Design Phase (2025-12-17)
-- [x] v2.2.1 Complete system design
-- [x] Database schema design (`DATABASE-SCHEMA_v2.2.1_COMPLETE2.md`)
-- [x] Django models specification (`DATABASE-SCHEMA_v2.2.1_DJANGO_MODELS.md`)
-- [x] Complete API specification (`API-SPEC_v2.2.1_COMPLETE.md`)
-- [x] AI JSON schema specification (`AI-JSON-SCHEMA_v2.2.1_COMPLETE.md`)
-- [x] Trim rules library (`TRIM-RULES-LIBRARY_v1.0.md`)
-- [x] Architecture decision records (`DECISIONS_v2.2.1.md`)
-- [x] Task breakdown & sprint planning (`TASK-BREAKDOWN.md`)
-
-#### Sprint 1 - Foundation (2025-12-18)
-- [x] Django 4.2.8 + DRF setup
-- [x] Core Models (8 apps, 1154 lines, 9 migrations)
-- [x] Next.js 14 frontend shell
-- [x] Environment configuration
-
-#### Sprint 1 - Block-Based Parsing (2025-12-21)
-- [x] Block-Based Parsing Models (`apps/parsing/models_blocks.py`)
-  - Revision, RevisionPage, DraftBlock, DraftBlockHistory
-  - BBox flat fields for performance
-  - Three-layer text: source_text / translated_text / edited_text
-- [x] Serializers with bbox conversion
-- [x] Parse Task - Page 4 MVP (Celery + pdfplumber)
-- [x] PDF/Translation utils
-- [x] Risk analysis document
-- [x] Media URL configuration
-- [x] Frontend code received (react-pdf + block editor)
-
-#### Session 2025-12-22 Fixes
-- [x] react-resizable-panels v4.x API migration
-- [x] Missing API functions handled
-- [x] Conflicting pages disabled
-- [x] Port 3000 conflict resolved
-- [x] CORS configuration verified
-- [x] API endpoint path corrected
-- [x] Type definitions created
-- [x] Architecture mismatch identified
-
-#### Session 2025-12-27 Progress ⭐ NEW
-
-**Major Milestone 1: Draft Review UI Real Testing (90% Complete)**
-- [x] **Block Extraction Working**
-  - 7 complete callout blocks extracted (not 26 word fragments)
-  - Full sentences: "binding with encased elastic topstitch"
-  - Test Revision ID: `d3be25b0-01e5-4e3d-afe8-ca9578f1ebb2`
-
-- [x] **AI Translation Functional**
-  - OpenAI GPT-4o Mini integration working
-  - Examples:
-    - "binding with encased elastic topstitch" → "包邊搭配包覆彈性上車縫"
-    - "neckline binding with encased elastic" → "頸線包邊搭配包覆彈性帶"
-    - "inner shelf bra layer (see details" → "內襯胸墊層（詳情請參閱）"
-
-- [x] **Review Page Accessible**
-  - URL: http://localhost:3000/dashboard/revisions/{id}/review
-  - PDF viewer rendering correctly
-  - Block list displaying with translations
-  - Edit/Save functionality ready for testing
-
-- [x] **Batch Testing Capability** (2025-12-27 晚上)
-  - Created `seed_10_revisions.py` command
-  - 10 test revisions generated with realistic data
-  - Revisions list page working at `/dashboard/revisions`
-
-- [x] **Bilingual Overlay System Design** (2025-12-27 晚上) ⭐ NEW
-  - Problem identified: "如何確認 100% 翻譯完成？"
-  - Solution: 雙語疊層 + Coverage Check + Preview PDF
-  - 3-Phase plan created (UI → Preview PDF → Finalize/Lock)
-  - Phase 1 components完成 (4 files created)
-
-- [x] **Phase 1 Integration Complete** (2025-12-27 23:00) ✅
-  - ✅ BilingualOverlay.tsx - 主疊層組件
-  - ✅ BlockOverlayItem.tsx - 單個 block 渲染（inline/card 模式）
-  - ✅ CoveragePanel.tsx - 翻譯完整性統計
-  - ✅ canRenderInline.ts - bbox 容納判斷邏輯
-  - ✅ react-pdf 安裝和配置完成（69 packages）
-  - ✅ 替換 iframe → react-pdf（Document + Page）
-  - ✅ 完整整合到 review 頁面
-  - ✅ Auto scale + renderTextLayer=false
-  - ✅ Coverage Panel 顯示統計（Total/Translated/Missing）
-  - ✅ Show Missing Only 篩選功能
-  - ✅ Next Missing 快速跳轉功能
-  - ⏳ 等待用戶測試驗證
-
-- [ ] **User Acceptance Testing (Pending)**
-  - Translation quality validation needed
-  - Editing workflow testing needed
-  - Repeatability assessment (10+ tech packs scenario)
-
-**Major Milestone 2: BOM → PO Complete System Design**
-- [x] **Three-Layer Architecture Finalized**
-  - Level 1: Revision BOM (template layer)
-  - Level 2: Order BOM (order instance layer) ⭐ critical
-  - Level 3: PO (procurement layer with price freeze)
-
-- [x] **Initial Design Complete** (see `1227-01.txt`)
-  - `supplier_article_no` - Procurement identification key
-  - `source_type` & `source_ref` - Evidence tracking
-  - `po_type` - RFQ vs Production distinction
-  - Price freeze mechanism in POLine (COPY not reference)
-
-- [x] **Critical Corrections Applied** ⚠️ (see `BOM-PO-DESIGN-CORRECTIONS.md`)
-  - #1: Supplier normalization (prevent grouping errors)
-  - #2: Auto-recalc totals + lock mechanism
-  - #3: RFQ gating - reject unknown (not just pre_estimate)
-  - #4: Currency field required (USD/NTD/CNY)
-  - #5: Unit standardization (yd/m/cm/pc)
-
-- [x] **Gating Rules Corrected**
-  - RFQ PO: Allows pre_estimate/confirmed/locked (NOT unknown ❌)
-  - Production PO: Requires confirmed/locked only
-  - Validation logic: All fabric/trim must be confirmed before Production PO
-
-- [x] **Implementation Plan (6 Phases)**
-  - Phase 1: Model field additions (0.5 day)
-  - Phase 2: BOM editor page (2 days)
-  - Phase 3: Order creation + auto BOM copy (1 day)
-  - Phase 4: RFQ PO generation (1 day)
-  - Phase 5: Production PO + gating (1 day)
-  - Phase 6: Marker/Trim backfill (optional)
-
-- [ ] **Implementation Start (Awaiting Approval)**
-  - Complete design documented in `1227-01.txt`
-  - Ready to start Phase 1 migrations
-  - Awaiting user confirmation to proceed
-
-### 🎯 Current Focus (2025-12-27 晚上更新)
-
-**Three Parallel Tracks:**
-
-**Track A: Bilingual Overlay System** (Phase 1 完成 ✅)
-- Status: 100% 實作完成，等待用戶測試驗證
-- Completed: react-pdf + BilingualOverlay + CoveragePanel 完整整合
-- Features:
-  - ✅ 原文在上、中文在下（視覺驗證）
-  - ✅ 自動檢測漏翻（Coverage Check）
-  - ✅ Inline/Card 模式自動切換
-  - ✅ Show Missing Only 篩選
-  - ✅ Next Missing 快速跳轉
-- Next: 用戶測試 → Phase 2 (Preview PDF) 或 Phase 3 (Finalize)
-
-**Track B: Draft Review UI Validation** (90% → 95%)
-- Status: Batch testing capability ready (10 test revisions)
-- Blocker: Need user to test editing workflow with real tech pack
-- Next: User acceptance testing → decision on UI improvements
-
-**Track C: BOM → PO Implementation** (Design 100% → Implementation 0%)
-- Status: Complete design approved (with 5 critical corrections)
-- Blocker: Awaiting user "go" signal to start Phase 1
-- Next: Django migrations for new fields (30 min task)
-
-### 📋 Next Steps (Updated 2025-12-27)
-
-#### 🥇 Track A: Draft Review UI - Final Validation (5 min)
-**Status:** 90% complete, system working, need real usage test
-
-**Action Items:**
-1. [ ] Test editing workflow (change 2-3 translations)
-2. [ ] Evaluate translation quality (AI output usable?)
-3. [ ] Assess textarea UX (need larger edit area?)
-4. [ ] Answer: Would you use this for 10 tech packs tomorrow?
-
-**Deliverable:** User feedback → UI improvement decisions
+    # 計算結果
+    line_cost = DecimalField
+```
 
 ---
 
-#### 🥈 Track B: BOM → PO - Phase 1 Implementation (30 min)
-**Status:** Design 100% complete, ready to start implementation
+### **Phase 2 API 端點**
 
-**Phase 1 Tasks:**
-1. [ ] Add `supplier_article_no` to BOMItem model
-2. [ ] Add fields to OrderItemBOM:
-   - material_name, supplier, supplier_article_no, category
-   - source_type, source_ref
-3. [ ] Add `po_type` to PurchaseOrder model
-4. [ ] Add `supplier_article_no` to POLine model
-5. [ ] Run migrations
-6. [ ] Test new fields in Django admin
-
-**Deliverable:** Database schema updated, ready for Phase 2
-
-**Awaiting:** User confirmation to proceed ("開始")
+1. **POST** `/api/v2/revisions/{id}/cost-sheets/` - 生成新版本
+2. **GET** `/api/v2/cost-sheets/{id}/` - 查詢報價（含明細）
+3. **PATCH** `/api/v2/cost-sheets/{id}/` - 更新 Summary
+4. **GET** `/api/v2/revisions/{id}/cost-sheets/` - 版本列表
 
 ---
 
-#### 🥉 P2 - Documentation Update (15 min)
-- [ ] Update DATABASE-SCHEMA with new fields
-- [ ] Document BOM → PO workflow in API-SPEC
-- [ ] Create BOM Phase 1-6 implementation checklist
+### **Phase 2 UI 設計**
 
-### 📝 Technical Debt (Updated 2025-12-27)
+#### BOM 頁面（90% 完成）
+- ✅ TanStack Table
+- ✅ Inline edit: consumption
+- ⏳ Inline edit: unit_price
+- ⏳ Status dropdowns
+- ✅ Edit drawer
+- ✅ 搜尋、排序
 
-1. **Disabled Features (Low Priority)**
-   - `/dashboard/techpacks` page (placeholder) - Not needed for MVP
-   - `/dashboard/techpacks/[id]/review` page (placeholder) - Replaced by `/revisions/[id]/review`
-   - 6 API mutation hooks commented out - Will implement if needed
+#### Costing 頁面（待開發）
+```
+[ Header ] Costing Type: Sample/Bulk | Version: v1/v2/v3
 
-2. **Pending User Testing**
-   - ✅ Draft Review UI functional (90% complete)
-   - ⏳ Awaiting real-world usage feedback
-   - ⏳ Translation quality assessment
-   - ⏳ Editing workflow validation
+[ Summary Card ]
+- Material Cost: $45.30 (from lines)
+- Labor/Overhead/Freight: [editable]
+- Wastage %: [editable]
+- Margin %: [editable]
+→ Unit Price: $79.00 (大字)
 
-3. **Documentation Gaps (P2)**
-   - Block-based API endpoints (working but not documented)
-   - BOM → PO workflow documentation
-   - User guide for Draft Review workflow
+[ Cost Lines Table - Read Only ]
+- Material | Consumption | Unit Price | Line Cost
+- Total: $45.30
+
+[ Actions ] Save | Duplicate
+```
 
 ---
 
-## Documentation Reference
+## 當前狀態（2025-12-28 18:00）
 
-### Core Documentation
-- **This file (CLAUDE.md)**: Project overview, design principles, workflow, status
-- **CLAUDE-TECHNICAL.md**: Tech stack, API specs, commands, environment variables
-- **docs/DATABASE-SCHEMA_v2.2.1_COMPLETE2.md**: Main database schema
-- **docs/API-SPEC_v2.2.1_COMPLETE.md**: Complete API specification
-- **docs/DECISIONS_v2.2.1.md**: Architecture decision records
+### ✅ 已完成
 
-### Quick Links
-- Cost estimates: See CLAUDE-TECHNICAL.md
-- Commands: See CLAUDE-TECHNICAL.md
-- Tech stack: See CLAUDE-TECHNICAL.md
-- Environment setup: See CLAUDE-TECHNICAL.md
+#### Phase 1: Foundation
+- ✅ Django 4.2.8 + DRF setup（8 apps, 9 migrations）
+- ✅ Next.js 14 frontend setup
+- ✅ Core models: Style, Revision, BOMItem
+- ✅ Real BOM data imported（7 items, 13 fields）
+
+#### Draft Review UI (100% ✅)
+- ✅ Block extraction（pdfplumber + Vision LLM）
+- ✅ AI Translation（GPT-4o Mini）
+- ✅ Bilingual Overlay System
+- ✅ Coverage Panel（翻譯完整性統計）
+- ✅ User validation passed
+
+#### BOM Editor UI (90% ✅)
+- ✅ TanStack Table v8 implementation
+- ✅ BOM 列表頁：`/dashboard/revisions/{id}/bom`
+- ✅ Inline edit consumption（debounced auto-save）
+- ✅ Edit drawer（完整欄位編輯）
+- ✅ Optimistic updates + rollback
+- ✅ Visual feedback（saving/saved/error icons）
+- ✅ 全局搜尋、排序
+- ✅ API 正常運作（GET/PATCH）
+
+#### Backend
+- ✅ BOM API（GET/PATCH）
+- ✅ API 路徑修正
+- ✅ 真實數據導入
+
+#### Phase 2-2: Costing Backend (100% ✅) **NEW**
+- ✅ CostSheet + CostLine models（含 3 個微調點）
+  - Micro-adjustment #1: Decimal + quantize（避免浮點誤差）
+  - Micro-adjustment #2: 獨立 sort_order（不依賴 item_number）
+  - Micro-adjustment #3: Transaction 保護 is_current 標記
+- ✅ Migrations 創建並應用（0001_initial, 0002_alter_revision）
+- ✅ 4 個 API 全部實作並測試通過：
+  - POST `/api/v2/revisions/{id}/cost-sheets/` - 生成新版本（快照 BOM）
+  - GET `/api/v2/revisions/{id}/cost-sheets/` - 版本列表（可篩選）
+  - GET `/api/v2/cost-sheets/{id}/` - 單一詳細（含 nested lines）
+  - PATCH `/api/v2/cost-sheets/{id}/` - 更新 summary（自動重算）
+- ✅ 真實測試數據：LW1FLWS（7 BOM items → 7 CostLines）
+  - Material cost: $5.50
+  - Total cost: $29.50 → $32.50（更新後）
+  - Unit price: $42.15 → $50.01（35% margin）
+- ✅ 快照模式驗證（BOM 改動不影響已生成 CostSheet）
+
+---
+
+### 🚧 Phase 2 進行中
+
+#### Phase 2-1: BOM 完善（剩餘 10%）
+- [ ] Unit price inline edit
+- [ ] Consumption status dropdown
+- [ ] Material status enum dropdown
+
+#### Phase 2-2: Costing System（Backend 100% ✅, Frontend 待開發）
+- ✅ CostSheet + CostLine models（含 3 個微調點）
+- ✅ Migrations（2 個）
+- ✅ Generate API（POST）
+- ✅ Query/Update API（GET/PATCH）
+- ✅ 真實數據測試通過
+- [ ] **Costing UI 頁面（下一步）**
+  - [ ] `/dashboard/revisions/{id}/costing` 路由
+  - [ ] Summary card（material/labor/overhead/margin/unit_price）
+  - [ ] Cost lines table（TanStack Table, read-only）
+  - [ ] Version switcher（v1/v2/v3）
+  - [ ] Generate new version button
+  - [ ] Edit summary fields form
+- [ ] 整合測試（BOM → Costing 完整流程）
+
+**預估時間:**
+- ~~Phase 2-2 Backend: 1 天~~ ✅ **完成**
+- Phase 2-2 Frontend: 1 天
+- Phase 2-1 剩餘: 0.5 天
+- **剩餘: 1.5 天**
+
+---
+
+### 📋 Phase 3+ 規劃（延後）
+
+#### Phase 3: Sample Management
+- Sample 管理（Proto/Fit/Sales）
+- Sample MWO 生成
+- T2 PO for Sample
+- Sample Tracking
+
+#### Phase 4: BULK PO & PP
+- BULK PO 系統
+- PP Sample 管理
+- PP Meeting 流程
+
+#### Phase 5: Bulk Procurement
+- T2 PO for Bulk
+- Material Tracking
+
+#### Phase 6: Bulk Production
+- Bulk MWO 生成
+- Production Tracking
+
+---
+
+## 重要提醒
+
+### 名詞對照表（避免混淆）
+
+| 正確名詞 | 錯誤/混淆說法 | 說明 |
+|---------|-------------|------|
+| **BOM** | 物料表、料表 | Bill of Materials |
+| **Costing** | 報價單、Quote | 成衣報價計算 |
+| **Sample Costing** | 樣品報價 | 小量、高價 |
+| **Bulk Costing** | 大貨報價 | 大量、低價、FOB |
+| **BULK PO** | 訂單、成衣訂單 | 客戶下的大貨成衣訂單 |
+| **T2 PO** | 採購單、PO | 對供應商的採購單 |
+| **PP Sample** | 產前樣 | BULK PO 之後的最終確認 |
+
+### 系統時序對照表
+
+| 階段 | 商業事件 | 允許存在的 Model |
+|------|---------|----------------|
+| **開發/樣衣** | Proto/Fit Sample | Revision, BOMItem, CostSheet(sample) |
+| **報價談判** | Bulk Costing v1/v2 | Revision, BOMItem, CostSheet(bulk) |
+| **收到 BULK PO** | ⭐ 分水嶺 | **BulkPO（Phase 3+）** |
+| **產前** | PP Sample | PPSample |
+| **大貨採購** | T2 PO for Bulk | T2PO |
+| **大貨生產** | Production | MWO, Tracking |
+
+---
+
+## 技術棧
+
+### Backend
+- Django 4.2.8
+- Django REST Framework
+- PostgreSQL
+- Celery（非同步任務）
+
+### Frontend
+- Next.js 14 (App Router)
+- React 18
+- TypeScript
+- TanStack Query (React Query)
+- TanStack Table v8
+- shadcn/ui
+- Tailwind CSS
+
+### AI/ML
+- OpenAI GPT-4o (Vision API)
+- pdfplumber (PDF 文字提取)
+- react-pdf (PDF 顯示)
+
+---
+
+## 服務器狀態
+
+- ✅ Django backend: `http://localhost:8000`
+- ✅ Next.js frontend: `http://localhost:3000`
+
+### 測試 URLs
+- BOM 列表：`http://localhost:3000/dashboard/revisions/abbfd005-159b-4ad8-a3cc-87c73098fc81/bom`
+- Draft Review：`http://localhost:3000/dashboard/revisions/d3be25b0-01e5-4e3d-afe8-ca9578f1ebb2/review`
+
+---
+
+## 文檔索引
+
+- **CLAUDE.md**（本文件）：專案概覽、商業流程、當前進度
+- **CLAUDE-TECHNICAL.md**：技術細節、API 規格、環境變數
+- **VISION-LLM-WORKFLOW.md**：Vision LLM 提取流程、成本分析
+- **SESSION_2025-12-27_COMPLETE.md**：2025-12-27 完整會議記錄
+- **docs/DATABASE-SCHEMA_v2.2.1_COMPLETE2.md**：數據庫 schema
+- **docs/API-SPEC_v2.2.1_COMPLETE.md**：API 規格
+- **docs/DECISIONS_v2.2.1.md**：架構決策記錄
+
+---
+
+**Last Updated:** 2025-12-28 18:00

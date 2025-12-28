@@ -63,11 +63,11 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
     width: bboxPx.width,
     height: bboxPx.height,
     boxSizing: "border-box",
-    borderRadius: 4,
+    borderRadius: 3,
     cursor: "pointer",
     outline: "none",
-    border: missing ? "2px solid rgba(220,38,38,0.95)" : isSelected ? "2px solid rgba(37,99,235,0.95)" : "1px solid rgba(0,0,0,0.25)",
-    background: inline ? "rgba(255,255,255,0.70)" : "rgba(255,255,255,0.0)",
+    border: missing ? "1.5px solid rgba(220,38,38,0.8)" : isSelected ? "2px solid rgba(37,99,235,0.9)" : "1px solid rgba(0,0,0,0.15)",
+    background: inline ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.0)",
     boxShadow: isSelected ? "0 0 0 2px rgba(37,99,235,0.15)" : undefined,
     zIndex: isSelected ? 30 : missing ? 25 : 10,
     pointerEvents: "auto",
@@ -79,24 +79,24 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
     top: 0,
     width: "100%",
     height: "100%",
-    padding: 6,
+    padding: 3,
     overflow: "hidden",
     whiteSpace: "pre-line",
-    lineHeight: 1.2,
-    fontSize: 12,
+    lineHeight: 1.15,
+    fontSize: 10,
   };
 
   const cardStyle: CSSProperties = {
     position: "absolute",
     left: bboxPx.left,
-    top: bboxPx.top + bboxPx.height + 6,
-    width: Math.max(220, Math.min(360, bboxPx.width)),
-    maxWidth: 420,
-    padding: 8,
-    borderRadius: 8,
-    border: missing ? "2px solid rgba(220,38,38,0.95)" : "1px solid rgba(0,0,0,0.20)",
-    background: "rgba(255,255,255,0.92)",
-    boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
+    top: bboxPx.top + bboxPx.height + 4,
+    width: Math.max(180, Math.min(300, bboxPx.width)),
+    maxWidth: 360,
+    padding: 6,
+    borderRadius: 6,
+    border: missing ? "1.5px solid rgba(220,38,38,0.8)" : "1px solid rgba(0,0,0,0.15)",
+    background: "rgba(255,255,255,0.75)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
     zIndex: isSelected ? 35 : 20,
     pointerEvents: "auto",
   };
@@ -118,15 +118,12 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
             onSelect(block.id);
           }
         }}
-        title={`${block.block_type} | ${block.status}\n${clampText(block.source_text, 120)}`}
+        title={clampText(block.source_text, 150)}
       >
         {inline ? (
           <div style={textWrapStyle}>
-            <div style={{ color: "rgba(55,65,81,0.9)", marginBottom: 4 }}>
-              {clampText(block.source_text, 160)}
-            </div>
-            <div style={{ color: missing ? "rgba(220,38,38,0.95)" : "rgba(17,24,39,0.95)", fontWeight: 700 }}>
-              {missing ? "【缺翻譯】" : clampText(finalText, 140)}
+            <div style={{ color: missing ? "rgba(220,38,38,0.9)" : "rgba(17,24,39,0.95)", fontWeight: 600 }}>
+              {missing ? "【缺】" : clampText(finalText, 100)}
             </div>
           </div>
         ) : null}
@@ -141,14 +138,10 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
             onSelect(block.id);
           }}
         >
-          <div style={{ fontSize: 11, color: "rgba(107,114,128,1)", marginBottom: 6 }}>
-            {block.block_type} · {block.status}
+          <div style={{ fontSize: 10, color: "rgba(107,114,128,0.85)", marginBottom: 4 }}>
+            {clampText(block.source_text, 120)}
           </div>
-          <div style={{ fontSize: 12, color: "rgba(55,65,81,0.95)", whiteSpace: "pre-line" }}>
-            {block.source_text}
-          </div>
-          <div style={{ height: 8 }} />
-          <div style={{ fontSize: 13, fontWeight: 700, color: missing ? "rgba(220,38,38,0.95)" : "rgba(17,24,39,0.95)", whiteSpace: "pre-line" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: missing ? "rgba(220,38,38,0.9)" : "rgba(17,24,39,0.95)", whiteSpace: "pre-line" }}>
             {missing ? "【缺翻譯】" : finalText}
           </div>
         </div>

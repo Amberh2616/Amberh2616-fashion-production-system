@@ -19,33 +19,38 @@ from django.db import transaction
 from ..models_blocks import Revision, RevisionPage, DraftBlock
 from ..utils.pdf import normalize_bbox, check_bbox_overlap
 from ..utils.translate import machine_translate
+from ..utils.text_merger import smart_merge_words
 
 
 def is_callout_text(text: str, word: dict, page_width: float) -> bool:
     """
-    MVP callout filter（夠用就好）
+    MVP callout filter（放寬版 - 2025-12-27）
 
     規則：
-    - 太短或太長都不要
-    - 全大寫多半是標題 / legend
-    - 太寬的通常是段落
-    - 排除頁首頁尾雜訊
+    - 太短不要（< 2 字元）
+    - 保留全大寫（區域標題、頁面引用很重要！）
+    - 保留頁眉（產品信息需要翻譯）
+    - 只過濾明顯的頁碼、單字元
     """
-    # 太短或太長都不要
-    if len(text) < 3 or len(text) > 120:
+    # 太短不要（只過濾 1-2 字元的碎片）
+    if len(text) < 2:
         return False
 
-    # 全大寫多半是標題 / legend
-    if text.isupper():
+    # 移除長度上限檢查 - 長句子也要抓
+    # if len(text) > 120:
+    #     return False
+
+    # 移除全大寫過濾 - "INSIDE BRA VIEW" 也是重要文本！
+    # if text.isupper():
+    #     return False
+
+    # 太寬的通常是段落（放寬到 95%）
+    if (word["x1"] - word["x0"]) > page_width * 0.95:
         return False
 
-    # 太寬的通常是段落
-    if (word["x1"] - word["x0"]) > page_width * 0.85:
-        return False
-
-    # 排除頁首頁尾雜訊
-    if word["top"] < 50 or word["bottom"] > 780:
-        return False
+    # 移除頁首頁尾過濾 - 頁眉也要翻譯！
+    # if word["top"] < 50 or word["bottom"] > 780:
+    #     return False
 
     return True
 
@@ -112,7 +117,7 @@ def parse_revision_page_4(self, revision_id: str):
         }
         """
 
-        # 3️⃣ 合併相鄰文字成完整 callout
+        # 3️⃣ 合併相鄰文字成完整 callout（使用智能合併算法）
         # 先過濾出候選詞
         filtered_words = []
         for w in words:
@@ -124,50 +129,10 @@ def parse_revision_page_4(self, revision_id: str):
         # 按 y 座標（top）排序，同一行的會相鄰
         filtered_words.sort(key=lambda w: (w["top"], w["x0"]))
 
-        # 合併同一行、間距小的詞
-        merged_callouts = []
-        current_group = None
-
-        for w in filtered_words:
-            if current_group is None:
-                # 第一個詞，開始新 group
-                current_group = {
-                    "text": w["text"].strip(),
-                    "x0": w["x0"],
-                    "top": w["top"],
-                    "x1": w["x1"],
-                    "bottom": w["bottom"],
-                }
-            else:
-                # 判斷是否屬於同一個 callout
-                y_diff = abs(w["top"] - current_group["top"])
-                x_gap = w["x0"] - current_group["x1"]
-                x_align = abs(w["x0"] - current_group["x0"])  # x 起點對齊程度
-
-                # 合併條件（更寬鬆）：
-                # 1. 同一行且間距小：y < 5pt, x_gap < 50pt
-                # 2. 多行 callout（允許縮排）：x_align < 50pt, y < 30pt
-                same_line = (y_diff < 5 and x_gap < 50)
-                multiline_callout = (x_align < 50 and y_diff < 30 and x_gap < 200)
-
-                if same_line or multiline_callout:
-                    current_group["text"] += " " + w["text"].strip()
-                    current_group["x1"] = w["x1"]  # 擴展右邊界
-                    current_group["bottom"] = max(current_group["bottom"], w["bottom"])
-                else:
-                    # 新的一行，儲存舊 group，開始新 group
-                    merged_callouts.append(current_group)
-                    current_group = {
-                        "text": w["text"].strip(),
-                        "x0": w["x0"],
-                        "top": w["top"],
-                        "x1": w["x1"],
-                        "bottom": w["bottom"],
-                    }
-
-        # 別忘了最後一個 group
-        if current_group is not None:
-            merged_callouts.append(current_group)
+        # 使用智能合併算法（兩層策略）
+        # Layer 1: 同行合併（放寬容差 x_gap: 100pt, y: 10pt）
+        # Layer 2: Dimension 專用跨行合併（修復碎片）
+        merged_callouts = smart_merge_words(filtered_words)
 
         # 4️⃣ 轉換成 DraftBlock 格式
         callout_candidates = []

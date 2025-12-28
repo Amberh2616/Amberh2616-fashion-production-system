@@ -8,14 +8,35 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
-from .models import Style, StyleRevision
+from .models import Style, StyleRevision, BOMItem
 from .serializers import (
     StyleSerializer,
     StyleListSerializer,
     StyleRevisionSerializer,
+    BOMItemSerializer,
     IntakeBulkCreateRequestSerializer,
 )
 from .services import bulk_create_styles_and_revisions, build_styles_queryset_with_risk
+
+
+class BOMItemViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for BOM Item CRUD operations
+    Nested under StyleRevision: /api/v2/revisions/{revision_id}/bom/
+    """
+    serializer_class = BOMItemSerializer
+    permission_classes = []  # TODO: Enable authentication in production
+
+    def get_queryset(self):
+        """Filter BOM items by revision"""
+        revision_id = self.kwargs.get('revision_pk')
+        return BOMItem.objects.filter(revision_id=revision_id).order_by('item_number')
+
+    def perform_create(self, serializer):
+        """Set revision when creating"""
+        revision_id = self.kwargs.get('revision_pk')
+        revision = get_object_or_404(StyleRevision, pk=revision_id)
+        serializer.save(revision=revision)
 
 
 class StyleViewSet(viewsets.ViewSet):

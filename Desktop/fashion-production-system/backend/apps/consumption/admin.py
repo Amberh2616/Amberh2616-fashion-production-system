@@ -7,13 +7,41 @@ class OrderItemBOMAdmin(admin.ModelAdmin):
     list_display = (
         'order_item',
         'template_bom_item',
-        'consumption_per_piece',
         'consumption_maturity',
+        'pre_estimate_value',
+        'confirmed_value',
+        'locked_value',
+        'consumption_per_piece',
+        'source_type',
         'total_consumption'
     )
-    list_filter = ('consumption_maturity', 'source')
-    search_fields = ('template_bom_item__material_name',)
+    list_filter = ('consumption_maturity', 'source_type', 'source')
+    search_fields = ('template_bom_item__material_name', 'source_ref')
     readonly_fields = ('id', 'created_at', 'updated_at')
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('order_item', 'template_bom_item')
+        }),
+        ('Consumption Values (Three-Stage)', {
+            'fields': (
+                'consumption_maturity',
+                'pre_estimate_value',
+                'confirmed_value',
+                'locked_value',
+                'consumption_per_piece',
+                'total_consumption'
+            )
+        }),
+        ('Evidence Tracking', {
+            'fields': ('source_type', 'source_ref', 'source', 'source_reference')
+        }),
+        ('Pricing', {
+            'fields': ('unit_price', 'total_cost')
+        }),
+        ('Metadata', {
+            'fields': ('notes', 'created_at', 'updated_at')
+        }),
+    )
 
 
 @admin.register(MarkerReport)

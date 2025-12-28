@@ -72,6 +72,11 @@ class PurchaseOrder(models.Model):
         ('cancelled', 'Cancelled'),
     ]
 
+    PO_TYPE_CHOICES = [
+        ('rfq', 'RFQ (Request for Quotation)'),
+        ('production', 'Production PO'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         'core.Organization',
@@ -81,6 +86,12 @@ class PurchaseOrder(models.Model):
 
     # PO info
     po_number = models.CharField(max_length=50, unique=True, db_index=True)
+    po_type = models.CharField(
+        max_length=20,
+        choices=PO_TYPE_CHOICES,
+        default='rfq',
+        help_text="RFQ allows pre_estimate/confirmed/locked; Production requires confirmed/locked only"
+    )
     supplier = models.ForeignKey(
         Supplier,
         on_delete=models.PROTECT,

@@ -182,8 +182,20 @@ class BOMItem(models.Model):
     category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
     material_name = models.CharField(max_length=200)
     supplier = models.CharField(max_length=100, blank=True)
+    supplier_article_no = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Supplier's article/material number (key for procurement)"
+    )
     color = models.CharField(max_length=100, blank=True)
     color_code = models.CharField(max_length=50, blank=True)
+
+    # Material status (approval status from supplier/quality)
+    material_status = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="e.g., Approved, Approved with Limitations, Pending, etc."
+    )
 
     # Consumption (template level)
     consumption = models.DecimalField(
@@ -221,6 +233,13 @@ class BOMItem(models.Model):
         decimal_places=2,
         null=True,
         blank=True
+    )
+
+    # Lead time
+    leadtime_days = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Total lead time in days"
     )
 
     # AI extraction metadata

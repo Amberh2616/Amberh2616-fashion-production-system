@@ -17,10 +17,25 @@ class POLineInline(admin.TabularInline):
 
 @admin.register(PurchaseOrder)
 class PurchaseOrderAdmin(admin.ModelAdmin):
-    list_display = ('po_number', 'supplier', 'status', 'po_date', 'expected_delivery', 'total_amount')
-    list_filter = ('status', 'po_date')
+    list_display = ('po_number', 'po_type', 'supplier', 'status', 'po_date', 'expected_delivery', 'total_amount')
+    list_filter = ('po_type', 'status', 'po_date')
     search_fields = ('po_number', 'supplier__name')
+    readonly_fields = ('id', 'created_at', 'updated_at')
     inlines = [POLineInline]
+    fieldsets = (
+        ('PO Info', {
+            'fields': ('po_number', 'po_type', 'supplier', 'status')
+        }),
+        ('Dates', {
+            'fields': ('po_date', 'expected_delivery', 'actual_delivery')
+        }),
+        ('Totals', {
+            'fields': ('total_amount',)
+        }),
+        ('Metadata', {
+            'fields': ('notes', 'created_by', 'created_at', 'updated_at')
+        }),
+    )
 
 
 @admin.register(POLine)

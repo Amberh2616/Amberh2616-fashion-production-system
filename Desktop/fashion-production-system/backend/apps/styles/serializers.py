@@ -19,9 +19,10 @@ class BOMItemSerializer(serializers.ModelSerializer):
         model = BOMItem
         fields = [
             'id', 'revision', 'item_number', 'category', 'category_display',
-            'material_name', 'supplier', 'color', 'color_code',
+            'material_name', 'supplier', 'supplier_article_no', 'color', 'color_code',
+            'material_status',
             'consumption', 'consumption_maturity', 'consumption_maturity_display',
-            'unit', 'placement', 'wastage_rate', 'unit_price',
+            'unit', 'placement', 'wastage_rate', 'unit_price', 'leadtime_days',
             'ai_confidence', 'is_verified',
         ]
 

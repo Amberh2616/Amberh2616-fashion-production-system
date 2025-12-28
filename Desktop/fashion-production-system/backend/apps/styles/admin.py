@@ -5,7 +5,7 @@ from .models import Style, StyleRevision, BOMItem, Measurement, ConstructionStep
 class BOMItemInline(admin.TabularInline):
     model = BOMItem
     extra = 0
-    fields = ('item_number', 'category', 'material_name', 'consumption', 'consumption_maturity', 'unit')
+    fields = ('item_number', 'category', 'material_name', 'supplier', 'supplier_article_no', 'consumption', 'consumption_maturity', 'unit')
 
 
 class MeasurementInline(admin.TabularInline):
@@ -33,9 +33,9 @@ class StyleRevisionAdmin(admin.ModelAdmin):
 
 @admin.register(BOMItem)
 class BOMItemAdmin(admin.ModelAdmin):
-    list_display = ('revision', 'item_number', 'category', 'material_name', 'consumption', 'consumption_maturity')
-    list_filter = ('category', 'consumption_maturity', 'is_verified')
-    search_fields = ('material_name', 'supplier')
+    list_display = ('revision', 'item_number', 'category', 'material_name', 'supplier', 'supplier_article_no', 'color', 'material_status', 'consumption', 'unit', 'unit_price', 'leadtime_days', 'consumption_maturity')
+    list_filter = ('category', 'material_status', 'consumption_maturity', 'is_verified')
+    search_fields = ('material_name', 'supplier', 'supplier_article_no', 'color', 'material_status')
 
 
 @admin.register(Measurement)

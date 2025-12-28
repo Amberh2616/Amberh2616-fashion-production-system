@@ -40,12 +40,35 @@ class OrderItemBOM(models.Model):
     consumption_per_piece = models.DecimalField(
         max_digits=10,
         decimal_places=4,
-        help_text="Actual consumption for this specific order"
+        help_text="Actual consumption for this specific order (current active value)"
     )
     consumption_maturity = models.CharField(
         max_length=20,
         choices=CONSUMPTION_MATURITY_CHOICES,
         default='unknown'
+    )
+
+    # Three-stage consumption values (BOM → PO Phase 1)
+    pre_estimate_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Estimated consumption (for RFQ PO)"
+    )
+    confirmed_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Confirmed consumption (from marker/sample, for Production PO)"
+    )
+    locked_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Locked consumption (frozen before PP, for final Production PO)"
     )
 
     # Total calculation
@@ -55,18 +78,37 @@ class OrderItemBOM(models.Model):
         help_text="Order quantity × consumption_per_piece"
     )
 
-    # Evidence/source of consumption value
+    # Evidence/source of consumption value (legacy fields, keep for backward compatibility)
     source = models.CharField(
         max_length=50,
         blank=True,
-        help_text="e.g., 'marker_report', 'trim_rule_TRIM-001', 'manual_entry'"
+        help_text="DEPRECATED: Use source_type instead. e.g., 'marker_report', 'trim_rule_TRIM-001', 'manual_entry'"
     )
     source_reference = models.ForeignKey(
         'MarkerReport',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        help_text="Link to marker report if source is marker"
+        help_text="DEPRECATED: Use source_ref instead. Link to marker report if source is marker"
+    )
+
+    # New evidence tracking (BOM → PO Phase 1)
+    SOURCE_TYPE_CHOICES = [
+        ('tech_pack', 'Tech Pack'),
+        ('marker', 'Marker Report'),
+        ('trim_rule', 'Trim Rule'),
+        ('manual', 'Manual Entry'),
+    ]
+    source_type = models.CharField(
+        max_length=20,
+        choices=SOURCE_TYPE_CHOICES,
+        blank=True,
+        help_text="Type of evidence for consumption value"
+    )
+    source_ref = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Reference ID/code (e.g., 'MARKER-2024-001', 'TRIM-005', marker UUID)"
     )
 
     # Pricing (order-specific)

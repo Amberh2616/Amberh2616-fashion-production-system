@@ -30,6 +30,7 @@ urlpatterns = [
     path("api/v2/", include("apps.styles.urls")),
     path("api/v2/", include("apps.documents.urls")),
     path("api/v2/", include("apps.parsing.urls")),
+    path("api/v2/", include("apps.costing.urls")),
 
     # API Documentation (TODO: Uncomment when drf_spectacular is added)
     # path("api/v2/schema/", SpectacularAPIView.as_view(), name="schema"),
