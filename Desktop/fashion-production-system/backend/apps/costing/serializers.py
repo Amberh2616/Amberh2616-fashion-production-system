@@ -1,9 +1,24 @@
 """
 Costing Serializers
+Phase 2-2I: 版本策略 - Guard Rules
 """
 
+from decimal import Decimal
 from rest_framework import serializers
 from .models import CostSheet, CostLine
+
+
+# A/B Fields Definition (版本策略)
+A_FIELDS = {
+    "labor_cost",
+    "overhead_cost",
+    "freight_cost",
+    "packaging_cost",
+    "testing_cost",
+    "notes",
+}
+
+B_FIELDS = {"margin_pct", "wastage_pct"}
 
 
 class CostLineSerializer(serializers.ModelSerializer):
@@ -160,21 +175,100 @@ class CostSheetCreateSerializer(serializers.Serializer):
         allow_blank=True
     )
 
+    def validate(self, attrs):
+        """Validate margin and wastage ranges"""
+        if attrs["margin_pct"] < 0 or attrs["margin_pct"] >= 100:
+            raise serializers.ValidationError({
+                "margin_pct": "Must be in [0, 100)."
+            })
+        if attrs["wastage_pct"] < 0 or attrs["wastage_pct"] > 100:
+            raise serializers.ValidationError({
+                "wastage_pct": "Must be in [0, 100]."
+            })
+        return attrs
 
-class CostSheetUpdateSerializer(serializers.ModelSerializer):
+
+class CostSheetPatchSerializer(serializers.ModelSerializer):
     """
-    Update CostSheet serializer（只允許修改 summary 欄位）
+    PATCH serializer - 版本策略 Guard Rules
+
+    只允許 A-fields (同版本可修改)
+    禁止 B-fields (必須新版本)
     """
 
     class Meta:
         model = CostSheet
         fields = [
+            # A fields (allowed in PATCH)
             'labor_cost',
             'overhead_cost',
             'freight_cost',
             'packaging_cost',
             'testing_cost',
+            'notes',
+            # B fields (included to detect & block)
             'margin_pct',
             'wastage_pct',
-            'notes',
         ]
+
+    def validate(self, attrs):
+        """
+        Guard Rule: PATCH 禁止修改 margin_pct 或 wastage_pct
+        """
+        incoming = set(attrs.keys())
+
+        # Block B fields
+        if incoming & B_FIELDS:
+            raise serializers.ValidationError({
+                "version_policy": "margin_pct and wastage_pct require a new version. "
+                                  "Use POST /revisions/{id}/cost-sheets/ to create a new version."
+            })
+
+        # Ensure only A fields
+        illegal = incoming - A_FIELDS
+        if illegal:
+            raise serializers.ValidationError({
+                "fields": f"Illegal fields in PATCH: {sorted(list(illegal))}"
+            })
+
+        # Validate numeric fields >= 0
+        for f in ["labor_cost", "overhead_cost", "freight_cost", "packaging_cost", "testing_cost"]:
+            if f in attrs and attrs[f] is not None and Decimal(str(attrs[f])) < 0:
+                raise serializers.ValidationError({f: "Must be >= 0"})
+
+        return attrs
+
+
+class CostSheetDuplicateSerializer(serializers.Serializer):
+    """
+    Duplicate serializer - 創建新版本（僅改 margin/wastage）
+
+    Optional endpoint: 不重建 CostLines，只用新的 margin/wastage
+    """
+    margin_pct = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        required=True
+    )
+    wastage_pct = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        required=True
+    )
+    notes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True
+    )
+
+    def validate(self, attrs):
+        """Validate margin and wastage ranges"""
+        if attrs["margin_pct"] < 0 or attrs["margin_pct"] >= 100:
+            raise serializers.ValidationError({
+                "margin_pct": "Must be in [0, 100)."
+            })
+        if attrs["wastage_pct"] < 0 or attrs["wastage_pct"] > 100:
+            raise serializers.ValidationError({
+                "wastage_pct": "Must be in [0, 100]."
+            })
+        return attrs

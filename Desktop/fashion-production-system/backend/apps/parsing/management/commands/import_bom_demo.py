@@ -17,19 +17,31 @@ class Command(BaseCommand):
 
         self.stdout.write('\n📄 讀取 BOM PDF...')
 
-        # 提取 BOM 表格
+        # 提取所有頁面的 BOM 表格（Page 2-6）
+        all_rows = []
         with pdfplumber.open(bom_path) as pdf:
-            # Page 2 有主要的 BOM 表格
-            page2 = pdf.pages[1]
-            tables = page2.extract_tables()
+            # Page 2-6 包含 BOM（fabric, trim, labels, packaging）
+            for page_num in range(1, 6):  # Pages 2-6 (index 1-5)
+                try:
+                    page = pdf.pages[page_num]
+                    tables = page.extract_tables()
 
-            if len(tables) < 2:
-                self.stdout.write(self.style.ERROR('❌ 找不到 BOM 表格'))
-                return
+                    if not tables:
+                        continue
 
-            bom_table = tables[1]  # 第2個表格
+                    # 找到最大的表格（BOM 主表）
+                    main_table = max(tables, key=len)
+                    all_rows.extend(main_table)
 
-        self.stdout.write(f'✅ 找到 BOM 表格（{len(bom_table)} 行）\n')
+                    self.stdout.write(f'✓ Page {page_num + 1}: 提取 {len(main_table)} 行')
+                except Exception as e:
+                    self.stdout.write(f'⚠️  Page {page_num + 1} 跳過: {str(e)}')
+                    continue
+
+        self.stdout.write(f'\n✅ 總共提取 {len(all_rows)} 行\n')
+
+        # 使用合併後的資料
+        bom_table = all_rows
 
         # 創建或取得 Style 和 Revision
         org = Organization.objects.first()
@@ -183,6 +195,10 @@ class Command(BaseCommand):
                     consumption_value = Decimal(usage_clean.replace('$', '').replace(',', '')) if usage_clean else None
                 except:
                     consumption_value = None
+
+                # 跳過沒有有效 consumption 的項目（None 或 0）
+                if consumption_value is None or consumption_value == 0:
+                    continue
 
                 # 處理 price（轉換為 Decimal）
                 try:

@@ -1,9 +1,11 @@
 """
 Costing Views
+Phase 2-2I: 版本策略 API
 """
 
 from decimal import Decimal
 from django.db import transaction
+from django.db.models import Max
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -14,8 +16,10 @@ from .serializers import (
     CostSheetDetailSerializer,
     CostSheetListSerializer,
     CostSheetCreateSerializer,
-    CostSheetUpdateSerializer,
+    CostSheetPatchSerializer,
+    CostSheetDuplicateSerializer,
 )
+from .services import calc_line_cost, calc_totals
 
 
 @api_view(['GET', 'POST'])
@@ -91,7 +95,8 @@ def cost_sheets_list_create(request, revision_id):
             is_current=True
         ).update(is_current=False)
 
-        # 3. Create new CostSheet
+        # 3. Create new CostSheet (Phase 2-2I: 加入 created_by, status)
+        user = request.user if request.user.is_authenticated else None
         cost_sheet = CostSheet.objects.create(
             revision=revision,
             costing_type=costing_type,
@@ -105,23 +110,26 @@ def cost_sheets_list_create(request, revision_id):
             margin_pct=validated_data.get('margin_pct', Decimal('30.00')),
             wastage_pct=validated_data.get('wastage_pct', Decimal('5.00')),
             notes=validated_data.get('notes', ''),
+            # Phase 2-2I: 狀態與審計
+            status='draft',
+            created_by=user,
+            updated_by=user,
             # Calculated fields will be set by calculate_totals()
             material_cost=Decimal('0.0000'),
             total_cost=Decimal('0.0000'),
             unit_price=Decimal('0.0000'),
         )
 
-        # 4. Create CostLine snapshots for each BOMItem
+        # 4. Create CostLine snapshots for each BOMItem (Phase 2-2I: 使用 services.py)
         for idx, bom_item in enumerate(bom_items):
             # Snapshot current BOM values
             consumption = bom_item.consumption or Decimal('0.0000')
-            unit_price = bom_item.unit_price or Decimal('0.0000')
+            unit_price_val = bom_item.unit_price or Decimal('0.0000')
 
-            # Calculate line_cost with wastage
-            # Micro-adjustment #1: Use Decimal + quantize
-            line_cost = CostLine.calculate_line_cost(
+            # Calculate line_cost with wastage (統一計算邏輯)
+            line_cost = calc_line_cost(
                 consumption=consumption,
-                unit_price=unit_price,
+                unit_price=unit_price_val,
                 wastage_pct=cost_sheet.wastage_pct
             )
 
@@ -135,15 +143,26 @@ def cost_sheets_list_create(request, revision_id):
                 category=bom_item.category or 'trim',
                 unit=bom_item.unit or 'PCS',
                 consumption=consumption,
-                unit_price=unit_price,
+                unit_price=unit_price_val,
                 line_cost=line_cost,
                 # Micro-adjustment #2: Independent sort_order
                 sort_order=idx,
             )
 
-        # 5. Calculate totals
-        # Micro-adjustment #1: Uses Decimal + quantize internally
-        cost_sheet.calculate_totals()
+        # 5. Calculate totals (Phase 2-2I: 使用 services.py 統一計算)
+        line_costs = [line.line_cost for line in CostLine.objects.filter(cost_sheet=cost_sheet)]
+        material_cost, total_cost, unit_price_calc = calc_totals(
+            line_costs=line_costs,
+            labor=Decimal(cost_sheet.labor_cost),
+            overhead=Decimal(cost_sheet.overhead_cost),
+            freight=Decimal(cost_sheet.freight_cost),
+            packaging=Decimal(cost_sheet.packaging_cost),
+            testing=Decimal(cost_sheet.testing_cost),
+            margin_pct=Decimal(cost_sheet.margin_pct),
+        )
+        cost_sheet.material_cost = material_cost
+        cost_sheet.total_cost = total_cost
+        cost_sheet.unit_price = unit_price_calc
         cost_sheet.save()
 
     # 6. Return serialized response with nested lines
@@ -177,18 +196,169 @@ def cost_sheet_detail_update(request, cost_sheet_id):
         serializer = CostSheetDetailSerializer(cost_sheet)
         return Response(serializer.data)
 
-    # PATCH operation - UPDATE
-    serializer = CostSheetUpdateSerializer(cost_sheet, data=request.data, partial=True)
+    # PATCH operation - UPDATE (Phase 2-2I: Guard Rules + services.py)
+    serializer = CostSheetPatchSerializer(cost_sheet, data=request.data, partial=True)
     if not serializer.is_valid():
+        # Check for version policy violation (409 Conflict)
+        if "version_policy" in serializer.errors:
+            return Response(
+                {
+                    "error": "VERSION_POLICY_VIOLATION",
+                    "message": serializer.errors["version_policy"][0],
+                    "details": serializer.errors,
+                },
+                status=status.HTTP_409_CONFLICT
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # Save changes
-    serializer.save()
+    # Save changes (只有 A-fields)
+    user = request.user if request.user.is_authenticated else None
+    cost_sheet = serializer.save(updated_by=user)
 
-    # Recalculate totals (material_cost unchanged, but total_cost and unit_price may change)
-    cost_sheet.calculate_totals()
-    cost_sheet.save()
+    # Recalculate totals using existing snapshot lines (Phase 2-2I: services.py)
+    line_qs = CostLine.objects.filter(cost_sheet=cost_sheet).order_by('sort_order')
+    line_costs = [Decimal(line.line_cost) for line in line_qs]
+
+    material_cost, total_cost, unit_price_calc = calc_totals(
+        line_costs=line_costs,
+        labor=Decimal(cost_sheet.labor_cost),
+        overhead=Decimal(cost_sheet.overhead_cost),
+        freight=Decimal(cost_sheet.freight_cost),
+        packaging=Decimal(cost_sheet.packaging_cost),
+        testing=Decimal(cost_sheet.testing_cost),
+        margin_pct=Decimal(cost_sheet.margin_pct),
+    )
+
+    cost_sheet.material_cost = material_cost
+    cost_sheet.total_cost = total_cost
+    cost_sheet.unit_price = unit_price_calc
+    cost_sheet.save(update_fields=['material_cost', 'total_cost', 'unit_price', 'updated_at', 'updated_by'])
 
     # Return full detail
     response_serializer = CostSheetDetailSerializer(cost_sheet)
     return Response(response_serializer.data)
+
+
+@api_view(['POST'])
+def cost_sheet_duplicate(request, cost_sheet_id):
+    """
+    Duplicate CostSheet with new margin/wastage (Version Policy B-fields)
+
+    POST /api/v2/cost-sheets/{cost_sheet_id}/duplicate/
+    - Creates new version with same CostLines (not rebuilding from BOM)
+    - Applies new margin_pct and wastage_pct
+    - Recalculates line_cost for each line with new wastage
+    - Recalculates totals with new margin
+    - Sets is_current=true for new version, false for old
+
+    Use case: Pure negotiation (same BOM snapshot, different pricing stance)
+    """
+    # Get source CostSheet
+    try:
+        source_sheet = CostSheet.objects.prefetch_related('lines').get(id=cost_sheet_id)
+    except CostSheet.DoesNotExist:
+        return Response(
+            {'error': 'CostSheet not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Validate input
+    serializer = CostSheetDuplicateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    validated_data = serializer.validated_data
+    new_margin = Decimal(validated_data['margin_pct'])
+    new_wastage = Decimal(validated_data['wastage_pct'])
+    new_notes = validated_data.get('notes', '')
+
+    # Use transaction to prevent multiple is_current=true
+    with transaction.atomic():
+        # 1. Get next version number
+        next_version = CostSheet.get_next_version_no(
+            source_sheet.revision,
+            source_sheet.costing_type
+        )
+
+        # 2. Set old versions to is_current=false
+        CostSheet.objects.filter(
+            revision=source_sheet.revision,
+            costing_type=source_sheet.costing_type,
+            is_current=True
+        ).update(is_current=False)
+
+        # 3. Create new CostSheet (copy A-fields from source, use new B-fields)
+        user = request.user if request.user.is_authenticated else None
+        new_sheet = CostSheet.objects.create(
+            revision=source_sheet.revision,
+            costing_type=source_sheet.costing_type,
+            version_no=next_version,
+            is_current=True,
+            # Copy A-fields from source
+            labor_cost=source_sheet.labor_cost,
+            overhead_cost=source_sheet.overhead_cost,
+            freight_cost=source_sheet.freight_cost,
+            packaging_cost=source_sheet.packaging_cost,
+            testing_cost=source_sheet.testing_cost,
+            # Use new B-fields
+            margin_pct=new_margin,
+            wastage_pct=new_wastage,
+            notes=new_notes,
+            # Status & audit
+            status='draft',
+            created_by=user,
+            updated_by=user,
+            # Calculated fields (will be set below)
+            material_cost=Decimal('0.0000'),
+            total_cost=Decimal('0.0000'),
+            unit_price=Decimal('0.0000'),
+        )
+
+        # 4. Copy CostLines from source (keep same snapshot, recalculate line_cost with new wastage)
+        source_lines = source_sheet.lines.all().order_by('sort_order')
+        for line in source_lines:
+            # Recalculate line_cost with new wastage
+            new_line_cost = calc_line_cost(
+                consumption=line.consumption,
+                unit_price=line.unit_price,
+                wastage_pct=new_wastage
+            )
+
+            # Create new line
+            CostLine.objects.create(
+                cost_sheet=new_sheet,
+                bom_item=line.bom_item,
+                # Copy snapshot values
+                material_name=line.material_name,
+                supplier=line.supplier,
+                category=line.category,
+                unit=line.unit,
+                consumption=line.consumption,
+                unit_price=line.unit_price,
+                # New calculated value
+                line_cost=new_line_cost,
+                sort_order=line.sort_order,
+            )
+
+        # 5. Calculate totals with new margin
+        new_lines = CostLine.objects.filter(cost_sheet=new_sheet).order_by('sort_order')
+        line_costs = [Decimal(line.line_cost) for line in new_lines]
+
+        material_cost, total_cost, unit_price_calc = calc_totals(
+            line_costs=line_costs,
+            labor=Decimal(new_sheet.labor_cost),
+            overhead=Decimal(new_sheet.overhead_cost),
+            freight=Decimal(new_sheet.freight_cost),
+            packaging=Decimal(new_sheet.packaging_cost),
+            testing=Decimal(new_sheet.testing_cost),
+            margin_pct=new_margin,
+        )
+
+        new_sheet.material_cost = material_cost
+        new_sheet.total_cost = total_cost
+        new_sheet.unit_price = unit_price_calc
+        new_sheet.save()
+
+    # 6. Return serialized response
+    response_serializer = CostSheetDetailSerializer(new_sheet)
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)

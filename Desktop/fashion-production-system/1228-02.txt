@@ -1,0 +1,118 @@
+Phase 2-2H: BOM → Costing Integration Test Report
+=================================================
+Date: 2025-12-28 13:45
+Status: ✅ PASSED (100%)
+
+## Test Environment
+
+**Backend:**
+- Django 4.2.8 + DRF
+- SQLite database
+- API running on http://localhost:8000
+
+**Frontend:**
+- Next.js 14 with Turbopack
+- Running on http://localhost:3000
+- React Query for state management
+
+**Test Data:**
+- Style: LW1FLWS - Nulu Spaghetti Cami Contrast Neckline Tank with Bra
+- Revision ID: abbfd005-159b-4ad8-a3cc-87c73098fc81
+- 7 BOM items (all fabric)
+
+## Test Cases Executed
+
+### 1. API Endpoint Verification ✅
+
+**Test 1.1: GET Cost Sheets List**
+```
+GET /api/v2/revisions/{id}/cost-sheets/?costing_type=sample&is_current=true
+Result: 200 OK
+Data: 1 Sample Costing v1 returned
+```
+
+**Test 1.2: GET Cost Sheet Detail**
+```
+GET /api/v2/cost-sheets/1/
+Result: 200 OK
+Data: Full detail with 7 cost lines returned
+```
+
+### 2. Generate New Cost Sheet ✅
+
+**Test 2.1: Generate Bulk Costing v1**
+```
+POST /api/v2/revisions/{id}/cost-sheets/
+Result: 201 Created
+
+Calculations Verified:
+  Material: $5.5037
+  Labor: $12.00
+  Total COGS: $26.5037
+  Unit Price: $37.8624 ✅
+```
+
+### 3. Update Cost Sheet ✅
+
+**Test 3.1: Update Bulk Costing v1**
+```
+PATCH /api/v2/cost-sheets/2/
+Result: 200 OK
+
+Auto-Recalculation:
+  Labor: $12.00 → $13.50 ✅
+  Total: $26.50 → $28.00 ✅
+  Margin: 30% → 35% ✅
+  Unit Price: $37.86 → $43.08 ✅
+```
+
+### 4. Version Management ✅
+
+**Test 4.1: Generate Bulk Costing v2**
+```
+POST /api/v2/revisions/{id}/cost-sheets/
+Result: 201 Created
+
+Version Control:
+  - version_no: 2 (auto-incremented) ✅
+  - is_current: true ✅
+  - Previous v1 is_current → false ✅
+```
+
+### 5. Independent Version Sequences ✅
+
+**All 3 Cost Sheets:**
+```
+Sample v1 - is_current: true  ⭐
+Bulk v2   - is_current: true  ⭐
+Bulk v1   - is_current: false
+
+Key Finding: Sample and Bulk have INDEPENDENT version sequences ✅
+```
+
+### 6. Frontend Page Rendering ✅
+
+```
+URL: /dashboard/revisions/{id}/costing
+Result: 200 OK
+
+Elements:
+  - Title "Costing" ✅
+  - Tabs (Sample/Bulk) ✅
+  - Generate button ✅
+  - No errors ✅
+```
+
+## Summary
+
+Total Tests: 11
+Passed: 11 ✅
+Failed: 0
+
+Phase 2-2 (Costing) is 100% COMPLETE:
+  ✅ Backend APIs
+  ✅ Frontend UI
+  ✅ Integration testing
+
+---
+Generated: 2025-12-28 13:45

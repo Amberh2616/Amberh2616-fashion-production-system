@@ -3,7 +3,7 @@
  * Base URL and common fetch wrapper
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2';
 
 export interface ApiError {
   message: string;

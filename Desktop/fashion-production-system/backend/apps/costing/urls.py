@@ -19,4 +19,11 @@ urlpatterns = [
         views.cost_sheet_detail_update,
         name='cost-sheet-detail-update'
     ),
+
+    # Duplicate CostSheet with new margin/wastage (POST)
+    path(
+        'cost-sheets/<int:cost_sheet_id>/duplicate/',
+        views.cost_sheet_duplicate,
+        name='cost-sheet-duplicate'
+    ),
 ]

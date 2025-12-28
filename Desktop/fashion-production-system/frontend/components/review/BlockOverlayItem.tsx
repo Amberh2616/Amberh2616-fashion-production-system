@@ -1,5 +1,6 @@
 // frontend/components/review/BlockOverlayItem.tsx
 import React, { CSSProperties, memo } from "react";
+import { CheckCircle } from "lucide-react";
 import { canRenderInline } from "./utils/canRenderInline";
 
 export type BBox = {
@@ -18,6 +19,10 @@ export type DraftBlock = {
   translated_text?: string | null;
   edited_text?: string | null;
   page_number?: number; // optional
+  // Phase 2-1: Verification tracking
+  verified_by?: string | null;  // username
+  verified_at?: string | null;  // ISO datetime
+  translation_status?: "pending" | "confirmed" | null;
 };
 
 type Props = {
@@ -50,11 +55,29 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
 
   const finalText = ((block.edited_text || block.translated_text || "") + "").trim();
   const missing = finalText.length === 0;
+  const isVerified = block.status === "verified" && block.translation_status === "confirmed";
 
   // Missing only 模式下：非 missing 的 block 半透明/不顯示（你可改成只淡化）
   if (showMissingOnly && !missing) return null;
 
   const inline = canRenderInline(bboxPx.height, block.source_text, finalText);
+
+  // Phase 2-1: Different border colors based on status
+  const getBorderStyle = () => {
+    if (missing) return "1.5px solid rgba(220,38,38,0.8)";  // Red for missing
+    if (isVerified) return "2px solid rgba(34,197,94,0.9)";  // Green for verified
+    if (isSelected) return "2px solid rgba(37,99,235,0.9)";  // Blue for selected
+    return "1px solid rgba(0,0,0,0.15)";  // Default gray
+  };
+
+  // Tooltip text
+  const getTooltipText = () => {
+    if (isVerified && block.verified_by && block.verified_at) {
+      const date = new Date(block.verified_at).toLocaleString();
+      return `✓ Verified by ${block.verified_by} at ${date}\n${block.source_text.substring(0, 100)}`;
+    }
+    return block.source_text.substring(0, 150);
+  };
 
   const baseBoxStyle: CSSProperties = {
     position: "absolute",
@@ -66,10 +89,10 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
     borderRadius: 3,
     cursor: "pointer",
     outline: "none",
-    border: missing ? "1.5px solid rgba(220,38,38,0.8)" : isSelected ? "2px solid rgba(37,99,235,0.9)" : "1px solid rgba(0,0,0,0.15)",
+    border: getBorderStyle(),
     background: inline ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.0)",
-    boxShadow: isSelected ? "0 0 0 2px rgba(37,99,235,0.15)" : undefined,
-    zIndex: isSelected ? 30 : missing ? 25 : 10,
+    boxShadow: isSelected ? "0 0 0 2px rgba(37,99,235,0.15)" : isVerified ? "0 0 0 1px rgba(34,197,94,0.1)" : undefined,
+    zIndex: isSelected ? 30 : missing ? 25 : isVerified ? 20 : 10,
     pointerEvents: "auto",
   };
 
@@ -94,7 +117,7 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
     maxWidth: 360,
     padding: 6,
     borderRadius: 6,
-    border: missing ? "1.5px solid rgba(220,38,38,0.8)" : "1px solid rgba(0,0,0,0.15)",
+    border: missing ? "1.5px solid rgba(220,38,38,0.8)" : isVerified ? "1.5px solid rgba(34,197,94,0.8)" : "1px solid rgba(0,0,0,0.15)",
     background: "rgba(255,255,255,0.75)",
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
     zIndex: isSelected ? 35 : 20,
@@ -118,11 +141,18 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
             onSelect(block.id);
           }
         }}
-        title={clampText(block.source_text, 150)}
+        title={getTooltipText()}
       >
+        {/* Phase 2-1: Verification icon */}
+        {isVerified && (
+          <div style={{ position: "absolute", top: 2, right: 2, pointerEvents: "none" }}>
+            <CheckCircle className="w-4 h-4 text-green-600" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.1))" }} />
+          </div>
+        )}
+
         {inline ? (
           <div style={textWrapStyle}>
-            <div style={{ color: missing ? "rgba(220,38,38,0.9)" : "rgba(17,24,39,0.95)", fontWeight: 600 }}>
+            <div style={{ color: missing ? "rgba(220,38,38,0.9)" : isVerified ? "rgba(34,197,94,0.95)" : "rgba(17,24,39,0.95)", fontWeight: 600 }}>
               {missing ? "【缺】" : clampText(finalText, 100)}
             </div>
           </div>
@@ -138,11 +168,18 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
             onSelect(block.id);
           }}
         >
+          {/* Phase 2-1: Verification icon for card mode */}
+          {isVerified && (
+            <div style={{ position: "absolute", top: 4, right: 4, pointerEvents: "none" }}>
+              <CheckCircle className="w-3 h-3 text-green-600" />
+            </div>
+          )}
+
           <div style={{ fontSize: 10, color: "rgba(107,114,128,0.85)", marginBottom: 4 }}>
             {clampText(block.source_text, 120)}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: missing ? "rgba(220,38,38,0.9)" : "rgba(17,24,39,0.95)", whiteSpace: "pre-line" }}>
-            {missing ? "【缺翻譯】" : finalText}
+          <div style={{ fontSize: 11, fontWeight: 600, color: missing ? "rgba(220,38,38,0.9)" : isVerified ? "rgba(34,197,94,0.95)" : "rgba(17,24,39,0.95)", whiteSpace: "pre-line", display: "flex", alignItems: "flex-start", gap: 4 }}>
+            <span>{missing ? "【缺翻譯】" : finalText}</span>
           </div>
         </div>
       ) : null}

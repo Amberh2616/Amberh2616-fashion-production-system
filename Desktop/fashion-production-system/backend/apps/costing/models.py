@@ -1,10 +1,12 @@
 """
 Costing Models
 Phase 2: Sample Costing / Bulk Costing (BULK PO 之前)
+Phase 2-2I: 版本策略封進系統
 """
 
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import models, transaction
+from django.conf import settings
 from apps.styles.models import StyleRevision, BOMItem
 
 
@@ -21,6 +23,12 @@ class CostSheet(models.Model):
     COSTING_TYPE_CHOICES = [
         ('sample', 'Sample Costing'),
         ('bulk', 'Bulk Costing'),
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+        ('archived', 'Archived'),
     ]
 
     # 關聯
@@ -111,6 +119,30 @@ class CostSheet(models.Model):
     notes = models.TextField(
         blank=True,
         help_text='Notes for this costing version'
+    )
+
+    # 狀態與審計（Phase 2-2I: 版本策略）
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='draft',
+        help_text='Status: draft/sent/archived'
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cost_sheets_created',
+        help_text='User who created this version'
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cost_sheets_updated',
+        help_text='User who last updated this version'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

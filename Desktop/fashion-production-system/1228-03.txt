@@ -1,0 +1,416 @@
+Phase 2-2I: Version Policy Backend Implementation Report
+========================================================
+Date: 2025-12-28 14:30
+Status: ✅ BACKEND COMPLETE (100%)
+
+## Implementation Summary
+
+**Goal:** 將「版本策略」封進系統 - A/B Fields 控管，防止錯誤的版本更新
+
+**Core Design:**
+- **A Fields** (同版本可修改): labor_cost, overhead_cost, freight_cost, packaging_cost, testing_cost, notes
+- **B Fields** (必須新版本): margin_pct, wastage_pct
+- **Guard Rules:** PATCH 禁止修改 B fields → 409 Conflict
+- **Duplicate Endpoint:** 純談判場景（同 BOM snapshot，不同定價策略）
+
+---
+
+## Backend Implementation Complete ✅
+
+### 1. Model Extensions (✅ DONE)
+
+**File:** `backend/apps/costing/models.py`
+
+**Changes:**
+```python
+# Added to CostSheet model
+STATUS_CHOICES = [
+    ('draft', 'Draft'),
+    ('sent', 'Sent'),
+    ('archived', 'Archived'),
+]
+
+status = models.CharField(
+    max_length=20,
+    choices=STATUS_CHOICES,
+    default='draft',
+    help_text='Status: draft/sent/archived'
+)
+created_by = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.SET_NULL,
+    null=True, blank=True,
+    related_name='cost_sheets_created',
+)
+updated_by = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.SET_NULL,
+    null=True, blank=True,
+    related_name='cost_sheets_updated',
+)
+```
+
+**Purpose:**
+- Status workflow management (draft/sent/archived)
+- Audit trail (who created/updated)
+- Support version policy enforcement
+
+---
+
+### 2. Calculation Services (✅ DONE)
+
+**File:** `backend/apps/costing/services.py` (NEW)
+
+**Functions Created:**
+```python
+# Precision constants
+MONEY_Q = Decimal("0.01")      # Currency: 2 decimal places
+LINE_Q = Decimal("0.0001")     # Line costs: 4 decimal places
+
+def calc_line_cost(consumption, unit_price, wastage_pct) -> Decimal:
+    """統一 line cost 計算公式"""
+    # consumption × unit_price × (1 + wastage_pct/100)
+
+def calc_totals(line_costs, labor, overhead, freight,
+                packaging, testing, margin_pct) -> Tuple:
+    """統一總成本與報價計算"""
+    # Returns: (material_cost, total_cost, unit_price)
+```
+
+**Purpose:**
+- Eliminate code duplication
+- Ensure consistent Decimal precision
+- Centralized calculation logic for maintainability
+
+**Benefits:**
+- No floating-point errors
+- Same calculation results across all endpoints
+- Easy to test and validate
+
+---
+
+### 3. Serializers with Guard Rules (✅ DONE)
+
+**File:** `backend/apps/costing/serializers.py`
+
+**Key Components:**
+
+**A/B Field Definitions:**
+```python
+A_FIELDS = {
+    "labor_cost", "overhead_cost", "freight_cost",
+    "packaging_cost", "testing_cost", "notes",
+}
+B_FIELDS = {"margin_pct", "wastage_pct"}
+```
+
+**CostSheetPatchSerializer:**
+```python
+def validate(self, attrs):
+    """Guard Rule: Block B-field modifications"""
+    incoming = set(attrs.keys())
+
+    # Block B fields
+    if incoming & B_FIELDS:
+        raise serializers.ValidationError({
+            "version_policy": "margin_pct and wastage_pct require a new version."
+        })
+
+    # Ensure only A fields
+    illegal = incoming - A_FIELDS
+    if illegal:
+        raise serializers.ValidationError({
+            "fields": f"Illegal fields: {sorted(list(illegal))}"
+        })
+```
+
+**CostSheetDuplicateSerializer:**
+```python
+# For POST /cost-sheets/{id}/duplicate/
+# Validates margin_pct and wastage_pct ranges
+# Used for "pure negotiation" scenario
+```
+
+**Purpose:**
+- Enforce version policy at serializer level
+- Provide clear error messages
+- Validate data ranges (margin: [0, 100), wastage: [0, 100])
+
+---
+
+### 4. Views with Version Policy APIs (✅ DONE)
+
+**File:** `backend/apps/costing/views.py`
+
+**Updated Endpoints:**
+
+#### POST /api/v2/revisions/{id}/cost-sheets/
+**Changes:**
+- Added `created_by`, `updated_by`, `status='draft'`
+- Uses `calc_line_cost()` from services.py
+- Uses `calc_totals()` from services.py
+
+#### PATCH /api/v2/cost-sheets/{id}/
+**Changes:**
+- Uses `CostSheetPatchSerializer` (with guard rules)
+- Returns **409 Conflict** if B-fields modified
+- Uses `calc_totals()` for auto-recalculation
+- Updates `updated_by` and `updated_at`
+
+**Response Format (409 Conflict):**
+```json
+{
+  "error": "VERSION_POLICY_VIOLATION",
+  "message": "margin_pct and wastage_pct require a new version.",
+  "details": { ... }
+}
+```
+
+#### POST /api/v2/cost-sheets/{id}/duplicate/ (NEW)
+**Purpose:** Pure negotiation (same BOM, different pricing stance)
+
+**Logic:**
+1. Copy source CostSheet (keep A-fields)
+2. Apply new margin_pct and wastage_pct (B-fields)
+3. Copy all CostLines (same snapshot)
+4. Recalculate line_cost with new wastage
+5. Recalculate totals with new margin
+6. Auto-increment version_no
+7. Set is_current=true (old→false)
+
+**Use Case:**
+- Buyer countered: "30% margin is too high, can you do 25%?"
+- System: Duplicate v1 → v2 (margin: 30%→25%)
+- Preserved: Same BOM snapshot (no material changes)
+- Changed: Only pricing strategy
+
+---
+
+### 5. URL Configuration (✅ DONE)
+
+**File:** `backend/apps/costing/urls.py`
+
+**Added Route:**
+```python
+path(
+    'cost-sheets/<int:cost_sheet_id>/duplicate/',
+    views.cost_sheet_duplicate,
+    name='cost-sheet-duplicate'
+),
+```
+
+**Complete API Endpoints:**
+```
+GET    /api/v2/revisions/{id}/cost-sheets/          # List
+POST   /api/v2/revisions/{id}/cost-sheets/          # Create (Generate)
+GET    /api/v2/cost-sheets/{id}/                    # Detail
+PATCH  /api/v2/cost-sheets/{id}/                    # Update (A-fields only)
+POST   /api/v2/cost-sheets/{id}/duplicate/          # Duplicate (B-fields)
+```
+
+---
+
+### 6. Database Migration (✅ DONE)
+
+**Migration:** `0003_costsheet_created_by_costsheet_status_and_more.py`
+
+**Operations:**
+- Add field `created_by` (ForeignKey to User, nullable)
+- Add field `status` (CharField with choices, default='draft')
+- Add field `updated_by` (ForeignKey to User, nullable)
+
+**Status:** Applied successfully ✅
+
+**Command Used:**
+```bash
+python manage.py makemigrations costing
+python manage.py migrate costing
+```
+
+---
+
+## Files Created/Modified
+
+### New Files (1):
+1. `backend/apps/costing/services.py` (100 lines)
+   - Calculation utilities with Decimal precision
+
+### Modified Files (4):
+1. `backend/apps/costing/models.py`
+   - Added STATUS_CHOICES, status, created_by, updated_by
+
+2. `backend/apps/costing/serializers.py`
+   - Added A_FIELDS/B_FIELDS constants
+   - Added CostSheetPatchSerializer (with guard rules)
+   - Added CostSheetDuplicateSerializer
+
+3. `backend/apps/costing/views.py`
+   - Updated POST to use audit fields + services.py
+   - Updated PATCH to use guard rules + 409 response
+   - Added cost_sheet_duplicate() view (NEW endpoint)
+
+4. `backend/apps/costing/urls.py`
+   - Added duplicate endpoint route
+
+### Migration Files (1):
+1. `backend/apps/costing/migrations/0003_*.py`
+
+---
+
+## Technical Highlights
+
+### 1. Decimal Precision Strategy
+```python
+# Before (floating point errors possible)
+line_cost = consumption * unit_price * (1 + wastage_pct/100)
+
+# After (guaranteed precision)
+line_cost = calc_line_cost(consumption, unit_price, wastage_pct)
+# Returns: Decimal quantized to 4 decimal places
+```
+
+### 2. Version Policy Enforcement
+```python
+# User tries to PATCH margin_pct
+PATCH /cost-sheets/1/
+{
+  "margin_pct": 25.00  # ❌ B-field
+}
+
+# Response: 409 Conflict
+{
+  "error": "VERSION_POLICY_VIOLATION",
+  "message": "margin_pct and wastage_pct require a new version."
+}
+
+# Correct approach
+POST /cost-sheets/1/duplicate/
+{
+  "margin_pct": 25.00,  # ✅ Creates new version
+  "wastage_pct": 5.00
+}
+```
+
+### 3. Audit Trail
+```python
+# Every CostSheet now tracks:
+- created_by: User who generated this version
+- updated_by: User who last modified A-fields
+- created_at: When version was created
+- updated_at: When A-fields were last changed
+
+# Benefits:
+- Know who to ask about specific cost estimates
+- Track negotiation history
+- Compliance and debugging
+```
+
+---
+
+## Next Steps (Pending Frontend)
+
+### Task 5: Frontend Smart Button (PENDING)
+**Goal:** EditSummaryDialog 自動判斷按鈕顯示
+
+**Logic:**
+```typescript
+// Detect dirty fields
+const dirtyFields = getDirtyFields(formData, originalData);
+
+// Smart button switching
+if (dirtyFields.includes('margin_pct') || dirtyFields.includes('wastage_pct')) {
+  // B-fields changed → Must create new version
+  return <Button>Save as New Version</Button>;
+} else {
+  // Only A-fields changed → Can update same version
+  return <Button>Save</Button>;
+}
+```
+
+**API Calls:**
+- A-fields only: `PATCH /cost-sheets/{id}/`
+- B-fields changed: `POST /cost-sheets/{id}/duplicate/`
+
+**User Experience:**
+- Prevents 409 errors
+- Clear indication of version impact
+- One-click appropriate action
+
+---
+
+### Task 7: Acceptance Testing (PENDING)
+**Test Cases to Verify:**
+
+**Test 1: PATCH with B-field → 409**
+```bash
+PATCH /api/v2/cost-sheets/1/
+{
+  "margin_pct": 25.00
+}
+
+Expected: 409 Conflict
+Error: "VERSION_POLICY_VIOLATION"
+```
+
+**Test 2: PATCH with A-field only → 200**
+```bash
+PATCH /api/v2/cost-sheets/1/
+{
+  "labor_cost": 13.50
+}
+
+Expected: 200 OK
+version_no: 1 (unchanged)
+total_cost: auto-recalculated
+```
+
+**Test 3: Duplicate → 201**
+```bash
+POST /api/v2/cost-sheets/1/duplicate/
+{
+  "margin_pct": 25.00,
+  "wastage_pct": 5.00
+}
+
+Expected: 201 Created
+version_no: 2 (auto-incremented)
+is_current: true
+Previous v1 is_current: false
+```
+
+---
+
+## Summary
+
+**Backend Implementation: 100% Complete ✅**
+
+**Deliverables:**
+- ✅ Model extensions (status, audit fields)
+- ✅ Calculation services (unified Decimal logic)
+- ✅ Guard rules (serializer validation)
+- ✅ Version policy APIs (PATCH + Duplicate)
+- ✅ Database migration (applied)
+
+**Key Features:**
+- A/B field classification enforced
+- 409 Conflict for version policy violations
+- Duplicate endpoint for negotiation scenarios
+- Decimal precision for financial calculations
+- Audit trail for compliance
+
+**Ready For:**
+- Frontend smart button implementation
+- User acceptance testing
+- Integration with existing Costing UI
+
+**Benefits:**
+- Prevents accidental version creation
+- Maintains negotiation history
+- Clear error messages for users
+- Consistent calculation results
+- Audit trail for compliance
+
+---
+
+Generated: 2025-12-28 14:30
+Phase 2-2I Backend: COMPLETE ✅

@@ -170,6 +170,11 @@ class BOMItem(models.Model):
         ('locked', 'Locked'),
     ]
 
+    TRANSLATION_STATUS_CHOICES = [
+        ('pending', 'Pending Translation'),
+        ('confirmed', 'Translation Confirmed'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     revision = models.ForeignKey(
         StyleRevision,
@@ -246,6 +251,24 @@ class BOMItem(models.Model):
     ai_confidence = models.FloatField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
 
+    # Phase 2-1: Verification tracking (who & when)
+    verified_by = models.ForeignKey(
+        'core.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_bom_items'
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase 2-1: Translation status tracking
+    translation_status = models.CharField(
+        max_length=20,
+        choices=TRANSLATION_STATUS_CHOICES,
+        default='pending',
+        help_text="Translation confirmation status"
+    )
+
     class Meta:
         db_table = 'bom_items'
         verbose_name = 'BOM Item'
@@ -260,6 +283,11 @@ class Measurement(models.Model):
     """
     Measurement specification point for a StyleRevision
     """
+    TRANSLATION_STATUS_CHOICES = [
+        ('pending', 'Pending Translation'),
+        ('confirmed', 'Translation Confirmed'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     revision = models.ForeignKey(
         StyleRevision,
@@ -291,6 +319,24 @@ class Measurement(models.Model):
     ai_confidence = models.FloatField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
 
+    # Phase 2-1: Verification tracking (who & when)
+    verified_by = models.ForeignKey(
+        'core.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_measurements'
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase 2-1: Translation status tracking
+    translation_status = models.CharField(
+        max_length=20,
+        choices=TRANSLATION_STATUS_CHOICES,
+        default='pending',
+        help_text="Translation confirmation status"
+    )
+
     class Meta:
         db_table = 'measurements'
         verbose_name = 'Measurement'
@@ -305,6 +351,11 @@ class ConstructionStep(models.Model):
     """
     Construction/sewing instructions for a StyleRevision
     """
+    TRANSLATION_STATUS_CHOICES = [
+        ('pending', 'Pending Translation'),
+        ('confirmed', 'Translation Confirmed'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     revision = models.ForeignKey(
         StyleRevision,
@@ -320,6 +371,24 @@ class ConstructionStep(models.Model):
     # AI extraction metadata
     ai_confidence = models.FloatField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
+
+    # Phase 2-1: Verification tracking (who & when)
+    verified_by = models.ForeignKey(
+        'core.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_construction_steps'
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase 2-1: Translation status tracking
+    translation_status = models.CharField(
+        max_length=20,
+        choices=TRANSLATION_STATUS_CHOICES,
+        default='pending',
+        help_text="Translation confirmation status"
+    )
 
     class Meta:
         db_table = 'construction_steps'

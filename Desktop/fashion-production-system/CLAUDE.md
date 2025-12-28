@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2025-12-28 22:30
-**Project Status:** Phase 2 Complete (100%) - BOM完整 + Costing System + Data Integrity Verified
-**Version:** 2.2.2
+**Last Updated:** 2025-12-29 00:15
+**Project Status:** Phase 3-1 Day 3 Complete - Sample Request System MVP API (100%)
+**Version:** 3.1.0-alpha
 
 > 📘 **Technical Reference:** See `CLAUDE-TECHNICAL.md` for API specs, commands, environment variables, and tech stack details.
 
@@ -606,13 +606,121 @@ class CostLine(models.Model):
 
 ---
 
-### 📋 Phase 3+ 規劃（延後）
+---
 
-#### Phase 3: Sample Management
-- Sample 管理（Proto/Fit/Sales）
-- Sample MWO 生成
-- T2 PO for Sample
-- Sample Tracking
+### ✅ Phase 3-1: Sample Request System MVP API（100% ✅）⭐ **NEW (2025-12-29)**
+
+#### Django App 創建
+- ✅ 創建 apps.samples app（7 個核心模型）
+- ✅ 註冊到 INSTALLED_APPS
+- ✅ Migrations 生成並應用（0001_initial）
+- ✅ Django Admin 配置（7 個模型 + Inline）
+
+#### 核心模型（7 張表）
+- ✅ **SampleRequest** - 樣衣請求（核心實體，Request-based 設計）
+- ✅ **SampleCostEstimate** - 樣衣報價（多版本支援，JSON 彈性）
+- ✅ **T2POForSample** + **T2POLineForSample** - 樣品調料採購單（快照模式）
+- ✅ **SampleMWO** - 樣衣製造單（JSON 快照：BOM/Construction/QC）
+- ✅ **Sample** - 實體樣衣（可多件/多次迭代）
+- ✅ **SampleAttachment** - 附件/照片（Request 或 Sample 級別）
+
+#### API 實作（Day 3 MVP）
+- ✅ **7 個 ModelViewSet**（CRUD + select_related/prefetch_related 優化）
+- ✅ **8 個 workflow actions**（submit/quote/approve/reject/cancel/start_execution/complete/allowed_actions）
+- ✅ **SafeModelSerializer**（Phase 2/3 邊界保護，防止 draft 後修改敏感欄位）
+- ✅ **Service 層狀態機**（transitions.py，264 lines，集中化邏輯）
+- ✅ **DRF Router 配置**（7 個資源端點）
+- ✅ **Query params filtering**（sample_request_id, t2po_id 等）
+
+#### 測試套件（9/9 通過）✅
+- ✅ **9 個 API 測試**（100% 通過，6.85s）
+- ✅ **Phase 2/3 邊界保護測試**（test_phase23_boundary_no_bom_fk）
+- ✅ **狀態機邏輯測試**（submit/approve/reject transitions）
+- ✅ **業務規則驗證測試**（quote/approve/complete prerequisites）
+- ✅ **pytest 配置**（pytest.ini）
+
+#### Phase 2/3 邊界規則遵守（架構驗證）
+- ✅ **NO FK to BOMItem**（快照欄位取代，測試驗證）
+- ✅ **快照模式**（snapshot_hash, snapshot_at, source_revision_id）
+- ✅ **狀態保護**（SafeModelSerializer 防止 draft 後修改）
+- ✅ **只讀 Phase 2**（confirmed 資料，無回寫邏輯）
+- ✅ **業務規則驗證**（prerequisites：quote → estimate, approve → accepted estimate, complete → delivered sample）
+
+#### 可用 API 端點（33 個）
+**CRUD 端點（RESTful）:**
+- `/api/v2/sample-requests/`（GET/POST/GET{id}/PATCH{id}/DELETE{id}）
+- `/api/v2/sample-attachments/`
+- `/api/v2/sample-cost-estimates/`
+- `/api/v2/t2pos-for-sample/`
+- `/api/v2/t2po-lines-for-sample/`
+- `/api/v2/sample-mwos/`
+- `/api/v2/samples/`
+
+**Workflow Actions（8 個）:**
+- `POST /api/v2/sample-requests/{id}/submit/`
+- `POST /api/v2/sample-requests/{id}/quote/`
+- `POST /api/v2/sample-requests/{id}/approve/`
+- `POST /api/v2/sample-requests/{id}/reject/`
+- `POST /api/v2/sample-requests/{id}/cancel/`
+- `POST /api/v2/sample-requests/{id}/start-execution/`
+- `POST /api/v2/sample-requests/{id}/complete/`
+- `GET  /api/v2/sample-requests/{id}/allowed-actions/`
+
+#### 實作亮點
+1. **ViewSet + @action 架構** - 不是 19 個散亂 API views，7 個清晰 ViewSet
+2. **Service 層狀態機** - 邏輯集中在 services/transitions.py，易於測試和維護
+3. **SafeModelSerializer** - 自動保護 draft 後敏感欄位（READ_ONLY_ON_SUBMITTED）
+4. **業務規則驗證** - Prerequisites 檢查（quote/approve/complete）
+5. **Phase 2/3 邊界保護** - 快照模式 + 架構測試驗證
+
+#### 檔案結構
+```
+backend/apps/samples/
+├── models.py              (754 lines - 7 models)
+├── serializers.py         (183 lines)
+├── views.py               (285 lines - 7 ViewSets)
+├── urls.py                (67 lines)
+├── admin.py               (211 lines)
+├── services/
+│   └── transitions.py     (264 lines - State machine)
+├── tests/
+│   └── test_api_sample_request.py (356 lines - 9 tests)
+└── migrations/
+    └── 0001_initial.py
+```
+
+#### 測試結果
+```
+9 passed, 3 warnings in 6.85s
+
+關鍵測試：
+✓ test_create_sample_request_ok
+✓ test_submit_transition_ok
+✓ test_submit_forbidden_after_submission（邊界保護）
+✓ test_phase23_boundary_no_bom_fk（架構驗證）
+✓ test_quote_requires_estimate（業務規則）
+✓ test_approve_requires_accepted_estimate_when_quote_needed
+✓ test_complete_requires_delivered_sample
+✓ test_allowed_actions_endpoint
+✓ test_attachment_creation_ok
+```
+
+---
+
+### 📋 Phase 3+ 規劃（進行中）
+
+#### Phase 3-2: Day 4 計劃
+- [ ] 補齊剩餘 actions（T2 PO/MWO generate/preview）
+- [ ] 從 Phase 2 Costing 複製估價功能
+- [ ] 快照生成 service 函數（create_t2po_from_request, create_mwo_from_request）
+- [ ] 更多測試（T2 PO/MWO 生成、快照完整性）
+- [ ] API 文檔（drf-spectacular）
+
+#### Phase 3-3: Sample Management UI
+- [ ] Sample Request 列表頁
+- [ ] Sample Request 詳情工作台
+- [ ] Estimate/T2PO/MWO 生成 UI
+- [ ] 狀態轉換 UI
 
 #### Phase 4: BULK PO & PP
 - BULK PO 系統
