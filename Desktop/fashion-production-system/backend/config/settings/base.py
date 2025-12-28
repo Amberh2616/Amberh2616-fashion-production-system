@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.procurement",
     "apps.manufacturing",
     "apps.costing",
+    "apps.samples",  # Phase 3
 ]
 
 MIDDLEWARE = [
