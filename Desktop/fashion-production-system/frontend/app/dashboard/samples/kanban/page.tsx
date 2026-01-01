@@ -23,6 +23,21 @@ import {
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
 
+// Status to action mapping (backend API endpoints)
+const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
+  draft: { action: 'start-materials-planning', label: 'Start Planning' },
+  materials_planning: { action: 'generate-t2po', label: 'Gen T2PO' },
+  po_drafted: { action: 'issue-t2po', label: 'Issue PO' },
+  po_issued: { action: 'generate-mwo', label: 'Gen MWO' },
+  mwo_drafted: { action: 'issue-mwo', label: 'Issue MWO' },
+  mwo_issued: { action: 'start-production', label: 'Start Prod' },
+  in_progress: { action: 'mark-sample-done', label: 'Done' },
+  sample_done: { action: 'record-actuals', label: 'Record' },
+  actuals_recorded: { action: 'generate-sample-costing', label: 'Gen Cost' },
+  costing_generated: { action: 'mark-quoted', label: 'Quote' },
+  quoted: { action: 'mark-accepted', label: 'Accept' },
+};
+
 // View presets
 type ViewPreset = 'all' | 'urgent' | 'overdue' | 'this_week';
 
@@ -70,6 +85,7 @@ const VISIBLE_LANES = [
   'actuals_recorded',
   'costing_generated',
   'quoted',
+  'accepted',
 ];
 
 export default function KanbanPage() {
@@ -108,13 +124,23 @@ export default function KanbanPage() {
     refetchInterval: 30000,
   });
 
+  // Error state for showing error messages
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   // Transition mutation
   const transitionMutation = useMutation({
     mutationFn: ({ runId, action }: { runId: string; action: string }) =>
       transitionSampleRun(runId, action),
     onSuccess: () => {
+      setErrorMsg(null);
       queryClient.invalidateQueries({ queryKey: ['kanban-counts'] });
       queryClient.invalidateQueries({ queryKey: ['kanban-runs'] });
+    },
+    onError: (error: Error) => {
+      console.error('Transition error:', error);
+      setErrorMsg(error.message || 'Transition failed');
+      // Auto-clear after 5 seconds
+      setTimeout(() => setErrorMsg(null), 5000);
     },
   });
 
@@ -174,6 +200,20 @@ export default function KanbanPage() {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Error Message */}
+      {errorMsg && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{errorMsg}</span>
+          <button
+            onClick={() => setErrorMsg(null)}
+            className="absolute top-0 bottom-0 right-0 px-4 py-3"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -299,8 +339,10 @@ export default function KanbanPage() {
             isExpanded={expandedLanes.has(lane.status)}
             onToggle={() => toggleLane(lane.status)}
             onNextAction={(run) => {
-              // Simple next action - can be enhanced
-              transitionMutation.mutate({ runId: run.id, action: 'advance' });
+              const nextAction = STATUS_TO_ACTION[run.status];
+              if (nextAction) {
+                transitionMutation.mutate({ runId: run.id, action: nextAction.action });
+              }
             }}
             isTransitioning={transitionMutation.isPending}
           />
@@ -409,6 +451,7 @@ function KanbanCard({
 }) {
   const runTypeBadge = RUN_TYPE_BADGES[run.run_type] || RUN_TYPE_BADGES.other;
   const priorityColor = PRIORITY_COLORS[run.sample_request.priority] || PRIORITY_COLORS.normal;
+  const nextAction = STATUS_TO_ACTION[run.status];
 
   return (
     <div
@@ -460,6 +503,24 @@ function KanbanCard({
             </span>
           )}
         </div>
+      )}
+
+      {/* Action Button */}
+      {nextAction && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onNextAction(run);
+          }}
+          disabled={isTransitioning}
+          className={cn(
+            'w-full mt-2 py-1 text-xs font-medium rounded transition-colors',
+            'bg-blue-600 text-white hover:bg-blue-700',
+            'disabled:opacity-50 disabled:cursor-not-allowed'
+          )}
+        >
+          {isTransitioning ? '...' : `→ ${nextAction.label}`}
+        </button>
       )}
     </div>
   );
