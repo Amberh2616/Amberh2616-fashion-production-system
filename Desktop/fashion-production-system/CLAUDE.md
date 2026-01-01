@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-01
-**Version:** 3.0.1
-**Status:** P0-1 完成，P0-2 待做
+**Last Updated:** 2026-01-02
+**Version:** 3.1.0
+**Status:** P0-2 完成（Kanban + 狀態機）
 
 ---
 
@@ -41,6 +41,7 @@
 | 3-1 | SampleRequest 基礎 CRUD | ✅ |
 | 3-1 | SampleRun 後端 + 狀態機 | ✅ |
 | **P0-1** | **Create Request 自動生成** | ✅ **2026-01-01** |
+| **P0-2** | **Kanban 看板 + 狀態機整合** | ✅ **2026-01-02** |
 
 ### ✅ P0-1 完成（2026-01-01）
 
@@ -69,12 +70,46 @@ POST /api/v2/sample-requests/ → 自動生成：
 }
 ```
 
+### ✅ P0-2 完成（2026-01-02）
+
+**Kanban 看板視圖**（http://localhost:3000/dashboard/samples/kanban）
+
+```
+12 個欄位 × 無限卡片：
+Draft → Materials Planning → PO Drafted → PO Issued →
+MWO Drafted → MWO Issued → In Progress → Sample Done →
+Actuals Recorded → Costing Generated → Quoted → Accepted
+```
+
+**功能：**
+- ✅ 12 欄 Kanban 看板（可收合/展開）
+- ✅ 每張卡片顯示：Style、Run Type、Priority、Due Date
+- ✅ 篩選器：All / Urgent / Overdue / This Week
+- ✅ Run Type 篩選：Proto / Fit / Sales / Photo
+- ✅ 搜尋功能（by style number）
+- ✅ 狀態轉換按鈕（Start Planning、Gen T2PO、Issue PO...）
+- ✅ 自動生成資源（Guidance Usage、T2PO、MWO、Costing）
+- ✅ 錯誤訊息顯示
+- ✅ 30 秒自動刷新
+
+**狀態機 11 個 Transition：**
+```
+start_materials_planning → generate_t2po → issue_t2po →
+generate_mwo → issue_mwo → start_production → mark_sample_done →
+record_actuals → generate_sample_costing → mark_quoted → mark_accepted
+```
+
+**API Endpoints：**
+- `GET /api/v2/kanban/counts/` - 各欄位統計
+- `GET /api/v2/kanban/runs/` - 卡片列表（含篩選）
+- `POST /api/v2/sample-runs/{id}/{action}/` - 狀態轉換
+
 ### 📋 待做
 
 | 優先級 | 功能 |
 |--------|------|
-| P0-2 | 看板視圖（300 款一覽）|
-| P1 | 批量操作 + 告警機制 |
+| P1 | 批量操作（多選 + 批量轉換）|
+| P1 | 告警機制（overdue 通知）|
 | P2 | 匯出 Excel/PDF |
 | Phase B | 多人協作 |
 | Phase C | 多租戶 SaaS |
