@@ -38,6 +38,10 @@ import {
   fetchSampleActuals,
   fetchSampleActualsDetail,
   updateSampleActuals,
+  // Kanban APIs (P0-2)
+  fetchKanbanCounts,
+  fetchKanbanRuns,
+  transitionSampleRun,
 } from '../api/samples';
 import type {
   CreateSampleRequestPayload,
@@ -579,6 +583,58 @@ export function useUpdateSampleActuals(runId?: string) {
         queryClient.invalidateQueries({ queryKey: ['sample-actuals', { sample_run_id: runId }] });
         queryClient.invalidateQueries({ queryKey: ['sample-run', runId] });
       }
+    },
+  });
+}
+
+// ========================================
+// Kanban Hooks (P0-2)
+// ========================================
+
+/**
+ * Fetch Kanban counts for lanes
+ */
+export function useKanbanCounts(daysAhead?: number) {
+  return useQuery({
+    queryKey: ['kanban-counts', daysAhead],
+    queryFn: () => fetchKanbanCounts(daysAhead),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+/**
+ * Fetch Kanban runs for board
+ */
+export function useKanbanRuns(params?: {
+  status?: string;
+  priority?: string;
+  overdue_only?: boolean;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: ['kanban-runs', params],
+    queryFn: () => fetchKanbanRuns(params),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+/**
+ * Transition sample run status (for Kanban drag-drop)
+ */
+export function useTransitionSampleRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ runId, action, payload }: {
+      runId: string;
+      action: string;
+      payload?: { notes?: string; reason?: string };
+    }) => transitionSampleRun(runId, action, payload),
+    onSuccess: () => {
+      // Invalidate all Kanban queries
+      queryClient.invalidateQueries({ queryKey: ['kanban-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
     },
   });
 }

@@ -500,3 +500,122 @@ export async function updateSampleActuals(
     body: JSON.stringify(payload),
   });
 }
+
+// ========================================
+// Kanban APIs (P0-2)
+// ========================================
+
+export interface KanbanLane {
+  status: string;
+  label: string;
+  count: number;
+  overdue: number;
+  due_soon: number;
+}
+
+export interface KanbanCountsResponse {
+  lanes: KanbanLane[];
+  summary: {
+    total: number;
+    overdue_total: number;
+    due_this_week: number;
+  };
+  meta: {
+    as_of: string;
+    days_ahead: number;
+  };
+}
+
+export interface KanbanRunItem {
+  id: string;
+  run_no: number;
+  status: string;
+  status_label: string;
+  run_type: string;
+  run_type_label: string;
+  quantity: number;
+  target_due_date: string | null;
+  is_overdue: boolean | null;
+  days_until_due: number | null;
+  sample_request: {
+    id: string;
+    request_type: string;
+    priority: string;
+    brand_name: string;
+  };
+  style: {
+    id: string;
+    style_number: string;
+    style_name: string;
+  } | null;
+  revision: {
+    id: string;
+    revision_label: string;
+  } | null;
+}
+
+export interface KanbanRunsResponse {
+  runs: KanbanRunItem[];
+  meta: {
+    count: number;
+    as_of: string;
+  };
+}
+
+/**
+ * Get Kanban lane counts
+ * GET /kanban/counts/?days_ahead=7
+ */
+export async function fetchKanbanCounts(daysAhead?: number): Promise<KanbanCountsResponse> {
+  const params = new URLSearchParams();
+  if (daysAhead) {
+    params.set('days_ahead', String(daysAhead));
+  }
+  const queryString = params.toString();
+  const url = `/kanban/counts/${queryString ? `?${queryString}` : ''}`;
+  return apiClient<KanbanCountsResponse>(url);
+}
+
+/**
+ * Get Kanban runs for board display
+ * GET /kanban/runs/?status=draft,materials_planning&priority=urgent&overdue_only=true
+ */
+export async function fetchKanbanRuns(params?: {
+  status?: string;
+  priority?: string;
+  overdue_only?: boolean;
+  limit?: number;
+}): Promise<KanbanRunsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) {
+    searchParams.set('status', params.status);
+  }
+  if (params?.priority) {
+    searchParams.set('priority', params.priority);
+  }
+  if (params?.overdue_only) {
+    searchParams.set('overdue_only', 'true');
+  }
+  if (params?.limit) {
+    searchParams.set('limit', String(params.limit));
+  }
+  const queryString = searchParams.toString();
+  const url = `/kanban/runs/${queryString ? `?${queryString}` : ''}`;
+  return apiClient<KanbanRunsResponse>(url);
+}
+
+/**
+ * Transition sample run status (for drag-drop)
+ * POST /sample-runs/{id}/{action}/
+ */
+export async function transitionSampleRun(
+  runId: string,
+  action: string,
+  payload?: { notes?: string; reason?: string }
+): Promise<SampleRun> {
+  return apiClient<SampleRun>(`/sample-runs/${runId}/${action}/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+}

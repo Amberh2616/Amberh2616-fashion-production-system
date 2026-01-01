@@ -1,8 +1,10 @@
 """
 Phase 3: Sample Request System - API URLs
 Day 3 MVP API + SampleRun (Phase 3 Refactor)
+P0-2: Kanban View API
 """
 
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
@@ -15,6 +17,9 @@ from .views import (
     T2POLineForSampleViewSet,
     SampleMWOViewSet,
     SampleViewSet,
+    # P0-2: Kanban
+    kanban_counts,
+    kanban_runs,
 )
 
 router = DefaultRouter()
@@ -83,4 +88,8 @@ router.register(
     basename="sample"
 )
 
-urlpatterns = router.urls
+# P0-2: Kanban API endpoints
+urlpatterns = [
+    path('kanban/counts/', kanban_counts, name='kanban-counts'),
+    path('kanban/runs/', kanban_runs, name='kanban-runs'),
+] + router.urls

@@ -1,17 +1,22 @@
 """
 Phase 3: Sample Request System - DRF ViewSets
 Day 3 MVP API + SampleRun (Phase 3 Refactor)
+P0-2: Kanban View API
 """
 
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes as perm_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Count, Q, Case, When, Value, IntegerField
+from django.utils import timezone
+from datetime import timedelta
 
 from .models import (
     SampleRequest,
     SampleRun,
+    SampleRunStatus,
     SampleActuals,
     SampleAttachment,
     SampleCostEstimate,
@@ -551,3 +556,193 @@ class SampleViewSet(viewsets.ModelViewSet):
         if sample_request_id:
             queryset = queryset.filter(sample_request_id=sample_request_id)
         return queryset
+
+
+# ==================== P0-2: Kanban View API ====================
+
+@api_view(['GET'])
+@perm_classes([AllowAny])
+def kanban_counts(request):
+    """
+    P0-2: Get Kanban lane counts for SampleRun
+
+    Returns counts grouped by status with overdue tracking.
+
+    Query params:
+    - days_ahead: Show due within N days (default: 7)
+
+    Response:
+    {
+      "lanes": [
+        {"status": "draft", "label": "Draft", "count": 5, "overdue": 0},
+        {"status": "materials_planning", "label": "Materials Planning", "count": 3, "overdue": 1},
+        ...
+      ],
+      "summary": {
+        "total": 25,
+        "overdue_total": 2,
+        "due_this_week": 8
+      }
+    }
+    """
+    today = timezone.now().date()
+    days_ahead = int(request.query_params.get('days_ahead', 7))
+    due_cutoff = today + timedelta(days=days_ahead)
+
+    # Define Kanban lane order (based on workflow)
+    lane_order = [
+        SampleRunStatus.DRAFT,
+        SampleRunStatus.MATERIALS_PLANNING,
+        SampleRunStatus.PO_DRAFTED,
+        SampleRunStatus.PO_ISSUED,
+        SampleRunStatus.MWO_DRAFTED,
+        SampleRunStatus.MWO_ISSUED,
+        SampleRunStatus.IN_PROGRESS,
+        SampleRunStatus.SAMPLE_DONE,
+        SampleRunStatus.ACTUALS_RECORDED,
+        SampleRunStatus.COSTING_GENERATED,
+        SampleRunStatus.QUOTED,
+        SampleRunStatus.ACCEPTED,
+        SampleRunStatus.REVISE_NEEDED,
+    ]
+
+    # Get counts by status
+    status_counts = SampleRun.objects.filter(
+        status__in=lane_order  # Exclude cancelled
+    ).values('status').annotate(
+        count=Count('id'),
+        overdue=Count('id', filter=Q(target_due_date__lt=today)),
+        due_soon=Count('id', filter=Q(
+            target_due_date__gte=today,
+            target_due_date__lte=due_cutoff
+        )),
+    )
+
+    # Build lookup dict
+    counts_dict = {item['status']: item for item in status_counts}
+
+    # Build ordered lanes
+    lanes = []
+    for status_code in lane_order:
+        status_label = dict(SampleRunStatus.CHOICES).get(status_code, status_code)
+        data = counts_dict.get(status_code, {'count': 0, 'overdue': 0, 'due_soon': 0})
+        lanes.append({
+            'status': status_code,
+            'label': status_label,
+            'count': data['count'],
+            'overdue': data['overdue'],
+            'due_soon': data['due_soon'],
+        })
+
+    # Calculate summary
+    total = sum(lane['count'] for lane in lanes)
+    overdue_total = sum(lane['overdue'] for lane in lanes)
+    due_this_week = sum(lane['due_soon'] for lane in lanes)
+
+    return Response({
+        'lanes': lanes,
+        'summary': {
+            'total': total,
+            'overdue_total': overdue_total,
+            'due_this_week': due_this_week,
+        },
+        'meta': {
+            'as_of': timezone.now().isoformat(),
+            'days_ahead': days_ahead,
+        }
+    })
+
+
+@api_view(['GET'])
+@perm_classes([AllowAny])
+def kanban_runs(request):
+    """
+    P0-2: Get SampleRuns for Kanban board
+
+    Returns runs with minimal data for Kanban cards.
+
+    Query params:
+    - status: Filter by status (can be multiple, comma-separated)
+    - priority: Filter by priority
+    - overdue_only: Show only overdue items
+    - limit: Max items per status (default: 50)
+    """
+    today = timezone.now().date()
+
+    # Base queryset
+    queryset = SampleRun.objects.select_related(
+        'sample_request',
+        'sample_request__revision',
+        'sample_request__revision__style',
+    ).exclude(
+        status=SampleRunStatus.CANCELLED
+    )
+
+    # Apply filters
+    status_filter = request.query_params.get('status')
+    if status_filter:
+        statuses = [s.strip() for s in status_filter.split(',')]
+        queryset = queryset.filter(status__in=statuses)
+
+    priority = request.query_params.get('priority')
+    if priority:
+        queryset = queryset.filter(sample_request__priority=priority)
+
+    overdue_only = request.query_params.get('overdue_only', '').lower() == 'true'
+    if overdue_only:
+        queryset = queryset.filter(target_due_date__lt=today)
+
+    # Limit per status
+    limit = int(request.query_params.get('limit', 50))
+
+    # Annotate with overdue flag
+    queryset = queryset.annotate(
+        is_overdue=Case(
+            When(target_due_date__lt=today, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField()
+        )
+    ).order_by('status', '-is_overdue', 'target_due_date', '-created_at')
+
+    # Build response
+    runs = []
+    for run in queryset[:limit * 15]:  # Rough limit
+        request_obj = run.sample_request
+        revision = request_obj.revision
+        style = revision.style if revision else None
+
+        runs.append({
+            'id': str(run.id),
+            'run_no': run.run_no,
+            'status': run.status,
+            'status_label': run.get_status_display(),
+            'run_type': run.run_type,
+            'run_type_label': run.get_run_type_display(),
+            'quantity': run.quantity,
+            'target_due_date': run.target_due_date.isoformat() if run.target_due_date else None,
+            'is_overdue': run.target_due_date and run.target_due_date < today,
+            'days_until_due': (run.target_due_date - today).days if run.target_due_date else None,
+            'sample_request': {
+                'id': str(request_obj.id),
+                'request_type': request_obj.request_type,
+                'priority': request_obj.priority,
+                'brand_name': request_obj.brand_name,
+            },
+            'style': {
+                'id': str(style.id) if style else None,
+                'style_number': style.style_number if style else None,
+                'style_name': style.style_name if style else None,
+            } if style else None,
+            'revision': {
+                'id': str(revision.id) if revision else None,
+                'revision_label': revision.revision_label if revision else None,
+            } if revision else None,
+        })
+
+    return Response({
+        'runs': runs,
+        'meta': {
+            'count': len(runs),
+            'as_of': timezone.now().isoformat(),
+        }
+    })
