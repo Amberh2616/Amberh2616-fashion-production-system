@@ -1,12 +1,14 @@
 """
 Phase 3: Sample Request System - DRF Serializers
-Day 3 MVP API
+Day 3 MVP API + SampleRun (Phase 3 Refactor)
 """
 
 from rest_framework import serializers
 
 from .models import (
     SampleRequest,
+    SampleRun,
+    SampleActuals,
     SampleCostEstimate,
     T2POForSample,
     T2POLineForSample,
@@ -14,6 +16,7 @@ from .models import (
     Sample,
     SampleAttachment,
     SampleRequestStatus,
+    SampleRunStatus,
 )
 
 
@@ -153,9 +156,8 @@ class SampleRequestSerializer(SafeModelSerializer):
     # Nested read-only relationships
     attachments = SampleAttachmentSerializer(many=True, read_only=True)
     estimates = SampleCostEstimateSerializer(many=True, read_only=True)
-    mwos = SampleMWOSerializer(many=True, read_only=True)
-    t2pos = T2POForSampleSerializer(many=True, read_only=True)
     samples = SampleSerializer(many=True, read_only=True)
+    # Note: mwos and t2pos are now on SampleRun, not SampleRequest
 
     # Display fields
     request_type_display = serializers.CharField(source='get_request_type_display', read_only=True)
@@ -184,3 +186,60 @@ class SampleRequestSerializer(SafeModelSerializer):
                 })
 
         return attrs
+
+
+# ==================== Phase 3 Refactor: SampleRun ====================
+
+class SampleActualsSerializer(serializers.ModelSerializer):
+    """
+    Sample Actuals - 樣衣完成後回填的實際數據
+    """
+    class Meta:
+        model = SampleActuals
+        fields = "__all__"
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class SampleRunListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for SampleRun list view
+    """
+    run_type_display = serializers.CharField(source='get_run_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = SampleRun
+        fields = [
+            "id",
+            "sample_request",
+            "run_no",
+            "run_type",
+            "run_type_display",
+            "revision",
+            "quantity",
+            "target_due_date",
+            "status",
+            "status_display",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ("id", "created_at", "updated_at", "status_updated_at")
+
+
+class SampleRunSerializer(serializers.ModelSerializer):
+    """
+    Full SampleRun serializer with nested relationships
+    """
+    # Nested read-only relationships
+    actuals = SampleActualsSerializer(read_only=True)
+    t2pos = T2POForSampleSerializer(many=True, read_only=True)
+    mwos = SampleMWOSerializer(many=True, read_only=True)
+
+    # Display fields
+    run_type_display = serializers.CharField(source='get_run_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = SampleRun
+        fields = "__all__"
+        read_only_fields = ("id", "created_at", "updated_at", "status_updated_at")

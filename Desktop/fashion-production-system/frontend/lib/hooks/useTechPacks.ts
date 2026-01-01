@@ -16,7 +16,7 @@ import {
   // updateMeasurement,      // TODO: Implement in techpack.ts
   // updateConstructionStep, // TODO: Implement in techpack.ts
   type TechPack,
-  // type UploadTechPackData, // TODO: Define in techpack.ts
+  type UploadTechPackData,
 } from '../api/techpack';
 
 // ============================================================================
@@ -59,9 +59,9 @@ export function useTechPackDetail(id: string) {
     queryKey: techPackKeys.detail(id),
     queryFn: () => getTechPackDetail(id),
     enabled: !!id,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Auto-refresh every 5 seconds while parsing
-      return data?.status === 'parsing' ? 5000 : false;
+      return query.state.data?.status === 'parsing' ? 5000 : false;
     },
     staleTime: 10000, // Cache for 10 seconds
   });
@@ -139,7 +139,7 @@ export function useApproveTechPack(id: string) {
     }) => approveTechPack(id, data),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: techPackKeys.lists() });
-      queryClient.setQueryData(techPackKeys.detail(id), response.tech_pack);
+      queryClient.setQueryData(techPackKeys.detail(id), response);
     },
   });
 }

@@ -1,12 +1,14 @@
 """
 Phase 3: Sample Request System - API URLs
-Day 3 MVP API
+Day 3 MVP API + SampleRun (Phase 3 Refactor)
 """
 
 from rest_framework.routers import DefaultRouter
 
 from .views import (
     SampleRequestViewSet,
+    SampleRunViewSet,
+    SampleActualsViewSet,
     SampleAttachmentViewSet,
     SampleCostEstimateViewSet,
     T2POForSampleViewSet,
@@ -22,6 +24,22 @@ router.register(
     r"sample-requests",
     SampleRequestViewSet,
     basename="sample-request"
+)
+
+# ==================== Phase 3 Refactor: SampleRun ====================
+
+# Sample Run (Phase 3: 每一輪樣衣的核心中樞)
+router.register(
+    r"sample-runs",
+    SampleRunViewSet,
+    basename="sample-run"
+)
+
+# Sample Actuals
+router.register(
+    r"sample-actuals",
+    SampleActualsViewSet,
+    basename="sample-actuals"
 )
 
 # Sample Attachments

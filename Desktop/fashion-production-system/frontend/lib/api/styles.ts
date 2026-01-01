@@ -14,6 +14,9 @@ import type {
   StyleRevision,
 } from '../types';
 
+// Re-export types used by hooks
+export type { StyleRevision };
+
 const BASE_PATH = '/v2/styles';
 
 /**
@@ -54,6 +57,13 @@ export async function listStyles(
  */
 export async function getStyle(id: string): Promise<StyleDetail> {
   return apiClient<StyleDetail>(`${BASE_PATH}/${id}`);
+}
+
+/**
+ * Get revision by ID
+ */
+export async function getRevision(revisionId: string): Promise<StyleRevision> {
+  return apiClient<StyleRevision>(`/style-revisions/${revisionId}/`);
 }
 
 /**

@@ -41,6 +41,13 @@ class Style(models.Model):
         related_name='+'
     )
 
+    # Portfolio management
+    target_due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Target due date for this style (for risk calculation)'
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

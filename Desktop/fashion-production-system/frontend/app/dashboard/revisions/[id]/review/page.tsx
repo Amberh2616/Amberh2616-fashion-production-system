@@ -188,11 +188,11 @@ export default function DraftReviewPage() {
               <h1 className="text-lg font-semibold text-gray-900">{revision.filename}</h1>
               <span
                 className={`px-2 py-1 text-xs rounded font-medium ${
-                  revision.status === 'completed'
+                  (revision.status as string) === 'completed'
                     ? 'bg-green-100 text-green-800'
-                    : revision.status === 'reviewing'
+                    : (revision.status as string) === 'reviewing'
                     ? 'bg-blue-100 text-blue-800'
-                    : revision.status === 'parsed'
+                    : (revision.status as string) === 'parsed'
                     ? 'bg-yellow-100 text-yellow-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}

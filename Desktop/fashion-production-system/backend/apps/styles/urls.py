@@ -9,6 +9,7 @@ from . import views
 router = DefaultRouter()
 router.register(r'styles', views.StyleViewSet, basename='styles')
 router.register(r'style-revisions', views.StyleRevisionViewSet, basename='style-revisions')  # Fix: Avoid conflict with parsing/revisions
+router.register(r'portfolio', views.PortfolioViewSet, basename='portfolio')  # Portfolio Kanban API
 
 # Manually create nested BOM URLs
 bom_list = views.BOMItemViewSet.as_view({

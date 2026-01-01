@@ -19,7 +19,7 @@ from .serializers import (
     CostSheetPatchSerializer,
     CostSheetDuplicateSerializer,
 )
-from .services import calc_line_cost, calc_totals
+from .utils import calc_line_cost, calc_totals
 
 
 @api_view(['GET', 'POST'])

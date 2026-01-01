@@ -93,12 +93,12 @@ export function BOMEditDrawer({ item, revisionId, open, onClose }: BOMEditDrawer
       await updateMutation.mutateAsync({
         itemId: item.id,
         data: {
-          supplier_article_no: formData.supplier_article_no || null,
-          material_status: formData.material_status || null,
-          leadtime_days: formData.leadtime_days ? parseInt(formData.leadtime_days) : null,
-          consumption: formData.consumption || null,
-          unit_price: formData.unit_price || null,
-          wastage_rate: formData.wastage_rate || null,
+          supplier_article_no: formData.supplier_article_no || undefined,
+          material_status: formData.material_status || undefined,
+          leadtime_days: formData.leadtime_days ? parseInt(formData.leadtime_days) : undefined,
+          consumption: formData.consumption || undefined,
+          unit_price: formData.unit_price || undefined,
+          wastage_rate: formData.wastage_rate || undefined,
         },
       });
 

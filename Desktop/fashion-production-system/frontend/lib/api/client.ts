@@ -40,17 +40,23 @@ export async function apiClient<T>(
       return null as T;
     }
 
-    const data = await response.json();
+    const json = await response.json();
 
     if (!response.ok) {
       throw {
-        message: data.detail || data.message || 'Request failed',
+        message: json.detail || json.message || 'Request failed',
         status: response.status,
-        errors: data.errors,
+        errors: json.errors,
       } as ApiError;
     }
 
-    return data as T;
+    // Handle standard API response format: { data: T, meta: {...}, errors: [] }
+    // Return the data field if present, otherwise return the whole response
+    if (json && typeof json === 'object' && 'data' in json) {
+      return json.data as T;
+    }
+
+    return json as T;
   } catch (error) {
     if ((error as ApiError).status) {
       throw error;

@@ -95,10 +95,10 @@ export function useExtractionRun(runId: string | null) {
       return res.json();
     },
     enabled: !!runId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Poll every 2s if status is pending/processing
-      if (!data) return false;
-      const status = data?.data?.status;
+      if (!query.state.data) return false;
+      const status = query.state.data?.status;
       return status === 'pending' || status === 'processing' ? 2000 : false;
     },
   });

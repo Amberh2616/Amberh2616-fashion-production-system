@@ -10,7 +10,9 @@ from .models import (
     T2POLineForSample,
     SampleMWO,
     Sample,
-    SampleAttachment
+    SampleAttachment,
+    SampleRun,
+    SampleActuals
 )
 
 
@@ -40,6 +42,13 @@ class SampleAttachmentInline(admin.TabularInline):
     fields = ('file_type', 'caption', 'file_url')
 
 
+class SampleRunInline(admin.TabularInline):
+    model = SampleRun
+    extra = 0
+    fields = ('run_no', 'run_type', 'quantity', 'status', 'target_due_date')
+    readonly_fields = ('run_no',)
+
+
 @admin.register(SampleRequest)
 class SampleRequestAdmin(admin.ModelAdmin):
     list_display = ('id', 'brand_name', 'request_type', 'quantity_requested',
@@ -57,7 +66,7 @@ class SampleRequestAdmin(admin.ModelAdmin):
             'fields': ('need_quote_first', 'priority', 'due_date', 'purpose')
         }),
         ('Status', {
-            'fields': ('status', 'approval_status', 'status_updated_at')
+            'fields': ('status', 'status_updated_at')
         }),
         ('Notes', {
             'fields': ('notes_internal', 'notes_customer', 'brand_context_json')
@@ -68,7 +77,7 @@ class SampleRequestAdmin(admin.ModelAdmin):
         }),
     )
 
-    inlines = [SampleCostEstimateInline, SampleInline, SampleAttachmentInline]
+    inlines = [SampleRunInline, SampleCostEstimateInline, SampleInline, SampleAttachmentInline]
 
 
 @admin.register(SampleCostEstimate)
@@ -208,3 +217,55 @@ class SampleAttachmentAdmin(admin.ModelAdmin):
     list_filter = ('file_type',)
     search_fields = ('caption',)
     readonly_fields = ('uploaded_at',)
+
+
+class SampleActualsInline(admin.StackedInline):
+    model = SampleActuals
+    extra = 0
+    fields = (
+        ('labor_minutes', 'labor_cost'),
+        ('overhead_cost', 'shipping_cost', 'rework_cost'),
+        'waste_pct_actual',
+        'issues_notes',
+        'recorded_at',
+        'recorded_by'
+    )
+    readonly_fields = ('recorded_at',)
+
+
+@admin.register(SampleRun)
+class SampleRunAdmin(admin.ModelAdmin):
+    list_display = ('id', 'sample_request', 'run_no', 'run_type', 'quantity',
+                    'status', 'target_due_date', 'created_at')
+    list_filter = ('status', 'run_type')
+    search_fields = ('sample_request__brand_name', 'notes')
+    readonly_fields = ('id', 'created_at', 'updated_at', 'status_updated_at')
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('sample_request', 'run_no', 'run_type', 'quantity',
+                      'target_due_date', 'revision')
+        }),
+        ('Usage & Costing', {
+            'fields': ('guidance_usage', 'actual_usage', 'costing_version'),
+            'classes': ('collapse',)
+        }),
+        ('Status & Tracking', {
+            'fields': ('status', 'notes', 'created_by', 'status_updated_at')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    inlines = [SampleActualsInline]
+
+
+@admin.register(SampleActuals)
+class SampleActualsAdmin(admin.ModelAdmin):
+    list_display = ('sample_run', 'labor_cost', 'overhead_cost', 'shipping_cost',
+                    'rework_cost', 'waste_pct_actual', 'recorded_at')
+    list_filter = ('recorded_at',)
+    search_fields = ('sample_run__sample_request__brand_name', 'issues_notes')
+    readonly_fields = ('created_at', 'updated_at', 'recorded_at')

@@ -38,42 +38,33 @@ export interface Style {
 
 export interface StyleRevision {
   id: string;
-  style: string;
-  revision_name: string;
-  revision_number: number;
-  is_latest: boolean;
+  style: string;  // Style UUID
+  revision_label: string;  // e.g., "Rev A"
   status: RevisionStatus;
+  status_display?: string;
+  notes?: string;
 
   // Change tracking
   previous_revision: string | null;
-  detected_changes: Record<string, any>;
-  change_summary: string;
+  changes_from_previous?: Record<string, any> | null;
 
   // Draft data (AI output)
-  draft_bom: any;
-  draft_measurement: any;
-  draft_construction: any;
-  draft_packaging: any;
+  draft_bom_data?: any;
+  draft_measurement_data?: any;
+  draft_construction_data?: any;
 
-  // Verified data (human-approved)
-  verified_bom: any;
-  verified_measurement: any;
-  verified_construction: any;
-  verified_packaging: any;
+  // BOM items (when loaded with revision detail)
+  bom_items?: any[];
+  measurements?: any[];
+  construction_steps?: any[];
 
   // Approval
   approved_at: string | null;
   approved_by: string | null;
-  approval_notes: string;
 
   // Timestamps
   created_at: string;
   updated_at: string;
-  created_by: string;
-
-  // Related data
-  documents_count?: number;
-  issues_count?: number;
 }
 
 export interface BOMItem {

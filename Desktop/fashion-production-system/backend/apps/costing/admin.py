@@ -1,5 +1,9 @@
 from django.contrib import admin
-from .models import CostSheet, CostLine
+from .models import (
+    CostSheet, CostLine,
+    UsageScenario, UsageLine,
+    CostSheetGroup, CostSheetVersion, CostLineV2
+)
 
 
 class CostLineInline(admin.TabularInline):

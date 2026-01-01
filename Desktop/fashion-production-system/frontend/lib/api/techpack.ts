@@ -103,12 +103,28 @@ export async function getTechPackDetail(id: string): Promise<TechPackDetail> {
   return apiClient<TechPackDetail>(`/techpacks/${id}/`);
 }
 
+// Upload Tech Pack data type
+export interface UploadTechPackData {
+  style_number: string;
+  style_name: string;
+  season: string;
+  customer: string;
+  file: File;
+}
+
 // Upload Tech Pack
-export async function uploadTechPack(data: FormData): Promise<TechPack> {
+export async function uploadTechPack(data: UploadTechPackData): Promise<TechPack> {
+  const formData = new FormData();
+  formData.append('style_number', data.style_number);
+  formData.append('style_name', data.style_name);
+  formData.append('season', data.season);
+  formData.append('customer', data.customer);
+  formData.append('file', data.file);
+
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
   const response = await fetch(`${API_BASE_URL}/techpacks/`, {
     method: 'POST',
-    body: data,
+    body: formData,
   });
 
   if (!response.ok) {

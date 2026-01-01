@@ -54,24 +54,86 @@ class SampleRequestType:
 
 
 class SampleRequestStatus:
+    """
+    簡化版狀態（Phase 3 重構）
+    Request 只做「容器」，不承擔 quote/approve 這些流程
+    """
+    OPEN = 'open'
+    ON_HOLD = 'on_hold'
+    CLOSED = 'closed'
+    CANCELLED = 'cancelled'
+
+    CHOICES = [
+        (OPEN, 'Open'),
+        (ON_HOLD, 'On Hold'),
+        (CLOSED, 'Closed'),
+        (CANCELLED, 'Cancelled'),
+    ]
+
+    # Legacy choices (for migration compatibility)
+    LEGACY_CHOICES = [
+        ('draft', 'Draft'),
+        ('quote_requested', 'Quote Requested'),
+        ('quoted', 'Quoted'),
+        ('approved', 'Approved'),
+        ('in_execution', 'In Execution'),
+        ('completed', 'Completed'),
+        ('rejected', 'Rejected'),
+    ]
+
+
+class SampleRunStatus:
+    """
+    樣衣輪次狀態機（Phase 3 重構）
+    每一輪樣衣的核心中樞
+    """
     DRAFT = 'draft'
-    QUOTE_REQUESTED = 'quote_requested'
-    QUOTED = 'quoted'
-    APPROVED = 'approved'
-    IN_EXECUTION = 'in_execution'
-    COMPLETED = 'completed'
-    REJECTED = 'rejected'
+    MATERIALS_PLANNING = 'materials_planning'   # 確保 guidance usage
+    PO_DRAFTED = 'po_drafted'                   # T2PO draft 已生成
+    PO_ISSUED = 'po_issued'                     # T2PO 已發出
+    MWO_DRAFTED = 'mwo_drafted'                 # MWO draft 已生成
+    MWO_ISSUED = 'mwo_issued'                   # MWO 已發出
+    IN_PROGRESS = 'in_progress'                 # 製作中
+    SAMPLE_DONE = 'sample_done'                 # 樣衣完成
+    ACTUALS_RECORDED = 'actuals_recorded'       # 實際用量已回填
+    COSTING_GENERATED = 'costing_generated'     # 已產生 costing
+    QUOTED = 'quoted'                           # 已對客
+    ACCEPTED = 'accepted'
+    REVISE_NEEDED = 'revise_needed'
     CANCELLED = 'cancelled'
 
     CHOICES = [
         (DRAFT, 'Draft'),
-        (QUOTE_REQUESTED, 'Quote Requested'),
+        (MATERIALS_PLANNING, 'Materials Planning'),
+        (PO_DRAFTED, 'PO Drafted'),
+        (PO_ISSUED, 'PO Issued'),
+        (MWO_DRAFTED, 'MWO Drafted'),
+        (MWO_ISSUED, 'MWO Issued'),
+        (IN_PROGRESS, 'In Progress'),
+        (SAMPLE_DONE, 'Sample Done'),
+        (ACTUALS_RECORDED, 'Actuals Recorded'),
+        (COSTING_GENERATED, 'Costing Generated'),
         (QUOTED, 'Quoted'),
-        (APPROVED, 'Approved'),
-        (IN_EXECUTION, 'In Execution'),
-        (COMPLETED, 'Completed'),
-        (REJECTED, 'Rejected'),
+        (ACCEPTED, 'Accepted'),
+        (REVISE_NEEDED, 'Revise Needed'),
         (CANCELLED, 'Cancelled'),
+    ]
+
+
+class SampleRunType:
+    """樣衣輪次類型"""
+    PROTO = 'proto'
+    FIT = 'fit'
+    SALES = 'sales'
+    PHOTO = 'photo'
+    OTHER = 'other'
+
+    CHOICES = [
+        (PROTO, 'Proto Sample'),
+        (FIT, 'Fit Sample'),
+        (SALES, 'Sales Sample'),
+        (PHOTO, 'Photo Sample'),
+        (OTHER, 'Other'),
     ]
 
 
@@ -246,17 +308,12 @@ class SampleRequest(models.Model):
         blank=True
     )
 
-    # Status
+    # Status (simplified in Phase 3 - Request is just a container)
     status = models.CharField(
         max_length=24,
         choices=SampleRequestStatus.CHOICES,
-        default=SampleRequestStatus.DRAFT,
+        default=SampleRequestStatus.OPEN,
         db_index=True
-    )
-    approval_status = models.CharField(
-        max_length=16,
-        choices=ApprovalStatus.CHOICES,
-        default=ApprovalStatus.NA
     )
 
     # Notes
@@ -300,6 +357,320 @@ class SampleRequest(models.Model):
             raise ValidationError({
                 'request_type_custom': 'This field is required when request_type is "custom".'
             })
+
+
+class SampleRun(models.Model):
+    """
+    每一輪樣衣的核心中樞（Phase 3 重構新增）
+
+    設計原則：
+    - Sample Request 是容器，SampleRun 是實際執行單位
+    - 每次 Proto/Fit/Sales 都是一個 Run
+    - T2PO/MWO 掛在 Run 上，支援多版本
+    - 只保留單向 FK：samples → costing（避免循環依賴）
+    - ⭐ SampleRun 是唯一的「執行真相來源」
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sample_request = models.ForeignKey(
+        SampleRequest,
+        on_delete=models.CASCADE,
+        related_name='runs'
+    )
+
+    # Run 識別
+    run_no = models.IntegerField(
+        help_text='Run number within request (1, 2, 3...)'
+    )
+    run_type = models.CharField(
+        max_length=24,
+        choices=SampleRunType.CHOICES,
+        default=SampleRunType.PROTO
+    )
+
+    # 可選：指定不同 revision（如果樣衣修版）
+    revision = models.ForeignKey(
+        'styles.StyleRevision',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        help_text="Override revision for this run (if different from request)"
+    )
+
+    # 數量與交期
+    quantity = models.IntegerField(default=1, validators=[MinValueValidator(1)])
+    target_due_date = models.DateField(null=True, blank=True)
+
+    # 狀態機
+    status = models.CharField(
+        max_length=24,
+        choices=SampleRunStatus.CHOICES,
+        default=SampleRunStatus.DRAFT,
+        db_index=True
+    )
+    notes = models.TextField(blank=True)
+
+    # ⭐ 快照來源追溯（P0-1 核心）
+    source_revision_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Source revision ID at snapshot time"
+    )
+    source_revision_label = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Source revision label (e.g., 'Rev A')"
+    )
+    source_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="SHA256 hash of snapshotted BOM + Operations"
+    )
+    snapshotted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When BOM/Operations were snapshotted"
+    )
+
+    # ⭐ 狀態時間戳追蹤（P0-1 核心）
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    quoted_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    materials_at = models.DateTimeField(null=True, blank=True)
+    production_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    # ⭐ 只保留單向 FK：samples → costing（避免循環依賴）
+    guidance_usage = models.ForeignKey(
+        'costing.UsageScenario',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        help_text="Guidance usage scenario for materials planning"
+    )
+    actual_usage = models.ForeignKey(
+        'costing.UsageScenario',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        help_text="Actual usage recorded after sample done"
+    )
+
+    # After-sample 報價版（連到 Phase 2-3）
+    costing_version = models.ForeignKey(
+        'costing.CostSheetVersion',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        help_text="Generated costing version from actuals"
+    )
+
+    # Metadata
+    created_by = models.ForeignKey(
+        'core.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sample_runs_created'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    status_updated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'sample_runs'
+        ordering = ['run_no']
+        unique_together = [['sample_request', 'run_no']]
+        indexes = [
+            models.Index(fields=['sample_request', 'status']),
+            models.Index(fields=['status', 'target_due_date']),
+        ]
+
+    def __str__(self):
+        return f"Run #{self.run_no} ({self.get_run_type_display()}) - {self.get_status_display()}"
+
+    def get_effective_revision(self):
+        """取得有效的 revision（Run 優先，否則用 Request 的）"""
+        return self.revision or self.sample_request.revision
+
+
+class RunBOMLine(models.Model):
+    """
+    BOM 快照 - 從 Revision Verified BOM 複製（P0-1 核心）
+
+    Phase 2/3 邊界規則：
+    - 只複製 verified BOM items
+    - 複製後不可回寫到 Phase 2
+    - 提供 source_hash 追溯
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(
+        SampleRun,
+        on_delete=models.CASCADE,
+        related_name='bom_lines'
+    )
+    line_no = models.IntegerField(help_text="Line number in BOM snapshot")
+
+    # 快照欄位（複製時鎖定）
+    material_name = models.CharField(max_length=200)
+    material_name_zh = models.CharField(max_length=200, blank=True)
+    material_code = models.CharField(max_length=80, blank=True)
+    category = models.CharField(max_length=60, blank=True)
+    color = models.CharField(max_length=80, blank=True)
+    uom = models.CharField(max_length=16, help_text="Unit of measure")
+    consumption = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        default=0,
+        help_text="Consumption per garment"
+    )
+    wastage_pct = models.DecimalField(
+        max_digits=6,
+        decimal_places=4,
+        default=0,
+        help_text="Wastage percentage"
+    )
+    unit_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True
+    )
+    supplier_name = models.CharField(max_length=120, blank=True)
+    supplier_id = models.UUIDField(null=True, blank=True)
+    leadtime_days = models.IntegerField(default=0)
+
+    # 來源追溯
+    source_bom_item_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Original BOMItem ID for reference"
+    )
+
+    class Meta:
+        db_table = 'run_bom_lines'
+        ordering = ['line_no']
+        unique_together = [['run', 'line_no']]
+        indexes = [
+            models.Index(fields=['run']),
+            models.Index(fields=['material_name']),
+        ]
+
+    def __str__(self):
+        return f"Line {self.line_no}: {self.material_name}"
+
+
+class RunOperation(models.Model):
+    """
+    工序快照 - 從 Revision Construction 複製（P0-1 核心）
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(
+        SampleRun,
+        on_delete=models.CASCADE,
+        related_name='operations'
+    )
+    step_no = models.IntegerField(help_text="Step number")
+
+    # 快照欄位
+    step_name = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    machine_type = models.CharField(max_length=100, blank=True)
+    std_minutes = models.IntegerField(default=0, help_text="Standard minutes")
+    special_requirements = models.TextField(blank=True)
+
+    # 來源追溯
+    source_construction_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Original ConstructionStep ID for reference"
+    )
+
+    class Meta:
+        db_table = 'run_operations'
+        ordering = ['step_no']
+        unique_together = [['run', 'step_no']]
+        indexes = [
+            models.Index(fields=['run']),
+        ]
+
+    def __str__(self):
+        return f"Step {self.step_no}: {self.step_name or self.description[:50]}"
+
+
+class SampleActuals(models.Model):
+    """
+    樣衣完成後回填的實際數據（Phase 3 重構新增）
+
+    記錄實際工時、成本、損耗，用於生成 Sample Costing
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sample_run = models.OneToOneField(
+        SampleRun,
+        on_delete=models.CASCADE,
+        related_name='actuals'
+    )
+
+    # 工時
+    labor_minutes = models.IntegerField(
+        null=True, blank=True,
+        help_text="Actual labor time in minutes"
+    )
+    labor_cost = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text="Actual labor cost"
+    )
+
+    # 其他成本
+    overhead_cost = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True
+    )
+    shipping_cost = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True
+    )
+    rework_cost = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text="Cost of any rework required"
+    )
+
+    # 損耗
+    waste_pct_actual = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        null=True, blank=True,
+        help_text="Actual wastage percentage"
+    )
+
+    # 備註
+    issues_notes = models.TextField(
+        blank=True,
+        help_text="Notes about issues encountered"
+    )
+
+    # 審計
+    recorded_by = models.ForeignKey(
+        'core.User',
+        null=True, blank=True,
+        on_delete=models.SET_NULL
+    )
+    recorded_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'sample_actuals'
+        verbose_name = 'Sample Actuals'
+        verbose_name_plural = 'Sample Actuals'
+
+    def __str__(self):
+        return f"Actuals for {self.sample_run}"
 
 
 class SampleCostEstimate(models.Model):
@@ -395,12 +766,27 @@ class T2POForSample(models.Model):
     """
     T2 PO for Sample (樣品調料採購單)
     Contract document - immutable after issued
+
+    Phase 3 重構：改掛在 SampleRun，支援多版本
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # ⭐ Phase 3: 改掛在 SampleRun（nullable for migration）
+    sample_run = models.ForeignKey(
+        SampleRun,
+        on_delete=models.CASCADE,
+        null=True,  # Nullable for migration
+        blank=True,
+        related_name='t2pos'
+    )
+
+    # Legacy: 舊版掛在 request（migration 後會清除）
     sample_request = models.ForeignKey(
         SampleRequest,
         on_delete=models.CASCADE,
-        related_name='t2pos'
+        null=True,  # Made nullable for migration
+        blank=True,
+        related_name='t2pos_legacy'
     )
     estimate = models.ForeignKey(
         SampleCostEstimate,
@@ -408,6 +794,16 @@ class T2POForSample(models.Model):
         null=True,
         blank=True,
         related_name='t2pos'
+    )
+
+    # ⭐ Phase 3: 支援多版本
+    version_no = models.IntegerField(
+        default=1,
+        help_text='Version number within run (1, 2, 3...)'
+    )
+    is_latest = models.BooleanField(
+        default=True,
+        help_text='Is this the latest version for this run?'
     )
 
     # PO Info
@@ -466,14 +862,18 @@ class T2POForSample(models.Model):
         db_table = 't2pos_for_sample'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['sample_request', 'status']),
+            models.Index(fields=['sample_run', 'status']),
+            models.Index(fields=['sample_run', 'version_no']),
             models.Index(fields=['supplier_name', 'status']),
             models.Index(fields=['po_no']),
             models.Index(fields=['delivery_date']),
         ]
+        # Note: unique_together for [sample_run, version_no] will be added
+        # after data migration when sample_run is not null
 
     def __str__(self):
-        return f"{self.po_no or 'DRAFT'} - {self.supplier_name}"
+        version_str = f" v{self.version_no}" if self.version_no > 1 else ""
+        return f"{self.po_no or 'DRAFT'}{version_str} - {self.supplier_name}"
 
 
 class T2POLineForSample(models.Model):
@@ -548,18 +948,43 @@ class SampleMWO(models.Model):
     """
     Sample Manufacturing Work Order (樣衣製造單)
     Historical instruction - immutable after issued
+
+    Phase 3 重構：改掛在 SampleRun，支援多版本
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # ⭐ Phase 3: 改掛在 SampleRun（nullable for migration）
+    sample_run = models.ForeignKey(
+        SampleRun,
+        on_delete=models.CASCADE,
+        null=True,  # Nullable for migration
+        blank=True,
+        related_name='mwos'
+    )
+
+    # Legacy: 舊版掛在 request（migration 後會清除）
     sample_request = models.ForeignKey(
         SampleRequest,
         on_delete=models.CASCADE,
-        related_name='mwos'
+        null=True,  # Made nullable for migration
+        blank=True,
+        related_name='mwos_legacy'
     )
     estimate = models.ForeignKey(
         SampleCostEstimate,
         on_delete=models.SET_NULL,
         null=True,
         blank=True
+    )
+
+    # ⭐ Phase 3: 支援多版本
+    version_no = models.IntegerField(
+        default=1,
+        help_text='Version number within run (1, 2, 3...)'
+    )
+    is_latest = models.BooleanField(
+        default=True,
+        help_text='Is this the latest version for this run?'
     )
 
     # MWO Info
@@ -612,15 +1037,18 @@ class SampleMWO(models.Model):
     class Meta:
         db_table = 'sample_mwos'
         ordering = ['-created_at']
-        # Phase 3: 1 request → 1 MWO (can relax in Phase 4+)
-        unique_together = [['sample_request']]
         indexes = [
+            models.Index(fields=['sample_run', 'status']),
+            models.Index(fields=['sample_run', 'version_no']),
             models.Index(fields=['factory_name', 'status']),
             models.Index(fields=['due_date']),
         ]
+        # Note: unique_together for [sample_run, version_no] will be added
+        # after data migration when sample_run is not null
 
     def __str__(self):
-        return f"{self.mwo_no or 'DRAFT'} - {self.factory_name}"
+        version_str = f" v{self.version_no}" if self.version_no > 1 else ""
+        return f"{self.mwo_no or 'DRAFT'}{version_str} - {self.factory_name}"
 
     def save(self, *args, **kwargs):
         # Auto-generate snapshot_hash

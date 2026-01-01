@@ -5,6 +5,7 @@ Styles Views - v2.2.1
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
@@ -164,26 +165,53 @@ class StyleRevisionViewSet(viewsets.ViewSet):
             org = Organization.objects.first()
         return org
 
+    def list(self, request):
+        """
+        GET /api/v2/style-revisions/
+        List all style revisions (for dropdown selection)
+        """
+        revisions = StyleRevision.objects.select_related('style').order_by('-created_at')
+        data = [
+            {
+                'id': str(rev.id),
+                'revision_label': rev.revision_label,
+                'style_number': rev.style.style_number if rev.style else None,
+                'style_name': rev.style.style_name if rev.style else None,
+                'status': rev.status,
+                'created_at': rev.created_at.isoformat(),
+            }
+            for rev in revisions
+        ]
+        return Response({'results': data})
+
     def retrieve(self, request, pk=None):
         """
-        GET /api/v2/revisions/{id}
-        Get single revision with all data
+        GET /api/v2/style-revisions/{id}/
+        Get single revision with style info
         """
-        org = self._get_organization(request)
-        if org is None:
-            return api_error(
-                code=ErrorCodes.UNAUTHORIZED,
-                message="Organization not found",
-                status_code=status.HTTP_403_FORBIDDEN
+        # Development mode: skip organization filter
+        from django.conf import settings
+
+        if settings.DEBUG:
+            revision = get_object_or_404(
+                StyleRevision.objects.select_related('style'),
+                pk=pk
+            )
+        else:
+            org = self._get_organization(request)
+            if org is None:
+                return api_error(
+                    code=ErrorCodes.UNAUTHORIZED,
+                    message="Organization not found",
+                    status_code=status.HTTP_403_FORBIDDEN
+                )
+            revision = get_object_or_404(
+                StyleRevision.objects.select_related('style'),
+                pk=pk,
+                style__organization=org
             )
 
-        revision = get_object_or_404(
-            StyleRevision.objects.select_related('style'),
-            pk=pk,
-            style__organization=org
-        )
         serializer = StyleRevisionSerializer(revision)
-
         return api_success(data=serializer.data)
 
     @action(detail=True, methods=['post'], url_path='parse')
@@ -437,3 +465,57 @@ class StyleRevisionViewSet(viewsets.ViewSet):
                 'created': created_counts
             }
         )
+
+
+class PortfolioViewSet(viewsets.ViewSet):
+    """
+    Portfolio Kanban API
+    Phase 2-3: Stage 推導 + Risk 計算
+    """
+    permission_classes = []  # TODO: Enable authentication in production
+
+    @action(detail=False, methods=['get'], url_path='kanban')
+    def kanban(self, request):
+        """
+        GET /api/v2/portfolio/kanban/?organization_id={id}
+        返回 5 欄 Kanban 數據（columns + cards）
+        """
+        from apps.core.models import Organization
+        from .portfolio import build_kanban_data
+
+        # ✅ 安全的 Organization 取得方式
+        org_id = request.query_params.get('organization_id')
+
+        if org_id:
+            try:
+                organization = Organization.objects.get(id=org_id)
+                # TODO: 檢查 request.user 是否有權限存取此 org
+            except Organization.DoesNotExist:
+                return api_error(
+                    message='Organization not found',
+                    code=ErrorCodes.NOT_FOUND,
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # ✅ Fallback: 若你有 user.organization，改用這個
+            organization = getattr(request.user, 'organization', None)
+            if not organization:
+                # 開發階段：取第一個 org（⚠️ 生產環境必須移除）
+                organization = Organization.objects.first()
+
+        if not organization:
+            return api_error(
+                message='organization_id is required',
+                code=ErrorCodes.VALIDATION_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            data = build_kanban_data(organization)
+            return api_success(data=data)
+        except Exception as e:
+            return api_error(
+                message=f'Failed to build kanban data: {str(e)}',
+                code=ErrorCodes.INTERNAL_ERROR,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
