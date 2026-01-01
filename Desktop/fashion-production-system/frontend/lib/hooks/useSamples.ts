@@ -602,15 +602,12 @@ export function useKanbanCounts(daysAhead?: number) {
   });
 }
 
+import type { KanbanFilters } from '../api/samples';
+
 /**
- * Fetch Kanban runs for board
+ * Fetch Kanban runs for board (300+ styles support)
  */
-export function useKanbanRuns(params?: {
-  status?: string;
-  priority?: string;
-  overdue_only?: boolean;
-  limit?: number;
-}) {
+export function useKanbanRuns(params?: KanbanFilters) {
   return useQuery({
     queryKey: ['kanban-runs', params],
     queryFn: () => fetchKanbanRuns(params),

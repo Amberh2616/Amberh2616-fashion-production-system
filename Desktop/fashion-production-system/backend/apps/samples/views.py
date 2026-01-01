@@ -657,17 +657,23 @@ def kanban_counts(request):
 @perm_classes([AllowAny])
 def kanban_runs(request):
     """
-    P0-2: Get SampleRuns for Kanban board
+    P0-2: Get SampleRuns for Kanban board (300+ styles support)
 
     Returns runs with minimal data for Kanban cards.
 
     Query params:
     - status: Filter by status (can be multiple, comma-separated)
-    - priority: Filter by priority
+    - priority: Filter by priority (urgent/normal/low)
     - overdue_only: Show only overdue items
+    - due_this_week: Show items due within 7 days
+    - brand: Filter by brand name (partial match)
+    - style_number: Filter by style number (partial match)
+    - run_type: Filter by run type (proto/fit/sales/photo)
+    - search: General search (style_number or brand)
     - limit: Max items per status (default: 50)
     """
     today = timezone.now().date()
+    week_later = today + timedelta(days=7)
 
     # Base queryset
     queryset = SampleRun.objects.select_related(
@@ -691,6 +697,39 @@ def kanban_runs(request):
     overdue_only = request.query_params.get('overdue_only', '').lower() == 'true'
     if overdue_only:
         queryset = queryset.filter(target_due_date__lt=today)
+
+    due_this_week = request.query_params.get('due_this_week', '').lower() == 'true'
+    if due_this_week:
+        queryset = queryset.filter(
+            target_due_date__gte=today,
+            target_due_date__lte=week_later
+        )
+
+    # Brand filter (partial match)
+    brand = request.query_params.get('brand')
+    if brand:
+        queryset = queryset.filter(sample_request__brand_name__icontains=brand)
+
+    # Style number filter (partial match)
+    style_number = request.query_params.get('style_number')
+    if style_number:
+        queryset = queryset.filter(
+            sample_request__revision__style__style_number__icontains=style_number
+        )
+
+    # Run type filter
+    run_type = request.query_params.get('run_type')
+    if run_type:
+        queryset = queryset.filter(run_type=run_type)
+
+    # General search (style_number or brand)
+    search = request.query_params.get('search')
+    if search:
+        queryset = queryset.filter(
+            Q(sample_request__brand_name__icontains=search) |
+            Q(sample_request__revision__style__style_number__icontains=search) |
+            Q(sample_request__revision__style__style_name__icontains=search)
+        )
 
     # Limit per status
     limit = int(request.query_params.get('limit', 50))

@@ -577,15 +577,25 @@ export async function fetchKanbanCounts(daysAhead?: number): Promise<KanbanCount
 }
 
 /**
- * Get Kanban runs for board display
- * GET /kanban/runs/?status=draft,materials_planning&priority=urgent&overdue_only=true
+ * Kanban filter parameters (300+ styles support)
  */
-export async function fetchKanbanRuns(params?: {
+export interface KanbanFilters {
   status?: string;
   priority?: string;
   overdue_only?: boolean;
+  due_this_week?: boolean;
+  brand?: string;
+  style_number?: string;
+  run_type?: string;
+  search?: string;
   limit?: number;
-}): Promise<KanbanRunsResponse> {
+}
+
+/**
+ * Get Kanban runs for board display
+ * GET /kanban/runs/?status=draft,materials_planning&priority=urgent&overdue_only=true
+ */
+export async function fetchKanbanRuns(params?: KanbanFilters): Promise<KanbanRunsResponse> {
   const searchParams = new URLSearchParams();
   if (params?.status) {
     searchParams.set('status', params.status);
@@ -595,6 +605,21 @@ export async function fetchKanbanRuns(params?: {
   }
   if (params?.overdue_only) {
     searchParams.set('overdue_only', 'true');
+  }
+  if (params?.due_this_week) {
+    searchParams.set('due_this_week', 'true');
+  }
+  if (params?.brand) {
+    searchParams.set('brand', params.brand);
+  }
+  if (params?.style_number) {
+    searchParams.set('style_number', params.style_number);
+  }
+  if (params?.run_type) {
+    searchParams.set('run_type', params.run_type);
+  }
+  if (params?.search) {
+    searchParams.set('search', params.search);
   }
   if (params?.limit) {
     searchParams.set('limit', String(params.limit));
