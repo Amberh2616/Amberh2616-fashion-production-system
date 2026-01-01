@@ -158,7 +158,7 @@ class CostSheet(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.revision.filename} - {self.get_costing_type_display()} v{self.version_no}"
+        return f"{self.revision.revision_label} - {self.get_costing_type_display()} v{self.version_no}"
 
     @classmethod
     def get_next_version_no(cls, revision, costing_type):
@@ -397,7 +397,7 @@ class UsageScenario(models.Model):
         verbose_name_plural = 'Usage Scenarios'
 
     def __str__(self):
-        return f"{self.revision.filename} - {self.get_purpose_display()} v{self.version_no}"
+        return f"{self.revision.revision_label} - {self.get_purpose_display()} v{self.version_no}"
 
     def is_locked(self):
         """

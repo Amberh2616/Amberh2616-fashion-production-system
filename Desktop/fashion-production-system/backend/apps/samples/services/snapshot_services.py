@@ -75,7 +75,7 @@ def ensure_guidance_usage(run_id: str) -> UsageScenario:
 
     if not bom_items.exists():
         raise ValidationError(
-            f"No confirmed BOM items found for revision {revision.filename}. "
+            f"No confirmed BOM items found for revision {revision.revision_label}. "
             "Please confirm BOM items in Phase 2 before generating guidance usage."
         )
 
@@ -483,7 +483,7 @@ def generate_sample_costing_from_actuals(run_id: str) -> CostSheetVersion:
             source_usage_line_id=line.id,
             # Material info
             material_name=line.bom_item.material_name,
-            material_name_zh=line.bom_item.material_name_zh or '',
+            material_name_zh='',  # BOMItem doesn't have Chinese name field
             category=line.bom_item.category,
             supplier=line.bom_item.supplier or '',
             supplier_article_no=line.bom_item.supplier_article_no or '',

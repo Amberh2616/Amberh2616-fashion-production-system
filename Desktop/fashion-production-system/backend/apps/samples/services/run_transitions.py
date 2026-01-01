@@ -105,7 +105,7 @@ def validate_materials_planning(run: SampleRun) -> None:
     if not run.guidance_usage:
         raise ValidationError("guidance_usage must exist before generating T2PO")
 
-    if not run.guidance_usage.lines.exists():
+    if not run.guidance_usage.usage_lines.exists():
         raise ValidationError("guidance_usage must have usage lines")
 
 
@@ -115,8 +115,8 @@ def validate_po_drafted(run: SampleRun) -> None:
     if not latest_po:
         raise ValidationError("No T2PO found")
 
-    if latest_po.status != 'issued':
-        raise ValidationError(f"Latest T2PO status must be 'issued', got '{latest_po.status}'")
+    if latest_po.status != 'draft':
+        raise ValidationError(f"Latest T2PO must be 'draft' to issue, got '{latest_po.status}'")
 
 
 def validate_po_issued(run: SampleRun) -> None:
@@ -132,8 +132,8 @@ def validate_mwo_drafted(run: SampleRun) -> None:
     if not latest_mwo:
         raise ValidationError("No MWO found")
 
-    if latest_mwo.status != 'issued':
-        raise ValidationError(f"Latest MWO status must be 'issued', got '{latest_mwo.status}'")
+    if latest_mwo.status != 'draft':
+        raise ValidationError(f"Latest MWO must be 'draft' to issue, got '{latest_mwo.status}'")
 
 
 def validate_sample_done(run: SampleRun) -> None:
@@ -141,17 +141,24 @@ def validate_sample_done(run: SampleRun) -> None:
     if not hasattr(run, 'actuals'):
         raise ValidationError("SampleActuals must exist")
 
-    if not run.actual_usage:
-        raise ValidationError("actual_usage must exist")
-
-    if not run.actual_usage.lines.exists():
-        raise ValidationError("actual_usage must have usage lines")
+    # actual_usage will be created by ensure_actual_usage side effect
+    # Just ensure we have guidance_usage to copy from
+    if not run.guidance_usage:
+        raise ValidationError("guidance_usage must exist to create actual_usage")
 
 
 def validate_actuals_recorded(run: SampleRun) -> None:
     """Prerequisite: actuals_recorded → costing_generated"""
-    if not run.costing_version:
-        raise ValidationError("costing_version must exist")
+    # costing_version will be created by generate_sample_costing_from_actuals side effect
+    # Check that we have the data needed to generate costing
+    if not run.actual_usage:
+        raise ValidationError("actual_usage must exist")
+
+    if not run.actual_usage.usage_lines.exists():
+        raise ValidationError("actual_usage must have usage lines")
+
+    if not hasattr(run, 'actuals'):
+        raise ValidationError("SampleActuals must exist with cost data")
 
 
 # Map prerequisites to transitions

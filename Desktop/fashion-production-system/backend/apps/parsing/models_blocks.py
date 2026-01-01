@@ -73,7 +73,7 @@ class RevisionPage(models.Model):
         verbose_name_plural = 'Revision Pages'
 
     def __str__(self):
-        return f"{self.revision.filename} - Page {self.page_number}"
+        return f"{self.revision.revision_label} - Page {self.page_number}"
 
 
 class DraftBlock(models.Model):
