@@ -257,34 +257,71 @@ def generate_mwo_snapshot(run_id: str) -> SampleMWO:
     # 把舊 latest 全部關掉
     run.mwos.filter(is_latest=True).update(is_latest=False)
 
-    # 建立 BOM 快照
+    # 建立增強 BOM 快照 (Enhanced with material code, color, total consumption, Chinese translation)
     bom_snapshot = [{
+        'line_no': idx,
+        'material_code': ul.bom_item.supplier_article_no or '',  # Material/Article code
         'material_name': ul.bom_item.material_name,
+        'material_name_zh': getattr(ul.bom_item, 'material_name_zh', '') or '',  # Chinese translation
         'category': ul.bom_item.category,
-        'consumption_per_piece': str(ul.consumption),
-        'unit': ul.consumption_unit,
-        'supplier': ul.bom_item.supplier or '',
-        'supplier_article_no': ul.bom_item.supplier_article_no or '',
-    } for ul in guidance.usage_lines.select_related('bom_item').all()]
+        'color': ul.bom_item.color or '',  # Color
+        'supplier_name': ul.bom_item.supplier or '',
+        'consumption': str(ul.consumption),
+        'total_consumption': str(ul.consumption * run.quantity),  # Total = unit × qty
+        'uom': ul.consumption_unit,
+        'unit_price': str(getattr(ul.bom_item, 'unit_price', 0) or 0),
+        'leadtime_days': getattr(ul.bom_item, 'leadtime_days', 0) or 0,
+    } for idx, ul in enumerate(guidance.usage_lines.select_related('bom_item').all(), 1)]
 
-    # 建立 Construction 快照
+    # 建立增強 Construction 快照 (Enhanced with stitch type, machine details)
     construction_steps = ConstructionStep.objects.filter(
         revision=revision,
         is_verified=True,
         translation_status='confirmed'
-    ).order_by('step_no')
+    ).order_by('step_number')
 
     construction_snapshot = [{
-        'step_no': s.step_no,
+        'step_no': s.step_number,
         'description': s.description,
-        'description_zh': s.description_zh or '',
+        'description_zh': getattr(s, 'description_zh', '') or '',  # Chinese translation
+        'machine_type': s.machine_type or '',
+        'machine_type_zh': getattr(s, 'machine_type_zh', '') or '',  # Chinese translation
+        'stitch_type': s.stitch_type or '',  # Stitch type (e.g., 四針六線併縫)
+        'stitch_type_zh': getattr(s, 'stitch_type_zh', '') or '',  # Chinese translation
+        'special_requirements': '',  # Special notes (to be added later)
     } for s in construction_steps]
+
+    # 建立增強 QC 快照 (Enhanced with labels, packaging requirements)
+    qc_snapshot = {
+        'labels': [
+            {
+                'type': 'logo',
+                'position': 'TBD - To be defined based on style requirements',
+                'method': 'Heat transfer / Sewn-in'
+            },
+            {
+                'type': 'care_label',
+                'position': 'TBD - To be defined based on style requirements',
+                'method': 'Sewn-in'
+            }
+        ],
+        'packaging': {
+            'polybag': 'Standard polybag (size TBD)',
+            'carton': 'Standard carton box',
+            'special_requirements': []
+        },
+        'inspections': {
+            'measurement_tolerance': 'Per spec sheet',
+            'visual_inspection': 'Per AQL standard',
+            'functional_tests': []
+        }
+    }
 
     # 計算 snapshot_hash
     canonical = json.dumps({
         'bom': bom_snapshot,
         'construction': construction_snapshot,
-        'qc': []
+        'qc': qc_snapshot
     }, sort_keys=True)
     snapshot_hash = hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -299,7 +336,7 @@ def generate_mwo_snapshot(run_id: str) -> SampleMWO:
         snapshot_hash=snapshot_hash,
         bom_snapshot_json=bom_snapshot,
         construction_snapshot_json=construction_snapshot,
-        qc_snapshot_json=[],
+        qc_snapshot_json=qc_snapshot,  # NEW: Populated QC snapshot
     )
 
     return mwo

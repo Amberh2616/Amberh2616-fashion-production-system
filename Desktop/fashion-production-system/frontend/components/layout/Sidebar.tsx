@@ -15,18 +15,20 @@ import {
   User,
   ChevronLeft,
   ChevronRight,
+  Upload,
+  Columns3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Upload", href: "/dashboard/upload", icon: Upload },
   { name: "Styles", href: "/dashboard/styles", icon: FolderKanban },
-  { name: "Tech Pack", href: "/dashboard/techpacks", icon: FileText },
   { name: "BOM", href: "/dashboard/bom", icon: Package },
   { name: "Samples", href: "/dashboard/samples", icon: Shirt },
+  { name: "Kanban", href: "/dashboard/samples/kanban", icon: Columns3 },
   { name: "Procurement", href: "/dashboard/procurement", icon: ShoppingCart },
-  { name: "Email", href: "/dashboard/email", icon: Mail },
 ];
 
 const bottomNavigation = [

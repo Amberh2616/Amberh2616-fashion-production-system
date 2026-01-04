@@ -306,6 +306,27 @@ class BOMItem(models.Model):
         help_text="Translation confirmation status"
     )
 
+    # Translation content fields
+    material_name_zh = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Chinese translation of material name"
+    )
+    description_zh = models.TextField(
+        blank=True,
+        help_text="Chinese translation of description/notes"
+    )
+    translated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this item was translated"
+    )
+    translated_by = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Who/what translated this (e.g., ai:claude-sonnet, human:username)"
+    )
+
     class Meta:
         db_table = 'bom_items'
         verbose_name = 'BOM Item'
@@ -447,6 +468,32 @@ class ConstructionStep(models.Model):
         choices=TRANSLATION_STATUS_CHOICES,
         default='pending',
         help_text="Translation confirmation status"
+    )
+
+    # Translation content fields
+    description_zh = models.TextField(
+        blank=True,
+        help_text="Chinese translation of description"
+    )
+    stitch_type_zh = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Chinese translation of stitch type"
+    )
+    machine_type_zh = models.CharField(
+        max_length=150,
+        blank=True,
+        help_text="Chinese translation of machine type"
+    )
+    translated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this step was translated"
+    )
+    translated_by = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Who/what translated this"
     )
 
     class Meta:

@@ -192,13 +192,14 @@ class Command(BaseCommand):
 
                 # 處理 usage（轉換為 Decimal）
                 try:
-                    consumption_value = Decimal(usage_clean.replace('$', '').replace(',', '')) if usage_clean else None
+                    consumption_value = Decimal(usage_clean.replace('$', '').replace(',', '')) if usage_clean else Decimal('0')
                 except:
-                    consumption_value = None
+                    consumption_value = Decimal('0')
 
-                # 跳過沒有有效 consumption 的項目（None 或 0）
-                if consumption_value is None or consumption_value == 0:
-                    continue
+                # 允許 consumption = 0 的項目（BOM SPEC 可能是待確認）
+                # 但跳過完全沒有 consumption 欄位的行
+                if consumption_value is None:
+                    consumption_value = Decimal('0')
 
                 # 處理 price（轉換為 Decimal）
                 try:

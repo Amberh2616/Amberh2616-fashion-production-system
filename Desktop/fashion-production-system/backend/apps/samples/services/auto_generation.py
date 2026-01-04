@@ -181,7 +181,7 @@ def snapshot_bom_to_run(revision: StyleRevision, run: SampleRun) -> int:
             run=run,
             line_no=idx,
             material_name=item.material_name or '',
-            material_name_zh=item.material_name_zh or '',
+            material_name_zh=getattr(item, 'material_name_zh', '') or '',  # Copy Chinese translation
             material_code=item.supplier_article_no or '',
             category=item.category or '',
             color=item.color or '',
@@ -212,7 +212,8 @@ def snapshot_operations_to_run(revision: StyleRevision, run: SampleRun) -> int:
     """
     steps = ConstructionStep.objects.filter(
         revision=revision,
-        is_verified=True
+        is_verified=True,
+        translation_status='confirmed'
     ).order_by('step_number')
 
     created = 0
@@ -220,11 +221,14 @@ def snapshot_operations_to_run(revision: StyleRevision, run: SampleRun) -> int:
         RunOperation.objects.create(
             run=run,
             step_no=step.step_number,
-            step_name=step.step_name or '',
+            step_name='',  # ConstructionStep doesn't have step_name field
             description=step.description or '',
+            description_zh=getattr(step, 'description_zh', '') or '',
             machine_type=step.machine_type or '',
+            machine_type_zh=getattr(step, 'machine_type_zh', '') or '',
+            stitch_type_zh=getattr(step, 'stitch_type_zh', '') or '',
             std_minutes=0,  # TODO: Add from step if available
-            special_requirements=step.special_requirements or '',
+            special_requirements='',  # ConstructionStep doesn't have special_requirements field
             source_construction_id=step.id,
         )
         created += 1
@@ -341,7 +345,61 @@ def create_with_initial_run(
         # 8. Snapshot Operations to RunOperation
         documents['operation_count'] = snapshot_operations_to_run(revision, run)
 
-        # 9. Create MWO (draft)
+        # 9. Build enhanced MWO snapshots from RunBOMLine and RunOperation
+        # Enhanced BOM snapshot with material code, color, total consumption, Chinese translation
+        bom_snapshot = [{
+            'line_no': line.line_no,
+            'material_code': line.material_code or '',  # Article #
+            'material_name': line.material_name,
+            'material_name_zh': line.material_name_zh or '',  # NEW: Chinese translation
+            'category': line.category,
+            'color': line.color or '',
+            'supplier_name': line.supplier_name,
+            'consumption': str(line.consumption),
+            'total_consumption': str(line.consumption * run.quantity),  # Total = unit × qty
+            'uom': line.uom,
+            'unit_price': str(line.unit_price or 0),
+            'leadtime_days': line.leadtime_days or 0,
+        } for line in run.bom_lines.all()]
+
+        # Enhanced construction snapshot with stitch type, special notes, Chinese translation
+        construction_snapshot = [{
+            'step_no': op.step_no,
+            'description': op.description,
+            'description_zh': getattr(op, 'description_zh', '') or '',  # NEW: Chinese translation
+            'machine_type': op.machine_type,
+            'machine_type_zh': getattr(op, 'machine_type_zh', '') or '',  # NEW: Chinese translation
+            'std_minutes': op.std_minutes or 0,
+            'special_requirements': op.special_requirements or '',
+        } for op in run.operations.all()]
+
+        # Enhanced QC snapshot with label positions and packaging requirements
+        qc_snapshot = {
+            'labels': [
+                {
+                    'type': 'logo',
+                    'position': 'TBD - To be defined based on style requirements',
+                    'method': 'Heat transfer / Sewn-in'
+                },
+                {
+                    'type': 'care_label',
+                    'position': 'TBD - To be defined based on style requirements',
+                    'method': 'Sewn-in'
+                }
+            ],
+            'packaging': {
+                'polybag': 'Standard polybag (size TBD)',
+                'carton': 'Standard carton box',
+                'special_requirements': []
+            },
+            'inspections': {
+                'measurement_tolerance': 'Per spec sheet',
+                'visual_inspection': 'Per AQL standard',
+                'functional_tests': []
+            }
+        }
+
+        # 10. Create MWO (draft) with populated snapshots
         mwo = SampleMWO.objects.create(
             sample_run=run,
             version_no=1,
@@ -351,9 +409,9 @@ def create_with_initial_run(
             status='draft',
             source_revision_id=revision.id,
             snapshot_hash=source_hash,
-            bom_snapshot_json=[],  # Populated by snapshot
-            construction_snapshot_json=[],
-            qc_snapshot_json={},
+            bom_snapshot_json=bom_snapshot,
+            construction_snapshot_json=construction_snapshot,
+            qc_snapshot_json=qc_snapshot,  # NEW: Populated QC snapshot
         )
         documents['mwo_id'] = str(mwo.id)
         documents['mwo_no'] = mwo.mwo_no

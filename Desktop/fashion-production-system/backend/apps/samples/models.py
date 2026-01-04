@@ -616,7 +616,10 @@ class RunOperation(models.Model):
     # 快照欄位
     step_name = models.CharField(max_length=200, blank=True)
     description = models.TextField(blank=True)
+    description_zh = models.TextField(blank=True, help_text="Chinese translation of operation description")
     machine_type = models.CharField(max_length=100, blank=True)
+    machine_type_zh = models.CharField(max_length=150, blank=True, help_text="Chinese translation of machine type")
+    stitch_type_zh = models.CharField(max_length=100, blank=True, help_text="Chinese translation of stitch type")
     std_minutes = models.IntegerField(default=0, help_text="Standard minutes")
     special_requirements = models.TextField(blank=True)
 

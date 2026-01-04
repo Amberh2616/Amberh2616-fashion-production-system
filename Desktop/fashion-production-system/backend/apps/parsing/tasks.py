@@ -106,7 +106,11 @@ def generate_stub_extraction_data(revision: StyleRevision, targets: list) -> dic
 
     This is Phase 1 fake data to enable UI development.
     Replace with real AI parser in Phase 2.
+
+    🆕 Added: Auto-translation using machine_translate()
     """
+    from .utils.translate import machine_translate
+
     result = {}
     issues = []
 
@@ -121,6 +125,7 @@ def generate_stub_extraction_data(revision: StyleRevision, targets: list) -> dic
                     'item_number': 1,
                     'category': 'fabric',
                     'description': 'Nulu fabric',
+                    'description_zh': machine_translate('Nulu fabric'),  # 🆕 Auto-translate
                     'material_code': 'NULU-001',
                     'color': 'Black',
                     'supplier': None,  # Missing - will create issue
@@ -146,6 +151,7 @@ def generate_stub_extraction_data(revision: StyleRevision, targets: list) -> dic
                     'item_number': 2,
                     'category': 'trim',
                     'description': 'Elastic waistband 1" width',
+                    'description_zh': machine_translate('Elastic waistband 1" width'),  # 🆕 Auto-translate
                     'material_code': 'ELAS-WB-1',
                     'color': 'Black',
                     'supplier': None,
@@ -278,7 +284,9 @@ def generate_stub_extraction_data(revision: StyleRevision, targets: list) -> dic
                     'step_number': 1,
                     'step_name': 'Cut fabric',
                     'description': 'Cut main body panels from Nulu fabric per marker',
+                    'description_zh': machine_translate('Cut main body panels from Nulu fabric per marker'),  # 🆕 Auto-translate
                     'machine_type': 'Cutting machine',
+                    'machine_type_zh': machine_translate('Cutting machine'),  # 🆕 Auto-translate
                     'special_requirements': 'Mind fabric stretch direction',
                     'qc_checkpoints': ['Check grain line', 'Verify pattern placement'],
                     'evidence': {
@@ -297,7 +305,9 @@ def generate_stub_extraction_data(revision: StyleRevision, targets: list) -> dic
                     'step_number': 2,
                     'step_name': 'Sew side seams',
                     'description': 'Join front and back panels at side seams using flatlock stitch',
+                    'description_zh': machine_translate('Join front and back panels at side seams using flatlock stitch'),  # 🆕 Auto-translate
                     'machine_type': 'Flatlock machine',
+                    'machine_type_zh': machine_translate('Flatlock machine'),  # 🆕 Auto-translate
                     'special_requirements': 'Use Nylon thread, 3-thread flatlock',
                     'qc_checkpoints': ['Check seam flatness', 'Verify stitch density'],
                     'evidence': {

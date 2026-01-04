@@ -49,7 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Plus, ArrowUpDown, Search } from 'lucide-react';
+import { Loader2, Plus, ArrowUpDown, Search, Columns3 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api/client';
@@ -263,10 +263,19 @@ export default function SampleRequestListPage() {
           </p>
         </div>
 
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Request
-        </Button>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/dashboard/samples/kanban')}
+          >
+            <Columns3 className="mr-2 h-4 w-4" />
+            View Kanban
+          </Button>
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Request
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

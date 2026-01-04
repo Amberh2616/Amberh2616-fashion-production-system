@@ -250,30 +250,42 @@ export default function DashboardPage() {
       <div className="bg-white rounded-lg border border-slate-200 p-6">
         <h3 className="font-semibold text-slate-900 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-500 transition-all">
+          <Link
+            href="/dashboard/upload"
+            className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-500 transition-all"
+          >
             <FileText className="w-6 h-6 text-blue-600" />
             <span className="text-sm font-medium text-slate-700">
               Upload Tech Pack
             </span>
-          </button>
-          <button className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-purple-500 transition-all">
+          </Link>
+          <Link
+            href="/dashboard/styles"
+            className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-purple-500 transition-all"
+          >
             <Package className="w-6 h-6 text-purple-600" />
             <span className="text-sm font-medium text-slate-700">
-              Create BOM
+              View Styles
             </span>
-          </button>
-          <button className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-green-500 transition-all">
+          </Link>
+          <Link
+            href="/dashboard/samples"
+            className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-green-500 transition-all"
+          >
             <Shirt className="w-6 h-6 text-green-600" />
             <span className="text-sm font-medium text-slate-700">
-              Add Sample
+              Sample Requests
             </span>
-          </button>
-          <button className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-orange-500 transition-all">
+          </Link>
+          <Link
+            href="/dashboard/samples/kanban"
+            className="flex flex-col items-center gap-2 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-orange-500 transition-all"
+          >
             <ShoppingCart className="w-6 h-6 text-orange-600" />
             <span className="text-sm font-medium text-slate-700">
-              Create PO
+              View Kanban
             </span>
-          </button>
+          </Link>
         </div>
       </div>
     </div>
