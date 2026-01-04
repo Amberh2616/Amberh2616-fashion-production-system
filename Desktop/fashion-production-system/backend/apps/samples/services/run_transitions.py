@@ -357,3 +357,117 @@ def transition_sample_run(
             **action_meta,  # Include metadata from action side effects
         }
     )
+
+
+# ==================== P1: Batch Transition ====================
+
+@dataclass
+class BatchTransitionResult:
+    """Result of batch transition operation"""
+    total: int
+    succeeded: int
+    failed: int
+    results: list  # List of individual results
+    errors: list   # List of error details
+
+
+def batch_transition_sample_runs(
+    run_ids: list[str],
+    action: str,
+    actor: Optional[Any] = None,
+    payload: Optional[Dict[str, Any]] = None,
+    organization=None,
+) -> BatchTransitionResult:
+    """
+    Execute state transition on multiple SampleRuns.
+
+    Args:
+        run_ids: List of SampleRun UUIDs
+        action: Action name (e.g., 'start_materials_planning')
+        actor: User performing the action
+        payload: Additional data (reason, notes, etc.)
+        organization: Organization for tenant filtering (SaaS)
+
+    Returns:
+        BatchTransitionResult with success/failure details
+
+    Notes:
+        - Processes each run independently (partial success allowed)
+        - All runs must be in the same status for consistency
+        - Returns detailed results for each run
+    """
+    if payload is None:
+        payload = {}
+
+    results = []
+    errors = []
+    succeeded = 0
+    failed = 0
+
+    # Fetch all runs with tenant filter
+    queryset = SampleRun.objects.filter(id__in=run_ids)
+    if organization is not None:
+        queryset = queryset.filter(organization=organization)
+
+    runs = list(queryset)
+
+    # Check if all runs were found
+    found_ids = {str(run.id) for run in runs}
+    missing_ids = set(run_ids) - found_ids
+    for missing_id in missing_ids:
+        failed += 1
+        errors.append({
+            'run_id': missing_id,
+            'error': 'Run not found or access denied',
+        })
+
+    # Validate: all runs should be in the same status for batch operation
+    if runs:
+        statuses = set(run.status for run in runs)
+        if len(statuses) > 1:
+            return BatchTransitionResult(
+                total=len(run_ids),
+                succeeded=0,
+                failed=len(run_ids),
+                results=[],
+                errors=[{
+                    'error': f'All runs must be in the same status for batch operation. Found: {list(statuses)}'
+                }],
+            )
+
+    # Process each run
+    for run in runs:
+        try:
+            result = transition_sample_run(
+                sample_run=run,
+                action=action,
+                actor=actor,
+                payload=payload,
+            )
+            succeeded += 1
+            results.append({
+                'run_id': str(run.id),
+                'old_status': result.old_status,
+                'new_status': result.new_status,
+                'action': result.action,
+                'success': True,
+            })
+        except (ValidationError, ValueError) as e:
+            failed += 1
+            errors.append({
+                'run_id': str(run.id),
+                'error': str(e),
+            })
+            results.append({
+                'run_id': str(run.id),
+                'success': False,
+                'error': str(e),
+            })
+
+    return BatchTransitionResult(
+        total=len(run_ids),
+        succeeded=succeeded,
+        failed=failed,
+        results=results,
+        errors=errors,
+    )

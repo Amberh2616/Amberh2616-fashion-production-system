@@ -644,3 +644,118 @@ export async function transitionSampleRun(
     body: JSON.stringify(payload || {}),
   });
 }
+
+// ========================================
+// P1: Batch Operations
+// ========================================
+
+export interface BatchTransitionResult {
+  run_id: string;
+  old_status?: string;
+  new_status?: string;
+  action?: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface BatchTransitionResponse {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BatchTransitionResult[];
+  errors: { run_id?: string; error: string }[];
+}
+
+/**
+ * Batch transition multiple sample runs
+ * POST /sample-runs/batch-transition/
+ */
+export async function batchTransitionSampleRuns(
+  runIds: string[],
+  action: string,
+  payload?: { notes?: string; reason?: string }
+): Promise<BatchTransitionResponse> {
+  return apiClient<BatchTransitionResponse>('/sample-runs/batch-transition/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      run_ids: runIds,
+      action,
+      ...payload,
+    }),
+  });
+}
+
+// ========================================
+// P1: Alerts API
+// ========================================
+
+export interface Alert {
+  id: string;
+  type: 'overdue' | 'due_soon' | 'stale';
+  severity: 'high' | 'medium' | 'low';
+  title: string;
+  message: string;
+  run_id: string;
+  request_id: string;
+  style_number: string | null;
+  status: string;
+  days_overdue?: number;
+  days_until_due?: number;
+  days_stale?: number;
+  target_due_date?: string;
+  created_at?: string;
+}
+
+export interface AlertsResponse {
+  alerts: Alert[];
+  summary: {
+    overdue: number;
+    due_soon: number;
+    stale: number;
+    total: number;
+  };
+  meta: {
+    as_of: string;
+    due_soon_days: number;
+    stale_days: number;
+  };
+}
+
+export interface AlertsParams {
+  include_overdue?: boolean;
+  include_due_soon?: boolean;
+  include_stale?: boolean;
+  due_soon_days?: number;
+  stale_days?: number;
+  limit?: number;
+}
+
+/**
+ * Get alerts for sample runs
+ * GET /alerts/
+ */
+export async function fetchAlerts(params?: AlertsParams): Promise<AlertsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.include_overdue !== undefined) {
+    searchParams.set('include_overdue', String(params.include_overdue));
+  }
+  if (params?.include_due_soon !== undefined) {
+    searchParams.set('include_due_soon', String(params.include_due_soon));
+  }
+  if (params?.include_stale !== undefined) {
+    searchParams.set('include_stale', String(params.include_stale));
+  }
+  if (params?.due_soon_days) {
+    searchParams.set('due_soon_days', String(params.due_soon_days));
+  }
+  if (params?.stale_days) {
+    searchParams.set('stale_days', String(params.stale_days));
+  }
+  if (params?.limit) {
+    searchParams.set('limit', String(params.limit));
+  }
+  const queryString = searchParams.toString();
+  const url = `/alerts/${queryString ? `?${queryString}` : ''}`;
+  return apiClient<AlertsResponse>(url);
+}

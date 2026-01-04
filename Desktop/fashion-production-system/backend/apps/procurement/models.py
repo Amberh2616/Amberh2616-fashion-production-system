@@ -6,6 +6,8 @@ Purchase orders, suppliers
 from django.db import models
 import uuid
 
+from apps.core.managers import TenantManager
+
 
 class Supplier(models.Model):
     """
@@ -55,6 +57,9 @@ class Supplier(models.Model):
         verbose_name_plural = 'Suppliers'
         ordering = ['name']
 
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
     def __str__(self):
         return f"{self.name} ({self.get_supplier_type_display()})"
 
@@ -85,7 +90,8 @@ class PurchaseOrder(models.Model):
     )
 
     # PO info
-    po_number = models.CharField(max_length=50, unique=True, db_index=True)
+    # SaaS-Ready: Changed from unique=True to unique_together with organization
+    po_number = models.CharField(max_length=50, db_index=True)
     po_type = models.CharField(
         max_length=20,
         choices=PO_TYPE_CHOICES,
@@ -132,6 +138,11 @@ class PurchaseOrder(models.Model):
         verbose_name = 'Purchase Order'
         verbose_name_plural = 'Purchase Orders'
         ordering = ['-created_at']
+        # SaaS-Ready: PO number unique within organization only
+        unique_together = [['organization', 'po_number']]
+
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
 
     def __str__(self):
         return f"{self.po_number} - {self.supplier.name}"

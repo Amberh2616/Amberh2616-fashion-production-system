@@ -20,6 +20,10 @@ from .views import (
     # P0-2: Kanban
     kanban_counts,
     kanban_runs,
+    # P1: Batch Operations
+    batch_transition,
+    # P1: Alerts
+    get_alerts,
 )
 
 router = DefaultRouter()
@@ -89,7 +93,10 @@ router.register(
 )
 
 # P0-2: Kanban API endpoints
+# P1: Batch Operations & Alerts
 urlpatterns = [
     path('kanban/counts/', kanban_counts, name='kanban-counts'),
     path('kanban/runs/', kanban_runs, name='kanban-runs'),
+    path('sample-runs/batch-transition/', batch_transition, name='batch-transition'),
+    path('alerts/', get_alerts, name='alerts'),
 ] + router.urls

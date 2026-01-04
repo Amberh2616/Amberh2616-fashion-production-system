@@ -17,11 +17,13 @@ import {
   fetchKanbanCounts,
   fetchKanbanRuns,
   transitionSampleRun,
+  batchTransitionSampleRuns,
   type KanbanLane,
   type KanbanRunItem,
   type KanbanFilters,
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
+import { AlertsPanel } from '@/components/alerts/AlertsPanel';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -98,6 +100,12 @@ export default function KanbanPage() {
   const [runType, setRunType] = useState('');
   const [expandedLanes, setExpandedLanes] = useState<Set<string>>(new Set(VISIBLE_LANES));
 
+  // P1: Multi-select state
+  const [selectedRuns, setSelectedRuns] = useState<Set<string>>(new Set());
+
+  // P1: Alerts panel visibility
+  const [showAlerts, setShowAlerts] = useState(true);
+
   // Build filters
   const filters: KanbanFilters = useMemo(() => {
     const presetFilters = VIEW_PRESETS.find((p) => p.key === activePreset)?.filters || {};
@@ -143,6 +151,61 @@ export default function KanbanPage() {
       setTimeout(() => setErrorMsg(null), 5000);
     },
   });
+
+  // P1: Batch transition mutation
+  const batchTransitionMutation = useMutation({
+    mutationFn: ({ runIds, action }: { runIds: string[]; action: string }) =>
+      batchTransitionSampleRuns(runIds, action),
+    onSuccess: (data) => {
+      setSelectedRuns(new Set());
+      queryClient.invalidateQueries({ queryKey: ['kanban-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban-runs'] });
+      if (data.failed > 0) {
+        setErrorMsg(`Batch: ${data.succeeded} succeeded, ${data.failed} failed`);
+        setTimeout(() => setErrorMsg(null), 5000);
+      } else {
+        setErrorMsg(null);
+      }
+    },
+    onError: (error: Error) => {
+      console.error('Batch transition error:', error);
+      setErrorMsg(error.message || 'Batch transition failed');
+      setTimeout(() => setErrorMsg(null), 5000);
+    },
+  });
+
+  // P1: Toggle run selection
+  const toggleRunSelection = useCallback((runId: string) => {
+    setSelectedRuns((prev) => {
+      const next = new Set(prev);
+      if (next.has(runId)) {
+        next.delete(runId);
+      } else {
+        next.add(runId);
+      }
+      return next;
+    });
+  }, []);
+
+  // P1: Clear selection
+  const clearSelection = useCallback(() => {
+    setSelectedRuns(new Set());
+  }, []);
+
+  // P1: Get selected runs' common status (for batch action)
+  const selectedRunsStatus = useMemo(() => {
+    if (selectedRuns.size === 0 || !runsData?.runs) return null;
+    const selectedRunsArr = runsData.runs.filter((r) => selectedRuns.has(r.id));
+    if (selectedRunsArr.length === 0) return null;
+    const statuses = new Set(selectedRunsArr.map((r) => r.status));
+    return statuses.size === 1 ? [...statuses][0] : null;
+  }, [selectedRuns, runsData]);
+
+  // P1: Get batch action for selected runs
+  const batchAction = useMemo(() => {
+    if (!selectedRunsStatus) return null;
+    return STATUS_TO_ACTION[selectedRunsStatus] || null;
+  }, [selectedRunsStatus]);
 
   // Group runs by status
   const runsByStatus = useMemo(() => {
@@ -230,6 +293,37 @@ export default function KanbanPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* P1: Batch Actions */}
+          {selectedRuns.size > 0 && (
+            <div className="flex items-center gap-2 mr-4 px-3 py-1 bg-blue-50 rounded-lg border border-blue-200">
+              <span className="text-sm font-medium text-blue-700">
+                {selectedRuns.size} selected
+              </span>
+              {batchAction && (
+                <button
+                  onClick={() => {
+                    batchTransitionMutation.mutate({
+                      runIds: [...selectedRuns],
+                      action: batchAction.action,
+                    });
+                  }}
+                  disabled={batchTransitionMutation.isPending}
+                  className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {batchTransitionMutation.isPending ? '...' : `→ ${batchAction.label} All`}
+                </button>
+              )}
+              {!batchAction && selectedRuns.size > 0 && (
+                <span className="text-xs text-amber-600">Mixed status</span>
+              )}
+              <button
+                onClick={clearSelection}
+                className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <button
             onClick={collapseAll}
             className="px-3 py-1.5 text-xs border rounded hover:bg-gray-50"
@@ -242,6 +336,15 @@ export default function KanbanPage() {
           >
             Expand All
           </button>
+          <button
+            onClick={() => setShowAlerts(!showAlerts)}
+            className={cn(
+              'px-3 py-1.5 text-xs border rounded hover:bg-gray-50',
+              showAlerts && 'bg-red-50 border-red-200'
+            )}
+          >
+            {showAlerts ? 'Hide Alerts' : 'Show Alerts'}
+          </button>
           <Link
             href="/dashboard/samples"
             className="px-4 py-1.5 text-sm border rounded-md hover:bg-gray-50"
@@ -250,6 +353,16 @@ export default function KanbanPage() {
           </Link>
         </div>
       </div>
+
+      {/* P1: Alerts Panel */}
+      {showAlerts && (
+        <AlertsPanel
+          limit={5}
+          compact={true}
+          refreshInterval={30000}
+          className="shadow-sm"
+        />
+      )}
 
       {/* Filter Bar */}
       <div className="bg-gray-50 rounded-lg p-4 space-y-3">
@@ -345,6 +458,8 @@ export default function KanbanPage() {
               }
             }}
             isTransitioning={transitionMutation.isPending}
+            selectedRuns={selectedRuns}
+            onToggleSelect={toggleRunSelection}
           />
         ))}
       </div>
@@ -360,6 +475,8 @@ function KanbanLaneComponent({
   onToggle,
   onNextAction,
   isTransitioning,
+  selectedRuns,
+  onToggleSelect,
 }: {
   lane: KanbanLane;
   runs: KanbanRunItem[];
@@ -367,6 +484,8 @@ function KanbanLaneComponent({
   onToggle: () => void;
   onNextAction: (run: KanbanRunItem) => void;
   isTransitioning: boolean;
+  selectedRuns: Set<string>;
+  onToggleSelect: (runId: string) => void;
 }) {
   return (
     <div
@@ -430,6 +549,8 @@ function KanbanLaneComponent({
                 run={run}
                 onNextAction={onNextAction}
                 isTransitioning={isTransitioning}
+                isSelected={selectedRuns.has(run.id)}
+                onToggleSelect={() => onToggleSelect(run.id)}
               />
             ))
           )}
@@ -444,10 +565,14 @@ function KanbanCard({
   run,
   onNextAction,
   isTransitioning,
+  isSelected,
+  onToggleSelect,
 }: {
   run: KanbanRunItem;
   onNextAction: (run: KanbanRunItem) => void;
   isTransitioning: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
 }) {
   const runTypeBadge = RUN_TYPE_BADGES[run.run_type] || RUN_TYPE_BADGES.other;
   const priorityColor = PRIORITY_COLORS[run.sample_request.priority] || PRIORITY_COLORS.normal;
@@ -457,14 +582,26 @@ function KanbanCard({
     <div
       className={cn(
         'bg-white rounded-md shadow-sm border-l-4 p-2.5 hover:shadow-md transition-shadow',
-        priorityColor
+        priorityColor,
+        isSelected && 'ring-2 ring-blue-500 ring-offset-1'
       )}
     >
-      {/* Header Row */}
+      {/* Header Row with Checkbox */}
       <div className="flex items-center justify-between gap-1 mb-1">
-        <span className={cn('px-1.5 py-0.5 text-xs rounded', runTypeBadge.color)}>
-          {runTypeBadge.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+          />
+          <span className={cn('px-1.5 py-0.5 text-xs rounded', runTypeBadge.color)}>
+            {runTypeBadge.label}
+          </span>
+        </div>
         <span className="text-xs text-gray-400">#{run.run_no}</span>
       </div>
 

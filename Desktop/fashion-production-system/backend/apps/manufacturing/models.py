@@ -6,6 +6,8 @@ Manufacturing Work Orders (MWO)
 from django.db import models
 import uuid
 
+from apps.core.managers import TenantManager
+
 
 class ManufacturingWorkOrder(models.Model):
     """
@@ -28,7 +30,8 @@ class ManufacturingWorkOrder(models.Model):
     )
 
     # MWO info
-    mwo_number = models.CharField(max_length=50, unique=True, db_index=True)
+    # SaaS-Ready: Changed from unique=True to unique_together with organization
+    mwo_number = models.CharField(max_length=50, db_index=True)
     sales_order_item = models.ForeignKey(
         'orders.SalesOrderItem',
         on_delete=models.PROTECT,
@@ -76,6 +79,11 @@ class ManufacturingWorkOrder(models.Model):
         verbose_name = 'Manufacturing Work Order'
         verbose_name_plural = 'Manufacturing Work Orders'
         ordering = ['-created_at']
+        # SaaS-Ready: MWO number unique within organization only
+        unique_together = [['organization', 'mwo_number']]
+
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
 
     def __str__(self):
         return f"{self.mwo_number} - {self.factory_name}"

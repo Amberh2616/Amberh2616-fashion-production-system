@@ -8,6 +8,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes as perm_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q, Case, When, Value, IntegerField
 from django.utils import timezone
@@ -47,8 +48,22 @@ from .services.run_transitions import (
     transition_sample_run,
     can_transition as can_transition_run,
     get_allowed_actions as get_allowed_actions_run,
+    batch_transition_sample_runs,
 )
 from .services.auto_generation import create_with_initial_run
+
+
+def _get_user_organization(request):
+    """
+    Get organization from authenticated user.
+
+    SaaS-Ready: No fallback to first organization - user MUST have an organization.
+    Returns None for anonymous users (ViewSet should handle this).
+    """
+    if not request.user.is_authenticated:
+        return None
+    org = getattr(request.user, 'organization', None)
+    return org
 
 
 class SampleRequestViewSet(viewsets.ModelViewSet):
@@ -65,14 +80,38 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
     - POST /sample-requests/{id}/complete/
     - GET  /sample-requests/{id}/allowed_actions/
     """
-    queryset = SampleRequest.objects.all().select_related('revision').prefetch_related(
-        'attachments',
-        'estimates',
-        'samples',
-        'runs',  # Phase 3: SampleRun replaces direct MWO/T2PO links
-    ).order_by('-created_at')
     serializer_class = SampleRequestSerializer
     permission_classes = [AllowAny]  # TODO: Change to IsAuthenticated in production
+
+    def get_queryset(self):
+        """
+        SaaS-Ready: Filter by organization using direct organization FK.
+
+        Development mode: If no organization, return all in DEBUG mode.
+        Production: Should require authentication and organization.
+        """
+        org = _get_user_organization(self.request)
+
+        base_qs = SampleRequest.objects.select_related(
+            'revision',
+            'revision__style',
+            'organization',
+        ).prefetch_related(
+            'attachments',
+            'estimates',
+            'samples',
+            'runs',
+        ).order_by('-created_at')
+
+        if org is None:
+            # Development mode: Return all if no auth (for testing)
+            from django.conf import settings
+            if settings.DEBUG:
+                return base_qs
+            return SampleRequest.objects.none()
+
+        # SaaS mode: Use TenantManager for_tenant() or direct filter
+        return base_qs.for_tenant(org)
 
     def get_serializer_class(self):
         """Use lightweight serializer for list view"""
@@ -252,17 +291,6 @@ class SampleRunViewSet(viewsets.ModelViewSet):
     - POST /sample-runs/{id}/cancel/
     - GET  /sample-runs/{id}/allowed-actions/
     """
-    queryset = SampleRun.objects.all().select_related(
-        'sample_request',
-        'revision',
-        'guidance_usage',
-        'actual_usage',
-        'costing_version',
-    ).prefetch_related(
-        'actuals',
-        't2pos',
-        'mwos',
-    ).order_by('sample_request', 'run_no')
     serializer_class = SampleRunSerializer
     permission_classes = [AllowAny]  # TODO: Change to IsAuthenticated in production
 
@@ -273,11 +301,43 @@ class SampleRunViewSet(viewsets.ModelViewSet):
         return SampleRunSerializer
 
     def get_queryset(self):
-        """Filter by sample_request if provided"""
-        queryset = super().get_queryset()
+        """
+        SaaS-Ready: Filter by organization using direct organization FK.
+        Also supports filtering by sample_request query param.
+        """
+        org = _get_user_organization(self.request)
+
+        base_qs = SampleRun.objects.select_related(
+            'sample_request',
+            'sample_request__revision',
+            'sample_request__revision__style',
+            'organization',
+            'revision',
+            'guidance_usage',
+            'actual_usage',
+            'costing_version',
+        ).prefetch_related(
+            'actuals',
+            't2pos',
+            'mwos',
+        ).order_by('sample_request', 'run_no')
+
+        if org is None:
+            # Development mode: Return all if no auth (for testing)
+            from django.conf import settings
+            if settings.DEBUG:
+                queryset = base_qs
+            else:
+                return SampleRun.objects.none()
+        else:
+            # SaaS mode: Use TenantManager for_tenant()
+            queryset = base_qs.for_tenant(org)
+
+        # Additional filter by sample_request if provided
         sample_request_id = self.request.query_params.get('sample_request')
         if sample_request_id:
             queryset = queryset.filter(sample_request_id=sample_request_id)
+
         return queryset
 
     def _handle_transition(self, request, pk, action_name):
@@ -606,9 +666,26 @@ def kanban_counts(request):
         SampleRunStatus.REVISE_NEEDED,
     ]
 
+    # SaaS-Ready: Tenant filtering using direct organization FK
+    org = _get_user_organization(request)
+    base_filter = Q(status__in=lane_order)  # Exclude cancelled
+
+    if org is not None:
+        # SaaS mode: Filter by direct organization FK (more efficient)
+        base_filter &= Q(organization=org)
+    else:
+        # Development mode: In production, should return empty
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response({
+                'lanes': [],
+                'summary': {'total': 0, 'overdue_total': 0, 'due_this_week': 0},
+                'meta': {'as_of': timezone.now().isoformat(), 'days_ahead': days_ahead}
+            })
+
     # Get counts by status
     status_counts = SampleRun.objects.filter(
-        status__in=lane_order  # Exclude cancelled
+        base_filter
     ).values('status').annotate(
         count=Count('id'),
         overdue=Count('id', filter=Q(target_due_date__lt=today)),
@@ -675,14 +752,30 @@ def kanban_runs(request):
     today = timezone.now().date()
     week_later = today + timedelta(days=7)
 
-    # Base queryset
+    # SaaS-Ready: Tenant filtering using direct organization FK
+    org = _get_user_organization(request)
+
+    # Base queryset with tenant awareness
     queryset = SampleRun.objects.select_related(
         'sample_request',
         'sample_request__revision',
         'sample_request__revision__style',
+        'organization',
     ).exclude(
         status=SampleRunStatus.CANCELLED
     )
+
+    if org is not None:
+        # SaaS mode: Filter by direct organization FK (more efficient)
+        queryset = queryset.for_tenant(org)
+    else:
+        # Development mode: In production, should return empty
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response({
+                'runs': [],
+                'meta': {'count': 0, 'as_of': timezone.now().isoformat()}
+            })
 
     # Apply filters
     status_filter = request.query_params.get('status')
@@ -783,5 +876,273 @@ def kanban_runs(request):
         'meta': {
             'count': len(runs),
             'as_of': timezone.now().isoformat(),
+        }
+    })
+
+
+# ==================== P1: Batch Operations API ====================
+
+@api_view(['POST'])
+@perm_classes([AllowAny])  # TODO: Change to IsAuthenticated in production
+def batch_transition(request):
+    """
+    P1: Batch transition multiple SampleRuns
+
+    POST /api/v2/sample-runs/batch-transition/
+
+    Request body:
+    {
+        "run_ids": ["uuid1", "uuid2", ...],
+        "action": "start_materials_planning"
+    }
+
+    Response:
+    {
+        "total": 5,
+        "succeeded": 4,
+        "failed": 1,
+        "results": [
+            {"run_id": "uuid1", "old_status": "draft", "new_status": "materials_planning", "success": true},
+            {"run_id": "uuid2", "success": false, "error": "..."}
+        ],
+        "errors": [
+            {"run_id": "uuid2", "error": "Prerequisite not met"}
+        ]
+    }
+
+    Notes:
+    - All runs must be in the same status
+    - Partial success is allowed (some may fail, others succeed)
+    - Returns detailed results for each run
+    """
+    # Extract request data
+    run_ids = request.data.get('run_ids', [])
+    action = request.data.get('action', '')
+
+    # Validate inputs
+    if not run_ids:
+        return Response(
+            {'detail': 'run_ids is required and must be non-empty'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not action:
+        return Response(
+            {'detail': 'action is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not isinstance(run_ids, list):
+        return Response(
+            {'detail': 'run_ids must be an array'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if len(run_ids) > 100:
+        return Response(
+            {'detail': 'Maximum 100 runs per batch operation'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # SaaS-Ready: Get organization for tenant filtering
+    org = _get_user_organization(request)
+
+    # Execute batch transition
+    result = batch_transition_sample_runs(
+        run_ids=run_ids,
+        action=action,
+        actor=request.user if request.user.is_authenticated else None,
+        payload={
+            'reason': request.data.get('reason', ''),
+            'notes': request.data.get('notes', ''),
+        },
+        organization=org,
+    )
+
+    # Return appropriate status code
+    if result.failed == result.total:
+        # All failed
+        status_code = status.HTTP_400_BAD_REQUEST
+    elif result.failed > 0:
+        # Partial success
+        status_code = status.HTTP_207_MULTI_STATUS
+    else:
+        # All succeeded
+        status_code = status.HTTP_200_OK
+
+    return Response({
+        'total': result.total,
+        'succeeded': result.succeeded,
+        'failed': result.failed,
+        'results': result.results,
+        'errors': result.errors,
+    }, status=status_code)
+
+
+# ==================== P1: Alerts API ====================
+
+@api_view(['GET'])
+@perm_classes([AllowAny])  # TODO: Change to IsAuthenticated in production
+def get_alerts(request):
+    """
+    P1: Get alerts for SampleRuns
+
+    GET /api/v2/alerts/
+
+    Query params:
+    - include_overdue: Include overdue alerts (default: true)
+    - include_due_soon: Include due soon alerts (default: true)
+    - include_stale: Include stale alerts (default: true)
+    - due_soon_days: Days threshold for "due soon" (default: 3)
+    - stale_days: Days threshold for "stale" (default: 7)
+    - limit: Max alerts per category (default: 20)
+
+    Response:
+    {
+        "alerts": [
+            {
+                "id": "uuid",
+                "type": "overdue",
+                "severity": "high",
+                "title": "Overdue: Style ABC123",
+                "message": "Run #1 was due on Jan 1, 2026",
+                "run_id": "uuid",
+                "style_number": "ABC123",
+                "days_overdue": 5
+            },
+            ...
+        ],
+        "summary": {
+            "overdue": 3,
+            "due_soon": 5,
+            "stale": 2,
+            "total": 10
+        }
+    }
+    """
+    today = timezone.now().date()
+
+    # Parse query params
+    include_overdue = request.query_params.get('include_overdue', 'true').lower() == 'true'
+    include_due_soon = request.query_params.get('include_due_soon', 'true').lower() == 'true'
+    include_stale = request.query_params.get('include_stale', 'true').lower() == 'true'
+    due_soon_days = int(request.query_params.get('due_soon_days', 3))
+    stale_days = int(request.query_params.get('stale_days', 7))
+    limit = int(request.query_params.get('limit', 20))
+
+    # SaaS-Ready: Tenant filtering
+    org = _get_user_organization(request)
+
+    # Base queryset - exclude completed/cancelled
+    base_qs = SampleRun.objects.select_related(
+        'sample_request',
+        'sample_request__revision',
+        'sample_request__revision__style',
+    ).exclude(
+        status__in=[SampleRunStatus.CANCELLED, SampleRunStatus.ACCEPTED]
+    )
+
+    if org is not None:
+        base_qs = base_qs.filter(organization=org)
+    else:
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response({
+                'alerts': [],
+                'summary': {'overdue': 0, 'due_soon': 0, 'stale': 0, 'total': 0}
+            })
+
+    alerts = []
+    summary = {'overdue': 0, 'due_soon': 0, 'stale': 0, 'total': 0}
+
+    # 1. Overdue alerts (target_due_date < today)
+    if include_overdue:
+        overdue_runs = base_qs.filter(
+            target_due_date__lt=today
+        ).order_by('target_due_date')[:limit]
+
+        for run in overdue_runs:
+            days_overdue = (today - run.target_due_date).days
+            style = run.sample_request.revision.style if run.sample_request.revision else None
+            alerts.append({
+                'id': str(run.id),
+                'type': 'overdue',
+                'severity': 'high',
+                'title': f"Overdue: {style.style_number if style else 'Unknown'}",
+                'message': f"Run #{run.run_no} was due on {run.target_due_date.strftime('%b %d, %Y')} ({days_overdue} days ago)",
+                'run_id': str(run.id),
+                'request_id': str(run.sample_request.id),
+                'style_number': style.style_number if style else None,
+                'status': run.status,
+                'days_overdue': days_overdue,
+                'target_due_date': run.target_due_date.isoformat(),
+            })
+            summary['overdue'] += 1
+
+    # 2. Due Soon alerts (today <= target_due_date <= today + due_soon_days)
+    if include_due_soon:
+        due_soon_cutoff = today + timedelta(days=due_soon_days)
+        due_soon_runs = base_qs.filter(
+            target_due_date__gte=today,
+            target_due_date__lte=due_soon_cutoff
+        ).order_by('target_due_date')[:limit]
+
+        for run in due_soon_runs:
+            days_until = (run.target_due_date - today).days
+            style = run.sample_request.revision.style if run.sample_request.revision else None
+            alerts.append({
+                'id': str(run.id),
+                'type': 'due_soon',
+                'severity': 'medium',
+                'title': f"Due Soon: {style.style_number if style else 'Unknown'}",
+                'message': f"Run #{run.run_no} is due in {days_until} day{'s' if days_until != 1 else ''}",
+                'run_id': str(run.id),
+                'request_id': str(run.sample_request.id),
+                'style_number': style.style_number if style else None,
+                'status': run.status,
+                'days_until_due': days_until,
+                'target_due_date': run.target_due_date.isoformat(),
+            })
+            summary['due_soon'] += 1
+
+    # 3. Stale alerts (draft status for > stale_days)
+    if include_stale:
+        stale_cutoff = timezone.now() - timedelta(days=stale_days)
+        stale_runs = base_qs.filter(
+            status=SampleRunStatus.DRAFT,
+            created_at__lt=stale_cutoff
+        ).order_by('created_at')[:limit]
+
+        for run in stale_runs:
+            days_stale = (timezone.now() - run.created_at).days
+            style = run.sample_request.revision.style if run.sample_request.revision else None
+            alerts.append({
+                'id': str(run.id),
+                'type': 'stale',
+                'severity': 'low',
+                'title': f"Stale: {style.style_number if style else 'Unknown'}",
+                'message': f"Run #{run.run_no} has been in draft for {days_stale} days",
+                'run_id': str(run.id),
+                'request_id': str(run.sample_request.id),
+                'style_number': style.style_number if style else None,
+                'status': run.status,
+                'days_stale': days_stale,
+                'created_at': run.created_at.isoformat(),
+            })
+            summary['stale'] += 1
+
+    summary['total'] = summary['overdue'] + summary['due_soon'] + summary['stale']
+
+    # Sort alerts by severity (high > medium > low)
+    severity_order = {'high': 0, 'medium': 1, 'low': 2}
+    alerts.sort(key=lambda x: severity_order.get(x['severity'], 3))
+
+    return Response({
+        'alerts': alerts,
+        'summary': summary,
+        'meta': {
+            'as_of': timezone.now().isoformat(),
+            'due_soon_days': due_soon_days,
+            'stale_days': stale_days,
         }
     })

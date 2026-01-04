@@ -6,7 +6,9 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
 from .models import Style, StyleRevision, BOMItem
@@ -28,15 +30,38 @@ class BOMItemViewSet(viewsets.ModelViewSet):
     serializer_class = BOMItemSerializer
     permission_classes = []  # TODO: Enable authentication in production
 
+    def _get_organization(self, request):
+        """Get organization from request user (SaaS-Ready)."""
+        org = getattr(request.user, 'organization', None)
+        if org is None and settings.DEBUG:
+            from apps.core.models import Organization
+            org = Organization.objects.first()
+        return org
+
     def get_queryset(self):
-        """Filter BOM items by revision"""
+        """Filter BOM items by revision with tenant awareness"""
         revision_id = self.kwargs.get('revision_pk')
-        return BOMItem.objects.filter(revision_id=revision_id).order_by('item_number')
+        org = self._get_organization(self.request)
+
+        queryset = BOMItem.objects.filter(revision_id=revision_id).order_by('item_number')
+
+        # SaaS-Ready: Ensure revision belongs to user's organization
+        if org is not None:
+            queryset = queryset.filter(revision__organization=org)
+
+        return queryset
 
     def perform_create(self, serializer):
-        """Set revision when creating"""
+        """Set revision when creating with tenant check"""
         revision_id = self.kwargs.get('revision_pk')
-        revision = get_object_or_404(StyleRevision, pk=revision_id)
+        org = self._get_organization(self.request)
+
+        # SaaS-Ready: Ensure revision belongs to user's organization
+        if org is not None:
+            revision = get_object_or_404(StyleRevision, pk=revision_id, organization=org)
+        else:
+            revision = get_object_or_404(StyleRevision, pk=revision_id)
+
         serializer.save(revision=revision)
 
 
@@ -49,12 +74,20 @@ class StyleViewSet(viewsets.ViewSet):
     permission_classes = []
 
     def _get_organization(self, request):
-        """Get organization from request user"""
+        """
+        Get organization from request user.
+
+        SaaS-Ready: No fallback to first organization - user MUST have an organization.
+        In DEBUG mode, falls back to first org for development convenience.
+        """
         org = getattr(request.user, 'organization', None)
         if org is None:
-            # For development: get first org
-            from apps.core.models import Organization
-            org = Organization.objects.first()
+            if settings.DEBUG:
+                # Development mode only: get first org for testing convenience
+                from apps.core.models import Organization
+                org = Organization.objects.first()
+            # In production (DEBUG=False), org remains None
+            # ViewSet methods should handle None appropriately
         return org
 
     def list(self, request):
@@ -158,11 +191,16 @@ class StyleRevisionViewSet(viewsets.ViewSet):
     permission_classes = []
 
     def _get_organization(self, request):
-        """Get organization from request user"""
+        """
+        Get organization from request user.
+
+        SaaS-Ready: No fallback to first organization in production.
+        """
         org = getattr(request.user, 'organization', None)
         if org is None:
-            from apps.core.models import Organization
-            org = Organization.objects.first()
+            if settings.DEBUG:
+                from apps.core.models import Organization
+                org = Organization.objects.first()
         return org
 
     def list(self, request):

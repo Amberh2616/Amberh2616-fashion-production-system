@@ -6,6 +6,8 @@ Sales orders and order items
 from django.db import models
 import uuid
 
+from apps.core.managers import TenantManager
+
 
 class SalesOrder(models.Model):
     """
@@ -28,7 +30,8 @@ class SalesOrder(models.Model):
     )
 
     # Order info
-    order_number = models.CharField(max_length=50, unique=True, db_index=True)
+    # SaaS-Ready: Changed from unique=True to unique_together with organization
+    order_number = models.CharField(max_length=50, db_index=True)
     customer = models.CharField(max_length=200)
     po_number = models.CharField(max_length=100, blank=True)
 
@@ -52,6 +55,11 @@ class SalesOrder(models.Model):
         verbose_name = 'Sales Order'
         verbose_name_plural = 'Sales Orders'
         ordering = ['-created_at']
+        # SaaS-Ready: Order number unique within organization only
+        unique_together = [['organization', 'order_number']]
+
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
 
     def __str__(self):
         return f"{self.order_number} - {self.customer}"

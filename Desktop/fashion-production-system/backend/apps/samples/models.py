@@ -9,6 +9,8 @@ import uuid
 import hashlib
 import json
 
+from apps.core.managers import TenantManager
+
 
 # ==================== Choices ====================
 
@@ -253,6 +255,19 @@ class SampleRequest(models.Model):
     Request-based design: supports any brand workflow
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for query performance
+    # Chain: SampleRequest → revision → style → organization (for backward compat)
+    # Direct: SampleRequest → organization (for efficient tenant filtering)
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='sample_requests',
+        null=True,  # TODO: Make non-null after migration backfill
+        blank=True,
+        help_text="Organization (tenant) this request belongs to"
+    )
+
     revision = models.ForeignKey(
         'styles.StyleRevision',
         on_delete=models.CASCADE,
@@ -348,6 +363,9 @@ class SampleRequest(models.Model):
             models.Index(fields=['due_date']),
         ]
 
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
     def __str__(self):
         return f"{self.get_request_type_display()} - {self.brand_name or 'N/A'}"
 
@@ -371,6 +389,17 @@ class SampleRun(models.Model):
     - ⭐ SampleRun 是唯一的「執行真相來源」
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for query performance
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='sample_runs',
+        null=True,  # TODO: Make non-null after migration backfill
+        blank=True,
+        help_text="Organization (tenant) this run belongs to"
+    )
+
     sample_request = models.ForeignKey(
         SampleRequest,
         on_delete=models.CASCADE,
@@ -480,6 +509,12 @@ class SampleRun(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     status_updated_at = models.DateTimeField(auto_now_add=True)
 
+    # SaaS-Ready: Optimistic locking for concurrent edits (Phase B)
+    version = models.PositiveIntegerField(
+        default=1,
+        help_text="Version number for optimistic locking (incremented on each save)"
+    )
+
     class Meta:
         db_table = 'sample_runs'
         ordering = ['run_no']
@@ -488,6 +523,9 @@ class SampleRun(models.Model):
             models.Index(fields=['sample_request', 'status']),
             models.Index(fields=['status', 'target_due_date']),
         ]
+
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
 
     def __str__(self):
         return f"Run #{self.run_no} ({self.get_run_type_display()}) - {self.get_status_display()}"
@@ -679,6 +717,17 @@ class SampleCostEstimate(models.Model):
     Supports multiple versions, flexible JSON breakdown
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for tenant isolation
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='sample_cost_estimates',
+        null=True,  # Nullable for migration
+        blank=True,
+        help_text="Organization (tenant) this estimate belongs to"
+    )
+
     sample_request = models.ForeignKey(
         SampleRequest,
         on_delete=models.CASCADE,
@@ -751,6 +800,9 @@ class SampleCostEstimate(models.Model):
             models.Index(fields=['sample_request', 'status']),
         ]
 
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
     def __str__(self):
         return f"Estimate v{self.estimate_version} - {self.estimated_total} {self.currency}"
 
@@ -770,6 +822,16 @@ class T2POForSample(models.Model):
     Phase 3 重構：改掛在 SampleRun，支援多版本
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for tenant isolation
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='t2pos_for_sample',
+        null=True,  # Nullable for migration
+        blank=True,
+        help_text="Organization (tenant) this T2PO belongs to"
+    )
 
     # ⭐ Phase 3: 改掛在 SampleRun（nullable for migration）
     sample_run = models.ForeignKey(
@@ -871,6 +933,9 @@ class T2POForSample(models.Model):
         # Note: unique_together for [sample_run, version_no] will be added
         # after data migration when sample_run is not null
 
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
     def __str__(self):
         version_str = f" v{self.version_no}" if self.version_no > 1 else ""
         return f"{self.po_no or 'DRAFT'}{version_str} - {self.supplier_name}"
@@ -952,6 +1017,16 @@ class SampleMWO(models.Model):
     Phase 3 重構：改掛在 SampleRun，支援多版本
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for tenant isolation
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='sample_mwos',
+        null=True,  # Nullable for migration
+        blank=True,
+        help_text="Organization (tenant) this MWO belongs to"
+    )
 
     # ⭐ Phase 3: 改掛在 SampleRun（nullable for migration）
     sample_run = models.ForeignKey(
@@ -1045,6 +1120,9 @@ class SampleMWO(models.Model):
         ]
         # Note: unique_together for [sample_run, version_no] will be added
         # after data migration when sample_run is not null
+
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
 
     def __str__(self):
         version_str = f" v{self.version_no}" if self.version_no > 1 else ""

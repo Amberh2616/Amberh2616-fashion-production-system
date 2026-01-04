@@ -6,6 +6,8 @@ Style-centric design: Style → StyleRevision → BOMItem/Measurement/Constructi
 from django.db import models
 import uuid
 
+from apps.core.managers import TenantManager
+
 
 class Style(models.Model):
     """
@@ -65,6 +67,9 @@ class Style(models.Model):
         unique_together = [['organization', 'style_number']]
         ordering = ['-created_at']
 
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
     def __str__(self):
         return f"{self.style_number} - {self.style_name}"
 
@@ -82,6 +87,17 @@ class StyleRevision(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for query performance
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='style_revisions',
+        null=True,  # TODO: Make non-null after migration backfill
+        blank=True,
+        help_text="Organization (tenant) - denormalized from style for query performance"
+    )
+
     style = models.ForeignKey(
         Style,
         on_delete=models.CASCADE,
@@ -154,6 +170,9 @@ class StyleRevision(models.Model):
         unique_together = [['style', 'revision_label']]
         ordering = ['-created_at']
 
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
     def __str__(self):
         return f"{self.style.style_number} {self.revision_label}"
 
@@ -183,6 +202,17 @@ class BOMItem(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for query performance
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='bom_items',
+        null=True,  # TODO: Make non-null after migration backfill
+        blank=True,
+        help_text="Organization (tenant) - denormalized for query performance"
+    )
+
     revision = models.ForeignKey(
         StyleRevision,
         on_delete=models.CASCADE,
@@ -296,6 +326,17 @@ class Measurement(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for query performance
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='measurements',
+        null=True,  # TODO: Make non-null after migration backfill
+        blank=True,
+        help_text="Organization (tenant) - denormalized for query performance"
+    )
+
     revision = models.ForeignKey(
         StyleRevision,
         on_delete=models.CASCADE,
@@ -364,6 +405,17 @@ class ConstructionStep(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # SaaS-Ready: Direct organization FK for query performance
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='construction_steps',
+        null=True,  # TODO: Make non-null after migration backfill
+        blank=True,
+        help_text="Organization (tenant) - denormalized for query performance"
+    )
+
     revision = models.ForeignKey(
         StyleRevision,
         on_delete=models.CASCADE,
