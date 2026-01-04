@@ -759,3 +759,79 @@ export async function fetchAlerts(params?: AlertsParams): Promise<AlertsResponse
   const url = `/alerts/${queryString ? `?${queryString}` : ''}`;
   return apiClient<AlertsResponse>(url);
 }
+
+// ========================================
+// P2: Excel Export APIs
+// ========================================
+
+/**
+ * Export MWO as Excel
+ * GET /sample-runs/{id}/export-mwo/
+ */
+export async function exportMWO(runId: string): Promise<Blob> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-mwo/`, {
+    method: 'GET',
+    headers: {
+      // Add auth headers if needed
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to export MWO');
+  }
+
+  return response.blob();
+}
+
+/**
+ * Export Estimate as Excel
+ * GET /sample-runs/{id}/export-estimate/
+ */
+export async function exportEstimate(runId: string): Promise<Blob> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-estimate/`, {
+    method: 'GET',
+    headers: {
+      // Add auth headers if needed
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to export Estimate');
+  }
+
+  return response.blob();
+}
+
+/**
+ * Export T2 PO as Excel
+ * GET /sample-runs/{id}/export-po/
+ */
+export async function exportPO(runId: string): Promise<Blob> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-po/`, {
+    method: 'GET',
+    headers: {
+      // Add auth headers if needed
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to export PO');
+  }
+
+  return response.blob();
+}
+
+/**
+ * Helper function to trigger file download
+ * Creates a temporary link and clicks it to download the blob
+ */
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

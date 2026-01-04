@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-03
-**Version:** 3.4.1
-**Status:** P0-2 + SaaS + P1 完成 → P2 待做
+**Last Updated:** 2026-01-04
+**Version:** 3.5.0
+**Status:** P0-2 + SaaS + P1 + P2 完成 → Phase B 待做
 
 ---
 
@@ -109,6 +109,7 @@
 | **SaaS** | **多租戶底層（TenantManager + Views）** | ✅ **2026-01-02** |
 | **P1** | **批量操作（Kanban 多選 + 批量轉換）** | ✅ **2026-01-02** |
 | **P1** | **告警機制（Overdue/Due Soon/Stale）** | ✅ **2026-01-02** |
+| **P2** | **Excel 匯出（MWO/Estimate/PO）** | ✅ **2026-01-04** |
 
 ### ✅ P0-1 完成（2026-01-01）
 
@@ -246,11 +247,62 @@ GET /api/v2/alerts/?limit=10&due_soon_days=3&stale_days=7
       └── T2POForSample
 ```
 
+### ✅ P2 Excel 匯出完成（2026-01-04）
+
+**功能概述：**
+從 Kanban 卡片分開下載 3 種 Excel 文件（MWO、Estimate、PO）
+
+```
+實現內容：
+├── 後端：openpyxl 3.1.2 Excel 生成
+├── 3 個匯出服務類：
+│   ├── MWOExcelExporter（4 sheets: Overview, BOM, Operations, QC）
+│   ├── EstimateExcelExporter（成本分解）
+│   └── T2POExcelExporter（2 sheets: Header, Line Items）
+├── 3 個 API endpoints：
+│   ├── GET /api/v2/sample-runs/{id}/export-mwo/
+│   ├── GET /api/v2/sample-runs/{id}/export-estimate/
+│   └── GET /api/v2/sample-runs/{id}/export-po/
+├── 前端下載按鈕（Kanban 卡片底部）：
+│   ├── 🔵 MWO 按鈕（藍色）
+│   ├── 🟢 Quote 按鈕（綠色）
+│   └── 🟣 PO 按鈕（紫色）
+└── 智能數據回退機制（bom_snapshot_json 為空時從 guidance_usage 讀取）
+```
+
+**關鍵技術決策：**
+- 使用 `openpyxl` 生成多 sheet Excel 文件
+- 防禦性編程：`getattr()` 處理可選欄位，避免 AttributeError
+- **數據回退邏輯**：優先讀取快照，快照為空時從 `guidance_usage.usage_lines` 即時查詢
+- Blob 下載方式：前端 `URL.createObjectURL()` 觸發下載
+
+**已知問題：**
+- 部分舊資料的 `bom_snapshot_json` 為空（已用 fallback 機制解決）
+- 測試資料不完整（但核心功能已驗證可用）
+
+**測試驗證：**
+```bash
+# LW1FLWS 款號測試成功
+Run ID: 8fac266c-22bd-479f-8e3a-b7751c74fcda
+✅ MWO 匯出：15 筆 BOM（從 guidance_usage 讀取）
+✅ Estimate 匯出：成本分解資料
+✅ PO 匯出：採購單資料
+```
+
+**修改文件：**
+- `backend/requirements/base.txt` - 添加 openpyxl
+- `backend/apps/samples/services/excel_export.py` - **NEW** (431+ 行)
+- `backend/apps/samples/views.py` - 添加 3 個 export actions
+- `frontend/lib/api/samples.ts` - 添加匯出函數
+- `frontend/app/dashboard/samples/kanban/page.tsx` - 添加下載按鈕
+
 ### 📋 待做
 
 | 優先級 | 功能 |
 |--------|------|
-| P2 | 匯出 Excel/PDF |
+| P3 | PDF 匯出（使用 WeasyPrint）|
+| P3 | 批量匯出（ZIP 打包）|
+| P4 | 自訂 Excel 模板 |
 | Phase B | 多人協作 + RBAC |
 
 ---
@@ -290,6 +342,22 @@ cd backend && python manage.py makemigrations && python manage.py migrate
 | **Kanban 看板** | **/dashboard/samples/kanban** |
 | BOM 編輯 | /dashboard/revisions/{id}/bom |
 | Costing | /dashboard/revisions/{id}/costing-phase23 |
+
+### P2 Excel 匯出 API
+
+| 功能 | HTTP Method | URL |
+|------|-------------|-----|
+| 匯出 MWO | GET | `/api/v2/sample-runs/{run_id}/export-mwo/` |
+| 匯出 Estimate | GET | `/api/v2/sample-runs/{run_id}/export-estimate/` |
+| 匯出 T2 PO | GET | `/api/v2/sample-runs/{run_id}/export-po/` |
+
+**測試範例（LW1FLWS）：**
+```bash
+# Run ID: 8fac266c-22bd-479f-8e3a-b7751c74fcda
+curl -O "http://localhost:8000/api/v2/sample-runs/8fac266c-22bd-479f-8e3a-b7751c74fcda/export-mwo/"
+curl -O "http://localhost:8000/api/v2/sample-runs/8fac266c-22bd-479f-8e3a-b7751c74fcda/export-estimate/"
+curl -O "http://localhost:8000/api/v2/sample-runs/8fac266c-22bd-479f-8e3a-b7751c74fcda/export-po/"
+```
 
 ---
 

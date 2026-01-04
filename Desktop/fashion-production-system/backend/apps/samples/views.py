@@ -50,6 +50,11 @@ from .services.run_transitions import (
     get_allowed_actions as get_allowed_actions_run,
     batch_transition_sample_runs,
 )
+from .services.excel_export import (
+    MWOExcelExporter,
+    EstimateExcelExporter,
+    T2POExcelExporter,
+)
 from .services.auto_generation import create_with_initial_run
 
 
@@ -460,6 +465,74 @@ class SampleRunViewSet(viewsets.ModelViewSet):
             "allowed_actions": actions,
             **can_flags,
         }, status=status.HTTP_200_OK)
+
+    # P2: Excel Export Actions
+    @action(detail=True, methods=["get"], url_path="export-mwo")
+    def export_mwo(self, request, pk=None):
+        """
+        Export MWO as Excel
+        GET /api/v2/sample-runs/{id}/export-mwo/
+        """
+        run = self.get_object()
+
+        # Get latest MWO for this run
+        mwo = run.mwos.filter(is_latest=True).first()
+        if not mwo:
+            return Response(
+                {'detail': 'No MWO found for this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exporter = MWOExcelExporter()
+        return exporter.export(mwo)
+
+    @action(detail=True, methods=["get"], url_path="export-estimate")
+    def export_estimate(self, request, pk=None):
+        """
+        Export Estimate as Excel
+        GET /api/v2/sample-runs/{id}/export-estimate/
+        """
+        run = self.get_object()
+
+        # Get estimate from sample request (latest accepted or draft)
+        estimate = run.sample_request.estimates.filter(
+            status__in=['accepted', 'sent', 'draft']
+        ).order_by('-estimate_version').first()
+
+        if not estimate:
+            return Response(
+                {'detail': 'No estimate found for this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exporter = EstimateExcelExporter()
+        return exporter.export(estimate)
+
+    @action(detail=True, methods=["get"], url_path="export-po")
+    def export_po(self, request, pk=None):
+        """
+        Export T2 PO as Excel
+        GET /api/v2/sample-runs/{id}/export-po/
+        """
+        run = self.get_object()
+
+        # Get latest issued PO
+        po = run.t2pos.filter(
+            status__in=['issued', 'confirmed', 'delivered']
+        ).order_by('-version_no').first()
+
+        if not po:
+            # Try to get draft PO
+            po = run.t2pos.filter(status='draft').order_by('-version_no').first()
+
+        if not po:
+            return Response(
+                {'detail': 'No PO found for this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exporter = T2POExcelExporter()
+        return exporter.export(po)
 
 
 class SampleActualsViewSet(viewsets.ModelViewSet):

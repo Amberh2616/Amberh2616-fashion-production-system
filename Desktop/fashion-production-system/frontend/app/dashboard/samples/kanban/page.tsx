@@ -18,12 +18,17 @@ import {
   fetchKanbanRuns,
   transitionSampleRun,
   batchTransitionSampleRuns,
+  exportMWO,
+  exportEstimate,
+  exportPO,
+  downloadBlob,
   type KanbanLane,
   type KanbanRunItem,
   type KanbanFilters,
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
 import { AlertsPanel } from '@/components/alerts/AlertsPanel';
+import { FileText, DollarSign, ShoppingCart } from 'lucide-react';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -659,6 +664,63 @@ function KanbanCard({
           {isTransitioning ? '...' : `→ ${nextAction.label}`}
         </button>
       )}
+
+      {/* P2: Excel Export Buttons */}
+      <div className="flex gap-1 mt-2 pt-2 border-t border-gray-100">
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportMWO(run.id);
+              downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
+            } catch (error) {
+              console.error('Export MWO failed:', error);
+              alert('Failed to export MWO. Please try again.');
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-blue-50 hover:bg-blue-100 rounded transition-colors"
+          title="Download MWO"
+        >
+          <FileText className="h-3 w-3" />
+          <span>MWO</span>
+        </button>
+
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportEstimate(run.id);
+              downloadBlob(blob, `Estimate_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
+            } catch (error) {
+              console.error('Export Estimate failed:', error);
+              alert('Failed to export Estimate. Please try again.');
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-green-50 hover:bg-green-100 rounded transition-colors"
+          title="Download Estimate"
+        >
+          <DollarSign className="h-3 w-3" />
+          <span>Quote</span>
+        </button>
+
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportPO(run.id);
+              downloadBlob(blob, `T2PO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
+            } catch (error) {
+              console.error('Export PO failed:', error);
+              alert('Failed to export PO. Please try again.');
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-purple-50 hover:bg-purple-100 rounded transition-colors"
+          title="Download T2 PO"
+        >
+          <ShoppingCart className="h-3 w-3" />
+          <span>PO</span>
+        </button>
+      </div>
     </div>
   );
 }
