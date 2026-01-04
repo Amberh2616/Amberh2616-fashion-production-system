@@ -20,6 +20,7 @@ PyMuPDF==1.23.8
 
 # PDF Generation
 WeasyPrint==60.1
+xhtml2pdf==0.2.11  # Windows-friendly PDF engine (P3)
 
 # Excel Generation (P2)
 openpyxl==3.1.2

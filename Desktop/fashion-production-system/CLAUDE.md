@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-04
-**Version:** 3.5.0
-**Status:** P0-2 + SaaS + P1 + P2 完成 → Phase B 待做
+**Version:** 3.6.0
+**Status:** P0-2 + SaaS + P1 + P2 + P3 完成 → Phase B 待做
 
 ---
 
@@ -110,6 +110,7 @@
 | **P1** | **批量操作（Kanban 多選 + 批量轉換）** | ✅ **2026-01-02** |
 | **P1** | **告警機制（Overdue/Due Soon/Stale）** | ✅ **2026-01-02** |
 | **P2** | **Excel 匯出（MWO/Estimate/PO）** | ✅ **2026-01-04** |
+| **P3** | **PDF 匯出 + 批量 ZIP 打包** | ✅ **2026-01-04** |
 
 ### ✅ P0-1 完成（2026-01-01）
 
@@ -296,14 +297,102 @@ Run ID: 8fac266c-22bd-479f-8e3a-b7751c74fcda
 - `frontend/lib/api/samples.ts` - 添加匯出函數
 - `frontend/app/dashboard/samples/kanban/page.tsx` - 添加下載按鈕
 
+### ✅ P3 PDF 匯出 + 批量 ZIP 打包完成（2026-01-04）
+
+**功能概述：**
+從 Kanban 卡片下載 PDF 格式文件，並支援批量匯出多個 Run 到 ZIP 壓縮包
+
+```
+Phase 1: PDF 單個匯出 (P3.1)
+├── xhtml2pdf 依賴（Windows 兼容，無需 GTK+）
+├── HTML 模板系統：
+│   ├── base.html（基礎樣式模板）
+│   ├── mwo.html（MWO PDF 模板）
+│   ├── estimate.html（報價單 PDF 模板）
+│   └── t2po.html（採購單 PDF 模板）
+├── PDF 匯出服務（pdf_export.py）：
+│   ├── 雙引擎策略：WeasyPrint（Linux/Docker）或 xhtml2pdf（Windows）
+│   ├── PDFExporter 基類
+│   └── MWOPDFExporter、EstimatePDFExporter、T2POPDFExporter
+├── 3 個 PDF API 端點：
+│   ├── GET /api/v2/sample-runs/{id}/export-mwo-pdf/
+│   ├── GET /api/v2/sample-runs/{id}/export-estimate-pdf/
+│   └── GET /api/v2/sample-runs/{id}/export-po-pdf/
+└── Kanban 頁面添加 PDF 下載按鈕（第二排按鈕，藍/綠/紫色）
+
+Phase 2: ZIP 批量匯出 (P3.2)
+├── 批量匯出服務（batch_export.py）
+├── 批量匯出 API：
+│   └── POST /api/v2/sample-runs/batch-export/
+│       ├── 支援 PDF 和 Excel 雙格式
+│       └── 支援自訂匯出類型（mwo/estimate/po）
+├── 前端批量匯出 UI：
+│   ├── Kanban 頁面選擇多個 Run 時顯示批量匯出按鈕
+│   ├── 🔴 Export PDF 按鈕（紅色）
+│   └── 🟢 Export Excel 按鈕（綠色）
+└── ZIP 檔案結構：
+    export_2_runs_pdf_20260104_160625.zip
+    ├── Run-001_LW1FLWS/
+    │   ├── MWO_MWO-2601-000001.pdf
+    │   ├── EST_xxx.pdf
+    │   └── T2PO_xxx.pdf
+    └── Run-002_LW1DKES/
+        └── ...
+```
+
+**關鍵技術決策：**
+- **雙引擎策略**：優先使用 WeasyPrint（功能完整），回退到 xhtml2pdf（Windows 兼容）
+- **CSS 兼容性**：移除 `@page` 嵌套規則、`nth-child` 偽選擇器，確保 xhtml2pdf 正常工作
+- **Excel 整合**：批量匯出時使用 `response.content` 提取 Excel 數據
+- **ZIP 打包**：使用 Python `zipfile` 模組在記憶體中生成 ZIP
+
+**測試驗證：**
+```bash
+# 單個 PDF 匯出測試
+✅ MWO PDF: 6.6KB, 2 頁
+✅ Estimate PDF: 2.7KB, 2 頁
+✅ PO PDF: 6.1KB, 2 頁
+
+# 批量 ZIP 匯出測試
+✅ PDF 格式：21KB ZIP，包含 2 個 Run 的 6 個 PDF 檔案
+✅ Excel 格式：8.1KB ZIP，包含 1 個 XLSX 檔案
+
+# ZIP 結構驗證
+Run-001_LW1FLWS/
+├── MWO_MWO-2601-000001.pdf
+├── EST_b6e7cebc-2734-4e06-8aad-57800219df4a.pdf
+└── T2PO_.pdf
+```
+
+**新增文件：**
+- `backend/apps/samples/services/pdf_export.py` - **NEW** (184 行)
+- `backend/apps/samples/services/batch_export.py` - **NEW** (185 行)
+- `backend/apps/samples/templates/pdf/base.html` - **NEW** (92 行)
+- `backend/apps/samples/templates/pdf/mwo.html` - **NEW** (111 行)
+- `backend/apps/samples/templates/pdf/estimate.html` - **NEW** (97 行)
+- `backend/apps/samples/templates/pdf/t2po.html` - **NEW** (65 行)
+
+**修改文件：**
+- `backend/requirements/base.txt` - 添加 xhtml2pdf==0.2.11
+- `backend/apps/samples/views.py` - 添加 PDF 和批量匯出端點
+- `backend/apps/samples/urls.py` - 添加 URL 路由
+- `frontend/lib/api/samples.ts` - 添加 PDF 和批量匯出函數
+- `frontend/app/dashboard/samples/kanban/page.tsx` - 添加 PDF 和批量匯出按鈕
+
+**已知限制：**
+- xhtml2pdf CSS 支援有限（不支援 flexbox、grid、複雜偽選擇器）
+- 大批量匯出（20+ Run）可能超過 30 秒（P4 可考慮 Celery 異步）
+- ZIP 打包在記憶體中進行（適合中小規模匯出）
+
 ### 📋 待做
 
 | 優先級 | 功能 |
 |--------|------|
-| P3 | PDF 匯出（使用 WeasyPrint）|
-| P3 | 批量匯出（ZIP 打包）|
-| P4 | 自訂 Excel 模板 |
+| P4 | 自訂 Excel/PDF 模板 |
+| P4 | Celery 異步批量匯出 |
+| P4 | 郵件發送功能 |
 | Phase B | 多人協作 + RBAC |
+| Phase B | Supplier Portal（品牌端查看）|
 
 ---
 

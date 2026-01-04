@@ -21,6 +21,10 @@ import {
   exportMWO,
   exportEstimate,
   exportPO,
+  exportMWOPDF,
+  exportEstimatePDF,
+  exportPOPDF,
+  batchExportSampleRuns,
   downloadBlob,
   type KanbanLane,
   type KanbanRunItem,
@@ -28,7 +32,7 @@ import {
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
 import { AlertsPanel } from '@/components/alerts/AlertsPanel';
-import { FileText, DollarSign, ShoppingCart } from 'lucide-react';
+import { FileText, DollarSign, ShoppingCart, Download } from 'lucide-react';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -321,6 +325,52 @@ export default function KanbanPage() {
               {!batchAction && selectedRuns.size > 0 && (
                 <span className="text-xs text-amber-600">Mixed status</span>
               )}
+
+              {/* P3: Batch Export Buttons */}
+              <button
+                onClick={async () => {
+                  try {
+                    const blob = await batchExportSampleRuns(
+                      Array.from(selectedRuns),
+                      ['mwo', 'estimate', 'po'],
+                      'pdf'
+                    );
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                    downloadBlob(blob, `export_${selectedRuns.size}_runs_pdf_${timestamp}.zip`);
+                  } catch (error) {
+                    console.error('Batch export PDF failed:', error);
+                    alert('Failed to export PDF. Please try again.');
+                  }
+                }}
+                className="px-2 py-1 text-xs font-medium bg-red-500 text-white rounded hover:bg-red-600 flex items-center gap-1"
+                title="Export selected runs as PDF"
+              >
+                <Download className="h-3 w-3" />
+                PDF
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    const blob = await batchExportSampleRuns(
+                      Array.from(selectedRuns),
+                      ['mwo', 'estimate', 'po'],
+                      'excel'
+                    );
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                    downloadBlob(blob, `export_${selectedRuns.size}_runs_excel_${timestamp}.zip`);
+                  } catch (error) {
+                    console.error('Batch export Excel failed:', error);
+                    alert('Failed to export Excel. Please try again.');
+                  }
+                }}
+                className="px-2 py-1 text-xs font-medium bg-green-500 text-white rounded hover:bg-green-600 flex items-center gap-1"
+                title="Export selected runs as Excel"
+              >
+                <Download className="h-3 w-3" />
+                Excel
+              </button>
+
               <button
                 onClick={clearSelection}
                 className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900"
@@ -719,6 +769,63 @@ function KanbanCard({
         >
           <ShoppingCart className="h-3 w-3" />
           <span>PO</span>
+        </button>
+      </div>
+
+      {/* P3: PDF Export Buttons */}
+      <div className="flex gap-1 mt-1">
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportMWOPDF(run.id);
+              downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+            } catch (error) {
+              console.error('Export MWO PDF failed:', error);
+              alert('Failed to export MWO PDF. Please try again.');
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+          title="Download MWO as PDF"
+        >
+          <FileText className="h-3 w-3" />
+          <span>PDF</span>
+        </button>
+
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportEstimatePDF(run.id);
+              downloadBlob(blob, `Estimate_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+            } catch (error) {
+              console.error('Export Estimate PDF failed:', error);
+              alert('Failed to export Estimate PDF. Please try again.');
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-green-100 hover:bg-green-200 rounded transition-colors"
+          title="Download Estimate as PDF"
+        >
+          <DollarSign className="h-3 w-3" />
+          <span>PDF</span>
+        </button>
+
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportPOPDF(run.id);
+              downloadBlob(blob, `T2PO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+            } catch (error) {
+              console.error('Export PO PDF failed:', error);
+              alert('Failed to export PO PDF. Please try again.');
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-purple-100 hover:bg-purple-200 rounded transition-colors"
+          title="Download T2 PO as PDF"
+        >
+          <ShoppingCart className="h-3 w-3" />
+          <span>PDF</span>
         </button>
       </div>
     </div>

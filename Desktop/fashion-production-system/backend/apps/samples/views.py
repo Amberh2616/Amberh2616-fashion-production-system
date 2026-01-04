@@ -55,6 +55,12 @@ from .services.excel_export import (
     EstimateExcelExporter,
     T2POExcelExporter,
 )
+from .services.pdf_export import (
+    MWOPDFExporter,
+    EstimatePDFExporter,
+    T2POPDFExporter,
+)
+from .services.batch_export import batch_export_sample_runs
 from .services.auto_generation import create_with_initial_run
 
 
@@ -532,6 +538,73 @@ class SampleRunViewSet(viewsets.ModelViewSet):
             )
 
         exporter = T2POExcelExporter()
+        return exporter.export(po)
+
+    # P3: PDF Export Actions
+    @action(detail=True, methods=["get"], url_path="export-mwo-pdf")
+    def export_mwo_pdf(self, request, pk=None):
+        """
+        Export MWO as PDF
+        GET /api/v2/sample-runs/{id}/export-mwo-pdf/
+        """
+        run = self.get_object()
+
+        mwo = run.mwos.filter(is_latest=True).first()
+        if not mwo:
+            return Response(
+                {'detail': 'No MWO found for this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exporter = MWOPDFExporter()
+        return exporter.export(mwo)
+
+    @action(detail=True, methods=["get"], url_path="export-estimate-pdf")
+    def export_estimate_pdf(self, request, pk=None):
+        """
+        Export Estimate as PDF
+        GET /api/v2/sample-runs/{id}/export-estimate-pdf/
+        """
+        run = self.get_object()
+
+        # Get latest estimate (prefer accepted, fallback to sent/draft)
+        estimate = run.sample_request.estimates.filter(
+            status__in=['accepted', 'sent', 'draft']
+        ).order_by('-estimate_version').first()
+
+        if not estimate:
+            return Response(
+                {'detail': 'No estimate found for this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exporter = EstimatePDFExporter()
+        return exporter.export(estimate)
+
+    @action(detail=True, methods=["get"], url_path="export-po-pdf")
+    def export_po_pdf(self, request, pk=None):
+        """
+        Export T2 PO as PDF
+        GET /api/v2/sample-runs/{id}/export-po-pdf/
+        """
+        run = self.get_object()
+
+        # Get latest issued PO
+        po = run.t2pos.filter(
+            status__in=['issued', 'confirmed', 'delivered']
+        ).order_by('-version_no').first()
+
+        if not po:
+            # Try to get draft PO
+            po = run.t2pos.filter(status='draft').order_by('-version_no').first()
+
+        if not po:
+            return Response(
+                {'detail': 'No PO found for this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exporter = T2POPDFExporter()
         return exporter.export(po)
 
 
@@ -1219,3 +1292,49 @@ def get_alerts(request):
             'stale_days': stale_days,
         }
     })
+
+
+# P3: Batch Export Endpoint
+@api_view(['POST'])
+@perm_classes([AllowAny])  # TODO: Change to IsAuthenticated in production
+def batch_export(request):
+    """
+    Batch export multiple SampleRuns to ZIP
+    POST /api/v2/sample-runs/batch-export/
+
+    Body:
+    {
+        "run_ids": ["uuid1", "uuid2"],
+        "export_types": ["mwo", "estimate", "po"],  // optional, defaults to all
+        "format": "pdf"  // 'pdf' or 'excel', defaults to 'pdf'
+    }
+
+    Returns:
+        ZIP file with folder structure:
+        export_3_runs_pdf_20260104_143022.zip
+        ├── Run-001_LW1FLWS/
+        │   ├── MWO-2601-000001.pdf
+        │   ├── EST-xxx.pdf
+        │   └── T2PO-xxx.pdf
+        └── Run-002_LW1DKES/
+            └── ...
+    """
+    run_ids = request.data.get('run_ids', [])
+    export_types = request.data.get('export_types', ['mwo', 'estimate', 'po'])
+    format_type = request.data.get('format', 'pdf')
+
+    if not run_ids:
+        return Response({'detail': 'run_ids is required'}, status=400)
+
+    if format_type not in ['pdf', 'excel']:
+        return Response({'detail': 'format must be "pdf" or "excel"'}, status=400)
+
+    # 使用租戶過濾
+    organization = _get_user_organization(request)
+
+    return batch_export_sample_runs(
+        run_ids=run_ids,
+        export_types=export_types,
+        format=format_type,
+        organization=organization
+    )

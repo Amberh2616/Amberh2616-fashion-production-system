@@ -835,3 +835,87 @@ export function downloadBlob(blob: Blob, filename: string) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// ==================== P3: PDF Export Functions ====================
+
+/**
+ * Export MWO as PDF
+ * GET /sample-runs/{id}/export-mwo-pdf/
+ */
+export async function exportMWOPDF(runId: string): Promise<Blob> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-mwo-pdf/`,
+    { method: 'GET' }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to export MWO PDF');
+  }
+
+  return response.blob();
+}
+
+/**
+ * Export Estimate as PDF
+ * GET /sample-runs/{id}/export-estimate-pdf/
+ */
+export async function exportEstimatePDF(runId: string): Promise<Blob> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-estimate-pdf/`,
+    { method: 'GET' }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to export Estimate PDF');
+  }
+
+  return response.blob();
+}
+
+/**
+ * Export T2 PO as PDF
+ * GET /sample-runs/{id}/export-po-pdf/
+ */
+export async function exportPOPDF(runId: string): Promise<Blob> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-po-pdf/`,
+    { method: 'GET' }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to export PO PDF');
+  }
+
+  return response.blob();
+}
+
+
+/**
+ * Batch export multiple SampleRuns to ZIP
+ * POST /sample-runs/batch-export/
+ */
+export async function batchExportSampleRuns(
+  runIds: string[],
+  exportTypes: string[] = ['mwo', 'estimate', 'po'],
+  format: 'pdf' | 'excel' = 'pdf'
+): Promise<Blob> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/batch-export/`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        run_ids: runIds,
+        export_types: exportTypes,
+        format: format,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to batch export');
+  }
+
+  return response.blob();
+}

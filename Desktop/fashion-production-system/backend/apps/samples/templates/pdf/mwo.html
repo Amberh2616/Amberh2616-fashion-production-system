@@ -1,0 +1,95 @@
+{% extends "pdf/base.html" %}
+
+{% block title %}MWO - {{ mwo.mwo_no }}{% endblock %}
+
+{% block content %}
+<h1>Manufacturing Work Order</h1>
+
+<div class="header-info">
+    <p><strong>MWO Number:</strong> {{ mwo.mwo_no|default:"N/A" }}</p>
+    <p><strong>Factory:</strong> {{ mwo.factory_name|default:"TBD" }}</p>
+    <p><strong>Status:</strong> {{ mwo.get_status_display|default:mwo.status|default:"N/A" }}</p>
+    <p><strong>Created:</strong> {{ mwo.created_at|date:"Y-m-d"|default:"N/A" }}</p>
+    <p><strong>Version:</strong> v{{ mwo.version_no|default:"1" }}</p>
+    {% if mwo.quantity %}<p><strong>Quantity:</strong> {{ mwo.quantity }}</p>{% endif %}
+    {% if mwo.notes %}<p><strong>Notes:</strong> {{ mwo.notes }}</p>{% endif %}
+</div>
+
+<h2>Bill of Materials</h2>
+{% if bom_data %}
+<table>
+    <thead>
+        <tr>
+            <th style="width: 5%;">#</th>
+            <th style="width: 35%;">Material</th>
+            <th style="width: 10%;">UOM</th>
+            <th style="width: 15%;">Consumption</th>
+            <th style="width: 15%;">Unit Price</th>
+            <th style="width: 20%;">Supplier</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in bom_data %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ item.material_name|default:"N/A" }}</td>
+            <td>{{ item.uom|default:"" }}</td>
+            <td>{{ item.consumption|floatformat:4|default:"0.0000" }}</td>
+            <td>${{ item.unit_price|floatformat:2|default:"0.00" }}</td>
+            <td>{{ item.supplier_name|default:"" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="no-data">No BOM data available</div>
+{% endif %}
+
+<h2>Operations</h2>
+{% if ops_data %}
+<table>
+    <thead>
+        <tr>
+            <th style="width: 10%;">Step</th>
+            <th style="width: 30%;">Operation</th>
+            <th style="width: 60%;">Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for op in ops_data %}
+        <tr>
+            <td>{{ op.step_no|default:forloop.counter }}</td>
+            <td>{{ op.operation|default:"" }}</td>
+            <td>{{ op.description|default:op.description_zh|default:"" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="no-data">No operations data available</div>
+{% endif %}
+
+<h2>QC Checkpoints</h2>
+{% if qc_data %}
+<table>
+    <thead>
+        <tr>
+            <th style="width: 5%;">#</th>
+            <th style="width: 35%;">Checkpoint</th>
+            <th style="width: 60%;">Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for qc in qc_data %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ qc.checkpoint|default:"" }}</td>
+            <td>{{ qc.description|default:"" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="no-data">No QC checkpoints defined</div>
+{% endif %}
+{% endblock %}

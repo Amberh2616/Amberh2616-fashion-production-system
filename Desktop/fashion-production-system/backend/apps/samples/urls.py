@@ -24,6 +24,8 @@ from .views import (
     batch_transition,
     # P1: Alerts
     get_alerts,
+    # P3: Batch Export
+    batch_export,
 )
 
 router = DefaultRouter()
@@ -94,9 +96,11 @@ router.register(
 
 # P0-2: Kanban API endpoints
 # P1: Batch Operations & Alerts
+# P3: Batch Export
 urlpatterns = [
     path('kanban/counts/', kanban_counts, name='kanban-counts'),
     path('kanban/runs/', kanban_runs, name='kanban-runs'),
     path('sample-runs/batch-transition/', batch_transition, name='batch-transition'),
+    path('sample-runs/batch-export/', batch_export, name='batch-export'),
     path('alerts/', get_alerts, name='alerts'),
 ] + router.urls
