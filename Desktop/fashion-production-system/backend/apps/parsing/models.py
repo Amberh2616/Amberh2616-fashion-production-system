@@ -7,6 +7,100 @@ from django.db import models
 import uuid
 
 
+class UploadedDocument(models.Model):
+    """
+    Uploaded documents (PDF / Excel) for AI classification and extraction
+    Tracks upload -> classification -> extraction pipeline status
+    """
+    STATUS_CHOICES = [
+        ('uploaded', 'Uploaded'),
+        ('classifying', 'AI Classifying'),
+        ('classified', 'Classified'),
+        ('extracting', 'AI Extracting'),
+        ('extracted', 'Extracted'),
+        ('reviewing', 'Under Review'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='uploaded_documents'
+    )
+
+    # File info
+    file = models.FileField(upload_to='uploads/%Y/%m/', max_length=500)
+    filename = models.CharField(max_length=255)
+    file_type = models.CharField(
+        max_length=10,
+        help_text="File extension: pdf, xlsx, csv, etc."
+    )
+    file_size = models.BigIntegerField(help_text="File size in bytes")
+
+    # Classification result (AI classification of content type)
+    classification_result = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="""
+        AI classification result:
+        {
+            "file_type": "mixed" | "tech_pack_only" | "bom_only" | "measurement_only",
+            "total_pages": 30,
+            "pages": [
+                {"page": 1, "type": "tech_pack", "confidence": 0.95},
+                {"page": 2, "type": "measurement_table", "confidence": 0.98},
+                {"page": 3, "type": "bom_table", "confidence": 0.92},
+                ...
+            ]
+        }
+        """
+    )
+
+    # Extraction status
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='uploaded'
+    )
+    extraction_errors = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of errors during extraction"
+    )
+
+    # Link to created StyleRevision after extraction
+    style_revision = models.ForeignKey(
+        'styles.StyleRevision',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_documents',
+        help_text="Created StyleRevision after successful extraction"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        'core.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_uploaded_documents'
+    )
+
+    class Meta:
+        db_table = 'uploaded_documents'
+        verbose_name = 'Uploaded Document'
+        verbose_name_plural = 'Uploaded Documents'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.filename} ({self.status})"
+
+
 class ExtractionRun(models.Model):
     """
     Tracks an AI extraction job (parsing a Tech Pack PDF)

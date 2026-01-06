@@ -10,6 +10,9 @@ router.register(r'review-items', views.DraftReviewItemViewSet)
 router.register(r'revisions', views.RevisionViewSet, basename='revision')
 router.register(r'draft-blocks', views.DraftBlockViewSet, basename='draftblock')
 
+# P4: Upload Pipeline APIs
+router.register(r'uploaded-documents', views.UploadedDocumentViewSet, basename='uploadeddocument')
+
 urlpatterns = [
     path('', include(router.urls)),
 ]

@@ -8,7 +8,7 @@ Block-Based Parsing:
 """
 
 from rest_framework import serializers
-from .models import ExtractionRun, DraftReviewItem
+from .models import ExtractionRun, DraftReviewItem, UploadedDocument
 from .models_blocks import Revision, RevisionPage, DraftBlock
 
 
@@ -212,3 +212,66 @@ class RevisionListSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+# ============================================
+# UploadedDocument Serializers (P4)
+# ============================================
+
+class UploadedDocumentSerializer(serializers.ModelSerializer):
+    """
+    UploadedDocument serializer for upload pipeline
+    """
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UploadedDocument
+        fields = [
+            'id',
+            'filename',
+            'file_type',
+            'file_size',
+            'status',
+            'classification_result',
+            'extraction_errors',
+            'style_revision',
+            'created_at',
+            'updated_at',
+            'file_url',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'file_url']
+
+    def get_file_url(self, obj):
+        """Return file URL"""
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+
+class DocumentUploadSerializer(serializers.Serializer):
+    """
+    Serializer for document upload
+    """
+    file = serializers.FileField(required=True)
+
+    def validate_file(self, value):
+        """Validate file type and size"""
+        # Check file extension
+        allowed_extensions = ['.pdf', '.xlsx', '.xls']
+        file_ext = '.' + value.name.split('.')[-1].lower()
+        if file_ext not in allowed_extensions:
+            raise serializers.ValidationError(
+                f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+            )
+
+        # Check file size (max 50MB)
+        max_size = 50 * 1024 * 1024  # 50MB
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                f"File size exceeds maximum allowed size (50MB)"
+            )
+
+        return value

@@ -8,6 +8,7 @@ type Props = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   showMissingOnly: boolean;
+  showSourceText: boolean; // 是否顯示英文原文
   // 如果你有 PDF 原始頁面寬高(pts)與 rendered px 對應，也可以補這兩個做更精準 mapping
   // pageWidthPx?: number;
   // pageHeightPx?: number;
@@ -19,6 +20,7 @@ export function BilingualOverlay({
   selectedId,
   onSelect,
   showMissingOnly,
+  showSourceText,
 }: Props) {
   const sorted = useMemo(() => {
     // 讓 overlay 的渲染穩定：先由上到下、左到右
@@ -47,6 +49,7 @@ export function BilingualOverlay({
           scale={scale}
           isSelected={selectedId === block.id}
           showMissingOnly={showMissingOnly}
+          showSourceText={showSourceText}
           onSelect={onSelect}
         />
       ))}

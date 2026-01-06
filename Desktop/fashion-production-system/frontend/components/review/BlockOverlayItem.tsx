@@ -30,6 +30,7 @@ type Props = {
   scale: number; // PDF render scale → 乘上 bbox 變成 px
   isSelected: boolean;
   showMissingOnly: boolean;
+  showSourceText: boolean; // 是否顯示英文原文
   onSelect: (id: string) => void;
 };
 
@@ -44,6 +45,7 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
   scale,
   isSelected,
   showMissingOnly,
+  showSourceText,
   onSelect,
 }: Props) {
   const bboxPx = {
@@ -126,7 +128,7 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
 
   return (
     <>
-      {/* bbox highlight box */}
+      {/* bbox highlight box - 始終顯示 */}
       <div
         style={baseBoxStyle}
         role="button"
@@ -150,7 +152,8 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
           </div>
         )}
 
-        {inline ? (
+        {/* 方案 1: inline 模式只在選中時顯示文字 */}
+        {inline && isSelected ? (
           <div style={textWrapStyle}>
             <div style={{ color: missing ? "rgba(220,38,38,0.9)" : isVerified ? "rgba(34,197,94,0.95)" : "rgba(17,24,39,0.95)", fontWeight: 600 }}>
               {missing ? "【缺】" : clampText(finalText, 100)}
@@ -159,8 +162,8 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
         ) : null}
       </div>
 
-      {/* card mode: bbox 不夠高，中文顯示在 bbox 下方卡片 */}
-      {!inline ? (
+      {/* 方案 1: card 模式只在選中時顯示 */}
+      {!inline && isSelected ? (
         <div
           style={cardStyle}
           onClick={(e) => {
@@ -175,9 +178,14 @@ export const BlockOverlayItem = memo(function BlockOverlayItem({
             </div>
           )}
 
-          <div style={{ fontSize: 10, color: "rgba(107,114,128,0.85)", marginBottom: 4 }}>
-            {clampText(block.source_text, 120)}
-          </div>
+          {/* 英文原文 - 只在 showSourceText === true 時顯示 */}
+          {showSourceText && (
+            <div style={{ fontSize: 10, color: "rgba(107,114,128,0.85)", marginBottom: 4 }}>
+              {clampText(block.source_text, 120)}
+            </div>
+          )}
+
+          {/* 中文翻譯 */}
           <div style={{ fontSize: 11, fontWeight: 600, color: missing ? "rgba(220,38,38,0.9)" : isVerified ? "rgba(34,197,94,0.95)" : "rgba(17,24,39,0.95)", whiteSpace: "pre-line", display: "flex", alignItems: "flex-start", gap: 4 }}>
             <span>{missing ? "【缺翻譯】" : finalText}</span>
           </div>

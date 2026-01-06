@@ -1,347 +1,332 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { Upload, FileText, FileSpreadsheet, X, AlertCircle } from 'lucide-react'
 
-interface UploadProgress {
-  filename: string
-  status: 'pending' | 'uploading' | 'success' | 'error'
+interface UploadedFile {
+  file: File
+  id: string
+  status: 'pending' | 'uploading' | 'uploaded' | 'error'
   progress: number
-  message?: string
-  type?: string
+  error?: string
+  documentId?: string
 }
 
-export default function MultiFileUploadPage() {
+export default function UploadPage() {
   const router = useRouter()
+  const [files, setFiles] = useState<UploadedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [files, setFiles] = useState<UploadProgress[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [revisionId, setRevisionId] = useState<string>('')
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
-  }
+  }, [])
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-  }
+  }, [])
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
 
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(
-      file => file.type === 'application/pdf'
-    )
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    addFiles(droppedFiles)
+  }, [])
 
-    if (droppedFiles.length === 0) {
-      alert('請上傳 PDF 檔案')
-      return
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selectedFiles = Array.from(e.target.files)
+      addFiles(selectedFiles)
     }
+  }, [])
 
-    await handleFiles(droppedFiles)
-  }
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files
-    if (!selectedFiles || selectedFiles.length === 0) return
-
-    const pdfFiles = Array.from(selectedFiles).filter(
-      file => file.type === 'application/pdf'
-    )
-
-    if (pdfFiles.length === 0) {
-      alert('請上傳 PDF 檔案')
-      return
-    }
-
-    await handleFiles(pdfFiles)
-  }
-
-  const handleFiles = async (uploadFiles: File[]) => {
-    setUploading(true)
-
-    // Initialize progress tracking
-    const initialProgress: UploadProgress[] = uploadFiles.map(file => ({
-      filename: file.name,
+  const addFiles = (newFiles: File[]) => {
+    const uploadedFiles: UploadedFile[] = newFiles.map(file => ({
+      file,
+      id: Math.random().toString(36).substr(2, 9),
       status: 'pending',
-      progress: 0
+      progress: 0,
     }))
-    setFiles(initialProgress)
 
-    // Step 1: Create a new revision if not exists
-    let currentRevisionId = revisionId
+    setFiles(prev => [...prev, ...uploadedFiles])
+  }
 
-    if (!currentRevisionId) {
-      try {
-        const timestamp = new Date().toISOString().slice(0, 10)
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v2/styles/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            style_number: `AUTO-${timestamp}-${Date.now()}`,
-            style_name: 'Multi-file Upload',
-            season: 'SS25',
-            category: 'apparel'
-          })
-        })
+  const removeFile = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id))
+  }
 
-        if (!response.ok) {
-          throw new Error('Failed to create style')
-        }
-
-        const styleData = await response.json()
-
-        // Create revision
-        const revisionResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v2/styles/${styleData.id}/create-revision/`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              revision_label: 'Rev A'
-            })
-          }
-        )
-
-        if (!revisionResponse.ok) {
-          throw new Error('Failed to create revision')
-        }
-
-        const revisionData = await revisionResponse.json()
-        currentRevisionId = revisionData.id
-        setRevisionId(currentRevisionId)
-      } catch (error) {
-        console.error('Failed to create revision:', error)
-        alert('創建 Revision 失敗')
-        setUploading(false)
-        return
-      }
-    }
-
-    // Step 2: Upload each file
-    for (let i = 0; i < uploadFiles.length; i++) {
-      const file = uploadFiles[i]
-
+  const uploadFile = async (uploadedFile: UploadedFile) => {
+    try {
       // Update status to uploading
       setFiles(prev =>
-        prev.map((f, idx) =>
-          idx === i ? { ...f, status: 'uploading', progress: 10 } : f
+        prev.map(f =>
+          f.id === uploadedFile.id
+            ? { ...f, status: 'uploading' as const, progress: 0 }
+            : f
         )
       )
 
-      try {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('revision_id', currentRevisionId)
+      // Create FormData
+      const formData = new FormData()
+      formData.append('file', uploadedFile.file)
 
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v2/upload-and-parse/`,
-          {
-            method: 'POST',
-            body: formData
-          }
-        )
+      // Upload file
+      const response = await fetch('http://localhost:8000/api/v2/uploaded-documents/', {
+        method: 'POST',
+        body: formData,
+      })
 
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.statusText}`)
-        }
-
-        const result = await response.json()
-
-        // Update status to success
-        setFiles(prev =>
-          prev.map((f, idx) =>
-            idx === i
-              ? {
-                  ...f,
-                  status: 'success',
-                  progress: 100,
-                  type: result.file_type,
-                  message: `已識別為 ${result.file_type} 類型`
-                }
-              : f
-          )
-        )
-      } catch (error) {
-        console.error(`Failed to upload ${file.name}:`, error)
-
-        // Update status to error
-        setFiles(prev =>
-          prev.map((f, idx) =>
-            idx === i
-              ? {
-                  ...f,
-                  status: 'error',
-                  progress: 0,
-                  message: error instanceof Error ? error.message : '上傳失敗'
-                }
-              : f
-          )
-        )
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`)
       }
+
+      const data = await response.json()
+
+      // Update status to uploaded
+      setFiles(prev =>
+        prev.map(f =>
+          f.id === uploadedFile.id
+            ? {
+                ...f,
+                status: 'uploaded' as const,
+                progress: 100,
+                documentId: data.id,
+              }
+            : f
+        )
+      )
+
+      return data.id
+    } catch (error) {
+      console.error('Upload error:', error)
+      setFiles(prev =>
+        prev.map(f =>
+          f.id === uploadedFile.id
+            ? {
+                ...f,
+                status: 'error' as const,
+                error: error instanceof Error ? error.message : 'Upload failed',
+              }
+            : f
+        )
+      )
+      return null
     }
+  }
 
-    setUploading(false)
+  const handleUploadAll = async () => {
+    const pendingFiles = files.filter(f => f.status === 'pending')
 
-    // Redirect to revision page after all uploads complete
-    if (currentRevisionId) {
-      setTimeout(() => {
-        router.push(`/dashboard/revisions/${currentRevisionId}`)
-      }, 2000)
+    // Upload all files
+    const uploadPromises = pendingFiles.map(f => uploadFile(f))
+    const documentIds = await Promise.all(uploadPromises)
+
+    // Filter out failed uploads
+    const successfulIds = documentIds.filter(id => id !== null) as string[]
+
+    if (successfulIds.length > 0) {
+      // Navigate to processing page for first document
+      router.push(`/dashboard/documents/${successfulIds[0]}/processing`)
     }
   }
 
-  const getStatusIcon = (status: UploadProgress['status']) => {
-    switch (status) {
-      case 'pending':
-        return '⏳'
-      case 'uploading':
-        return '🔄'
-      case 'success':
-        return '✅'
-      case 'error':
-        return '❌'
-    }
+  const handleClearAll = () => {
+    setFiles([])
   }
 
-  const getStatusColor = (status: UploadProgress['status']) => {
-    switch (status) {
-      case 'pending':
-        return 'text-gray-500'
-      case 'uploading':
-        return 'text-blue-500'
-      case 'success':
-        return 'text-green-500'
-      case 'error':
-        return 'text-red-500'
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase()
+    if (ext === 'pdf') {
+      return <FileText className="h-8 w-8 text-red-500" />
     }
+    return <FileSpreadsheet className="h-8 w-8 text-green-500" />
   }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+  }
+
+  const pendingCount = files.filter(f => f.status === 'pending').length
+  const uploadedCount = files.filter(f => f.status === 'uploaded').length
+  const errorCount = files.filter(f => f.status === 'error').length
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">上傳 Tech Pack 文件</h1>
-        <p className="text-gray-600 mt-2">
-          支援多個 PDF 檔案上傳，系統會自動識別類型並解析翻譯
-        </p>
+    <div className="container mx-auto py-8 px-4 max-w-5xl">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold">Upload Tech Pack / BOM / Spec</h1>
+          <p className="text-gray-600 mt-2">
+            Drop PDF or Excel files, AI will automatically identify and extract content
+          </p>
+        </div>
+        {files.length > 0 && (
+          <button
+            onClick={handleUploadAll}
+            disabled={pendingCount === 0}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          >
+            Upload & Process ({pendingCount})
+          </button>
+        )}
       </div>
 
-      {/* Drag & Drop Zone */}
+      {/* Dropzone */}
       <div
+        className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+          isDragging
+            ? 'border-blue-500 bg-blue-50'
+            : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+        }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`
-          border-2 border-dashed rounded-lg p-12 text-center cursor-pointer
-          transition-colors
-          ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'}
-        `}
       >
-        <input
-          type="file"
-          id="file-upload"
-          multiple
-          accept=".pdf"
-          onChange={handleFileSelect}
-          className="hidden"
-          disabled={uploading}
-        />
-        <label
-          htmlFor="file-upload"
-          className="cursor-pointer flex flex-col items-center"
-        >
-          <svg
-            className="w-16 h-16 text-gray-400 mb-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-            />
-          </svg>
+        <Upload className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+        <div className="space-y-2">
           <p className="text-lg font-medium text-gray-700">
-            拖曳多個 PDF 檔案到這裡，或點擊選擇
+            Drop files here
           </p>
-          <p className="text-sm text-gray-500 mt-2">
-            支援：Tech Pack、BOM、Spec、Construction PDF
-          </p>
-        </label>
+          <p className="text-sm text-gray-500">or</p>
+          <label className="inline-block px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 cursor-pointer font-medium">
+            Choose Files
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.xlsx,.xls"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </label>
+        </div>
+        <p className="text-xs text-gray-400 mt-4">
+          Supported: PDF, Excel (.xlsx, .xls) · Max 50MB
+        </p>
       </div>
 
-      {/* Upload Progress */}
+      {/* File List */}
       {files.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">上傳進度</h2>
-          <div className="space-y-3">
-            {files.map((file, idx) => (
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">
+              Selected Files ({files.length})
+            </h2>
+            <button
+              onClick={handleClearAll}
+              className="text-sm text-gray-600 hover:text-red-600"
+            >
+              Clear All
+            </button>
+          </div>
+
+          {/* Status Summary */}
+          {(uploadedCount > 0 || errorCount > 0) && (
+            <div className="mb-4 flex gap-4 text-sm">
+              {uploadedCount > 0 && (
+                <span className="text-green-600">
+                  ✓ {uploadedCount} Uploaded
+                </span>
+              )}
+              {errorCount > 0 && (
+                <span className="text-red-600">
+                  ✗ {errorCount} Failed
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {files.map(uploadedFile => (
               <div
-                key={idx}
-                className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm"
+                key={uploadedFile.id}
+                className={`border rounded-lg p-4 ${
+                  uploadedFile.status === 'error'
+                    ? 'border-red-200 bg-red-50'
+                    : uploadedFile.status === 'uploaded'
+                    ? 'border-green-200 bg-green-50'
+                    : 'border-gray-200 bg-white'
+                }`}
               >
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{getStatusIcon(file.status)}</span>
-                    <span className="font-medium">{file.filename}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 flex-1">
+                    {getFileIcon(uploadedFile.file.name)}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">
+                        {uploadedFile.file.name}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {formatFileSize(uploadedFile.file.size)}
+                        {uploadedFile.status === 'uploading' && (
+                          <span className="ml-2">Uploading...</span>
+                        )}
+                        {uploadedFile.status === 'uploaded' && (
+                          <span className="ml-2 text-green-600">
+                            ✓ Uploaded
+                          </span>
+                        )}
+                        {uploadedFile.status === 'error' && (
+                          <span className="ml-2 text-red-600 flex items-center gap-1">
+                            <AlertCircle className="h-4 w-4" />
+                            {uploadedFile.error}
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <span className={`text-sm font-medium ${getStatusColor(file.status)}`}>
-                    {file.status === 'pending' && '等待中'}
-                    {file.status === 'uploading' && '上傳中'}
-                    {file.status === 'success' && '完成'}
-                    {file.status === 'error' && '失敗'}
-                  </span>
+                  <button
+                    onClick={() => removeFile(uploadedFile.id)}
+                    className="ml-4 p-1 hover:bg-gray-200 rounded"
+                  >
+                    <X className="h-5 w-5 text-gray-500" />
+                  </button>
                 </div>
 
-                {/* Progress Bar */}
-                {file.status === 'uploading' && (
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                {/* Progress bar */}
+                {uploadedFile.status === 'uploading' && (
+                  <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                     <div
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${file.progress}%` }}
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadedFile.progress}%` }}
                     />
                   </div>
-                )}
-
-                {/* Message */}
-                {file.message && (
-                  <p className="text-sm text-gray-600 mt-2">{file.message}</p>
-                )}
-
-                {/* File Type Badge */}
-                {file.type && (
-                  <span className="inline-block mt-2 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
-                    {file.type.toUpperCase()}
-                  </span>
                 )}
               </div>
             ))}
           </div>
-
-          {/* Redirect Message */}
-          {files.every(f => f.status === 'success' || f.status === 'error') && (
-            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-800">
-                ✅ 所有檔案上傳完成！正在跳轉到編輯頁面...
-              </p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Instructions */}
-      <div className="mt-8 p-6 bg-gray-50 rounded-lg">
-        <h3 className="font-semibold mb-3">使用說明</h3>
-        <ul className="space-y-2 text-sm text-gray-700">
-          <li>• 支援同時上傳多個 PDF 檔案</li>
-          <li>• 系統會自動識別 PDF 類型（BOM / Spec / Construction / Tech Pack）</li>
-          <li>• 所有內容會自動翻譯成中文（使用 AI 翻譯）</li>
-          <li>• 上傳完成後會自動跳轉到編輯頁面，您可以檢查和修正翻譯</li>
+      {/* Info Box */}
+      <div className="mt-8 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+        <h3 className="font-medium text-blue-900 mb-3 flex items-center gap-2">
+          <span className="text-xl">📌</span>
+          System Will Automatically
+        </h3>
+        <ul className="space-y-2 text-sm text-blue-800">
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5">✓</span>
+            <span>AI identifies content types (Tech Pack / BOM / Measurement)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5">✓</span>
+            <span>Extract Tech Pack annotations with translation</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5">✓</span>
+            <span>Extract BOM (Bill of Materials)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5">✓</span>
+            <span>Extract Measurement specifications</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5 text-yellow-600">⚠</span>
+            <span>After extraction, please verify data accuracy</span>
+          </li>
         </ul>
       </div>
     </div>

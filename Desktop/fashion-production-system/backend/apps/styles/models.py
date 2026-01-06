@@ -366,6 +366,7 @@ class Measurement(models.Model):
 
     # Measurement point
     point_name = models.CharField(max_length=100)
+    point_name_zh = models.CharField(max_length=100, blank=True, help_text='Chinese translation of measurement point name')
     point_code = models.CharField(max_length=20, blank=True)
 
     # Size values (JSON: {"XS": 40.0, "S": 42.0, "M": 44.0, ...})

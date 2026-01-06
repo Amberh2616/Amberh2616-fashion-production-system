@@ -37,6 +37,7 @@ export default function DraftReviewPage() {
   const [editValue, setEditValue] = useState('');
   const [isApproving, setIsApproving] = useState(false);
   const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [overlayMode, setOverlayMode] = useState<'none' | 'all'>('all'); // ⭐ 叠層顯示模式
 
   // PDF render states
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -84,7 +85,13 @@ export default function DraftReviewPage() {
   );
 
   // Convert to BilingualOverlay format
-  const currentPageBlocks: DraftBlock[] = currentPageData?.blocks || [];
+  let currentPageBlocks: DraftBlock[] = currentPageData?.blocks || [];
+
+  // ⭐ 叠層顯示模式過濾
+  if (overlayMode === 'none') {
+    currentPageBlocks = [];
+  }
+  // overlayMode === 'all' → 顯示全部（只顯示中文，隱藏英文原文）
 
   // Get selected block for bbox highlighting
   const selectedBlock = selectedBlockId
@@ -205,6 +212,32 @@ export default function DraftReviewPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* 叠層顯示模式切換 */}
+            <div className="flex items-center gap-1 border border-gray-300 rounded overflow-hidden">
+              <button
+                onClick={() => setOverlayMode('none')}
+                className={`px-3 py-1 text-xs transition-colors ${
+                  overlayMode === 'none'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                title="不顯示叠層"
+              >
+                無
+              </button>
+              <button
+                onClick={() => setOverlayMode('all')}
+                className={`px-3 py-1 text-xs transition-colors ${
+                  overlayMode === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                title="顯示全部（僅中文翻譯）"
+              >
+                全部
+              </button>
+            </div>
+
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
@@ -257,6 +290,7 @@ export default function DraftReviewPage() {
                   selectedId={selectedBlockId}
                   onSelect={(id) => setSelectedBlockId(id)}
                   showMissingOnly={showMissingOnly}
+                  showSourceText={false}
                 />
               </div>
             ) : (

@@ -66,3 +66,106 @@ def machine_translate(text: str) -> str:
         # 翻譯失敗，回傳原文
         print(f"Translation failed: {e}")
         return text
+
+
+def batch_translate(texts: list[str]) -> list[str]:
+    """
+    批量翻譯（顯著提升速度）
+
+    Args:
+        texts: 原文列表
+
+    Returns:
+        list[str]: 翻譯列表（與原文列表對應）
+
+    Performance:
+    - 單次翻譯 50 個文本：1 次 API 調用（3-5 秒）
+    - vs 逐一翻譯：50 次 API 調用（50-100 秒）
+    - 速度提升：10-20 倍
+    """
+    if not texts:
+        return []
+
+    # 過濾空文本和中文文本
+    results = []
+    texts_to_translate = []
+    indices_to_translate = []
+
+    for i, text in enumerate(texts):
+        if not text or not text.strip():
+            results.append("")
+        elif is_chinese(text):
+            results.append("")
+        else:
+            results.append(None)  # Placeholder
+            texts_to_translate.append(text)
+            indices_to_translate.append(i)
+
+    # 如果沒有需要翻譯的文本，直接返回
+    if not texts_to_translate:
+        return results
+
+    # 批量翻譯
+    try:
+        from openai import OpenAI
+        import os
+        import json
+
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            # 沒有 API key，回傳原文
+            for i in indices_to_translate:
+                results[i] = texts[i]
+            return results
+
+        client = OpenAI(api_key=api_key)
+
+        # 構建 JSON 格式提示
+        prompt = f"""Translate the following English texts to Traditional Chinese. Return a JSON array with the same number of items.
+
+Input:
+{json.dumps(texts_to_translate, ensure_ascii=False)}
+
+Output format: ["translation1", "translation2", ...]
+
+Rules:
+- Keep technical terms accurate
+- Preserve formatting
+- Return ONLY the JSON array"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a fashion industry translator. Translate English to Traditional Chinese."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=4000  # 增加 token 限制以支持批量
+        )
+
+        # 解析回應
+        result_text = response.choices[0].message.content.strip()
+
+        # 清理 markdown 格式
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0].strip()
+
+        translations = json.loads(result_text)
+
+        # 填充結果
+        for i, idx in enumerate(indices_to_translate):
+            if i < len(translations):
+                results[idx] = translations[i]
+            else:
+                results[idx] = texts[idx]  # Fallback
+
+        return results
+
+    except Exception as e:
+        # 翻譯失敗，回傳原文
+        print(f"Batch translation failed: {e}")
+        for i in indices_to_translate:
+            results[i] = texts[i]
+        return results
