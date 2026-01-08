@@ -95,6 +95,10 @@ class MWOExcelExporter(ExcelExporter):
         ws_qc = wb.create_sheet("QC")
         self._write_qc(ws_qc, mwo)
 
+        # Sheet 5: Spec (Measurements)
+        ws_spec = wb.create_sheet("Spec")
+        self._write_spec(ws_spec, mwo)
+
         # Auto-adjust widths
         for ws in wb.worksheets:
             self.auto_width(ws)
@@ -245,6 +249,81 @@ class MWOExcelExporter(ExcelExporter):
             for col in range(1, 6):
                 ws.cell(row=row_idx, column=col).border = self.THIN_BORDER
 
+
+
+
+    def _write_spec(self, ws, mwo):
+        """Write Spec/Measurement data - expands values JSON into size columns"""
+        # Try to get from snapshot first
+        spec_data = getattr(mwo, 'measurement_snapshot_json', None) or []
+        
+        # Fallback: read from StyleRevision measurements
+        if not spec_data:
+            try:
+                run = mwo.sample_run
+                if hasattr(run, 'style_revision') and run.style_revision:
+                    measurements = run.style_revision.measurements.all()
+                    spec_data = []
+                    for m in measurements:
+                        spec_data.append({
+                            'point_name': m.point_name,
+                            'point_name_zh': getattr(m, 'point_name_zh', ''),
+                            'unit': m.unit,
+                            'tol_minus': float(getattr(m, 'tolerance_minus', 0) or 0),
+                            'tol_plus': float(getattr(m, 'tolerance_plus', 0) or 0),
+                            'values': m.values if isinstance(m.values, dict) else {},
+                        })
+            except Exception as e:
+                ws['A1'] = f'Error loading Spec data: {str(e)}'
+                return
+        
+        if not spec_data or not isinstance(spec_data, list):
+            ws['A1'] = 'No Spec data available'
+            return
+        
+        # Collect all size keys from all measurements
+        all_sizes = set()
+        for item in spec_data:
+            values = item.get('values', {})
+            if isinstance(values, dict):
+                all_sizes.update(values.keys())
+        
+        # Sort sizes: try numeric first, then string
+        def sort_key(x):
+            try:
+                return (0, int(x))
+            except ValueError:
+                return (1, x)
+        
+        sizes = sorted(all_sizes, key=sort_key)
+        
+        if not sizes:
+            sizes = ['0', '2', '4', '6', '8', '10', '12', '14', '16', '18']
+        
+        # Headers: Point Name (EN) | Point Name (ZH) | Unit | Tol- | Tol+ | Size0 | Size2 | ...
+        headers = ['Point Name (EN)', 'Point Name (ZH)', 'Unit', 'Tol-', 'Tol+'] + sizes
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            self.apply_header_style(cell)
+        
+        # Data rows
+        for row_idx, item in enumerate(spec_data, 2):
+            ws.cell(row=row_idx, column=1, value=item.get('point_name', ''))
+            ws.cell(row=row_idx, column=2, value=item.get('point_name_zh', ''))
+            ws.cell(row=row_idx, column=3, value=item.get('unit', ''))
+            ws.cell(row=row_idx, column=4, value=self.format_decimal(item.get('tol_minus', 0)))
+            ws.cell(row=row_idx, column=5, value=self.format_decimal(item.get('tol_plus', 0)))
+            
+            # Size values
+            values = item.get('values', {})
+            if isinstance(values, dict):
+                for col_offset, size in enumerate(sizes):
+                    val = values.get(size, values.get(str(size), ''))
+                    ws.cell(row=row_idx, column=6 + col_offset, value=self.format_decimal(val) if val else '')
+            
+            # Apply borders
+            for col in range(1, len(headers) + 1):
+                ws.cell(row=row_idx, column=col).border = self.THIN_BORDER
 
 class EstimateExcelExporter(ExcelExporter):
     """Export SampleCostEstimate to Excel"""
