@@ -24,6 +24,7 @@ interface DocumentStatus {
   classification_result?: ClassificationResult
   extraction_errors: any[]
   file_url?: string
+  tech_pack_revision_id?: string  // ⚡ For P0 review navigation
 }
 
 export default function ReviewPage() {
@@ -64,6 +65,13 @@ export default function ReviewPage() {
       } else if (data.status === 'extracted' || data.status === 'completed') {
         // Mark as completed
         setIsCompleted(true)
+
+        // ⚡ Auto-navigate to P0 review interface if tech_pack_revision_id exists
+        if (data.tech_pack_revision_id) {
+          setTimeout(() => {
+            router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/review`)
+          }, 2000)  // Wait 2 seconds to show completion message
+        }
       }
     } catch (err) {
       console.error('Failed to fetch status:', err)
@@ -100,6 +108,13 @@ export default function ReviewPage() {
           setIsExtracting(false)
           setIsCompleted(true)
           setStatus(statusData)
+
+          // ⚡ Auto-navigate to P0 review interface for Tech Pack translation editing
+          if (statusData.tech_pack_revision_id) {
+            setTimeout(() => {
+              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/review`)
+            }, 2000)  // Wait 2 seconds to show success message
+          }
         } else if (statusData.status === 'failed') {
           clearInterval(pollInterval)
           setIsExtracting(false)
@@ -300,7 +315,11 @@ export default function ReviewPage() {
             <CheckCircle2 className="h-6 w-6" />
             <div>
               <h2 className="font-semibold">Extraction Completed</h2>
-              <p className="text-sm mt-1">Data has been successfully extracted. Ready to create Sample Request.</p>
+              <p className="text-sm mt-1">
+                {status?.tech_pack_revision_id
+                  ? 'Redirecting to Tech Pack translation review interface...'
+                  : 'Data has been successfully extracted. Ready to create Sample Request.'}
+              </p>
             </div>
           </div>
         </div>

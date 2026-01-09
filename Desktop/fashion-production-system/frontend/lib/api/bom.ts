@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from './client';
-import type { BOMListResponse, BOMItem, UpdateBOMItemPayload } from '../types/bom';
+import type { BOMListResponse, BOMItem, UpdateBOMItemPayload, TranslateBatchResponse } from '../types/bom';
 
 /**
  * Fetch BOM items for a specific revision
@@ -42,5 +42,33 @@ export async function updateBOMItem(
 export async function deleteBOMItem(revisionId: string, itemId: string): Promise<void> {
   return apiClient<void>(`/style-revisions/${revisionId}/bom/${itemId}/`, {
     method: 'DELETE',
+  });
+}
+
+/**
+ * Translate a single BOM item to Chinese
+ */
+export async function translateBOMItem(
+  revisionId: string,
+  itemId: string
+): Promise<BOMItem> {
+  return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/translate/`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Batch translate all BOM items for a revision
+ */
+export async function translateBOMBatch(
+  revisionId: string,
+  force: boolean = false
+): Promise<TranslateBatchResponse> {
+  return apiClient<TranslateBatchResponse>(`/style-revisions/${revisionId}/bom/translate-batch/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ force }),
   });
 }

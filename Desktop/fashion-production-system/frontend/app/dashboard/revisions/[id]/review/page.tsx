@@ -36,6 +36,7 @@ export default function DraftReviewPage() {
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [isApproving, setIsApproving] = useState(false);
+  const [isCreatingRequest, setIsCreatingRequest] = useState(false);
   const [showMissingOnly, setShowMissingOnly] = useState(false);
   const [overlayMode, setOverlayMode] = useState<'none' | 'all'>('all'); // ⭐ 叠層顯示模式
 
@@ -150,6 +151,67 @@ export default function DraftReviewPage() {
       alert(`Failed to approve revision: ${(error as Error).message}`);
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handleCreateRequest = async () => {
+    const confirmed = window.confirm(
+      '✅ 翻译已完成！\n\n' +
+      '确认创建 Sample Request？\n' +
+      '这将生成 Run + MWO + Estimate + PO'
+    );
+
+    if (!confirmed) return;
+
+    setIsCreatingRequest(true);
+    try {
+      // Step 1: Get style_revision_id from UploadedDocument
+      // We need to find the UploadedDocument that has this tech_pack_revision_id
+      const docResponse = await fetch(`http://localhost:8000/api/v2/uploaded-documents/`);
+      if (!docResponse.ok) throw new Error('Failed to fetch documents');
+
+      const docs = await docResponse.json();
+      const document = docs.results?.find((doc: any) =>
+        doc.tech_pack_revision_id === revisionId
+      );
+
+      if (!document || !document.style_revision) {
+        throw new Error(
+          'Cannot create Sample Request: No BOM/Spec data found.\n\n' +
+          '请确保文件包含 BOM 和 Measurement 数据。'
+        );
+      }
+
+      // Step 2: Create Sample Request with style_revision_id
+      const response = await fetch('http://localhost:8000/api/v2/sample-requests/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          revision_id: document.style_revision, // ⭐ Use StyleRevision ID
+          request_type: 'proto',
+          quantity_requested: 5,
+          priority: 'normal',
+          brand_name: 'Demo',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create request');
+      }
+
+      const data = await response.json();
+      alert('✅ Sample Request 创建成功！\n\n正在跳转到 Kanban 看板...');
+
+      // Redirect to Kanban
+      window.location.href = '/dashboard/samples/kanban';
+    } catch (error) {
+      console.error('Failed to create request:', error);
+      alert(`创建 Request 失败:\n\n${(error as Error).message}`);
+    } finally {
+      setIsCreatingRequest(false);
     }
   };
 
@@ -483,17 +545,52 @@ export default function DraftReviewPage() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-white">
-          <button
-            onClick={handleApprove}
-            disabled={isApproving}
-            className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isApproving && (
-              <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-            )}
-            {isApproving ? 'Approving...' : 'Approve Revision'}
-          </button>
+        <div className="border-t border-gray-200 px-6 py-4 bg-white space-y-3">
+          {revision.status === 'completed' ? (
+            <>
+              {/* Status Badge */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium text-green-800">✅ 翻译已批准</span>
+              </div>
+
+              {/* Create Sample Request Button */}
+              <button
+                onClick={handleCreateRequest}
+                disabled={isCreatingRequest}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md"
+              >
+                {isCreatingRequest && (
+                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                )}
+                {isCreatingRequest ? '创建中...' : '📋 下 Sample Request'}
+              </button>
+
+              <p className="text-xs text-gray-500 text-center">
+                将生成 Run + MWO + Estimate + PO
+              </p>
+            </>
+          ) : (
+            <>
+              {/* Approve Button */}
+              <button
+                onClick={handleApprove}
+                disabled={isApproving}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isApproving && (
+                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                )}
+                {isApproving ? 'Approving...' : 'Approve Revision'}
+              </button>
+
+              <p className="text-xs text-gray-500 text-center">
+                批准后可创建 Sample Request
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

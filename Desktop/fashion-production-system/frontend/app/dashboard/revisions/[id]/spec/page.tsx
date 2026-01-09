@@ -12,74 +12,76 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useBOMItems, useTranslateBOMBatch } from "@/lib/hooks/useBom";
+import { useMeasurements, useTranslateMeasurementBatch } from "@/lib/hooks/useMeasurement";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { BOMEditDrawer } from "@/components/bom/BOMEditDrawer";
-import { BOMTranslationDrawer } from "@/components/bom/BOMTranslationDrawer";
-import { EditableConsumptionCell } from "@/components/bom/EditableConsumptionCell";
-import type { BOMItem } from "@/lib/types/bom";
+import { MeasurementTranslationDrawer } from "@/components/measurement/MeasurementTranslationDrawer";
+import type { MeasurementItem } from "@/lib/types/measurement";
 import { ArrowUpDown, Languages, Sparkles } from "lucide-react";
 
-const columnHelper = createColumnHelper<BOMItem>();
+const columnHelper = createColumnHelper<MeasurementItem>();
 
-export default function BOMPage() {
+export default function SpecPage() {
   const params = useParams();
   const revisionId = params.id as string;
-  const [editingItem, setEditingItem] = useState<BOMItem | null>(null);
-  const [translatingItem, setTranslatingItem] = useState<BOMItem | null>(null);
+  const [translatingItem, setTranslatingItem] = useState<MeasurementItem | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
 
-  const { data: bomData, isLoading, error } = useBOMItems(revisionId);
-  const translateBatchMutation = useTranslateBOMBatch(revisionId);
+  const { data: measurementData, isLoading, error } = useMeasurements(revisionId);
+  const translateBatchMutation = useTranslateMeasurementBatch(revisionId);
+
+  // Get unique size keys from all measurements
+  const sizeKeys = useMemo(() => {
+    if (!measurementData?.results) return [];
+    const keys = new Set<string>();
+    measurementData.results.forEach((item) => {
+      if (item.values) {
+        Object.keys(item.values).forEach((k) => keys.add(k));
+      }
+    });
+    // Sort sizes in a logical order
+    const sizeOrder = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', '4XL'];
+    return Array.from(keys).sort((a, b) => {
+      const aIndex = sizeOrder.indexOf(a);
+      const bIndex = sizeOrder.indexOf(b);
+      if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex;
+      if (aIndex >= 0) return -1;
+      if (bIndex >= 0) return 1;
+      return a.localeCompare(b);
+    });
+  }, [measurementData]);
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor("item_number", {
-        header: "#",
-        cell: (info) => (
-          <div className="font-medium text-center w-12">{info.getValue()}</div>
-        ),
-        size: 50,
-      }),
-      columnHelper.accessor("category_display", {
-        header: "分類",
-        cell: (info) => (
-          <Badge variant="outline" className="text-xs">
-            {info.getValue()}
-          </Badge>
-        ),
-        size: 80,
-      }),
-      columnHelper.accessor("material_name", {
+      columnHelper.accessor("point_name", {
         header: ({ column }) => (
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
             className="h-8 px-2"
           >
-            物料名稱
+            尺寸點
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         ),
         cell: (info) => (
-          <div className="max-w-xs truncate" title={info.getValue()}>
+          <div className="max-w-xs truncate font-medium" title={info.getValue()}>
             {info.getValue()}
           </div>
         ),
-        size: 200,
+        size: 180,
       }),
-      columnHelper.accessor("material_name_zh", {
+      columnHelper.accessor("point_name_zh", {
         header: "中文名稱",
         cell: (info) => {
           const value = info.getValue();
           const status = info.row.original.translation_status;
           return (
             <div className="flex items-center gap-2">
-              <span className="text-sm truncate max-w-[120px]" title={value || ""}>
+              <span className="text-sm truncate max-w-[100px]" title={value || ""}>
                 {value || "-"}
               </span>
               {status === "confirmed" && (
@@ -90,137 +92,72 @@ export default function BOMPage() {
             </div>
           );
         },
-        size: 150,
+        size: 130,
       }),
-      columnHelper.accessor("supplier", {
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2"
-          >
-            供應商
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: (info) => (
-          <div className="max-w-xs truncate text-sm" title={info.getValue()}>
-            {info.getValue()}
-          </div>
-        ),
-        size: 150,
-      }),
-      columnHelper.accessor("supplier_article_no", {
-        header: "供應商編號",
+      columnHelper.accessor("point_code", {
+        header: "編碼",
         cell: (info) => (
           <div className="text-sm text-muted-foreground">
             {info.getValue() || "-"}
           </div>
         ),
-        size: 120,
+        size: 80,
       }),
-      columnHelper.accessor("color", {
-        header: "顏色",
-        cell: (info) => (
-          <div className="text-xs text-muted-foreground truncate max-w-[100px]" title={info.getValue()}>
-            {info.getValue() || "-"}
-          </div>
-        ),
-        size: 100,
-      }),
-      columnHelper.accessor("material_status", {
-        header: "狀態",
+      // Dynamic size columns
+      ...sizeKeys.map((sizeKey) =>
+        columnHelper.display({
+          id: `size_${sizeKey}`,
+          header: sizeKey,
+          cell: ({ row }) => {
+            const value = row.original.values?.[sizeKey];
+            return (
+              <div className="text-sm text-center font-mono">
+                {value !== undefined ? value : "-"}
+              </div>
+            );
+          },
+          size: 60,
+        })
+      ),
+      columnHelper.accessor("tolerance_plus", {
+        header: "+/-",
         cell: (info) => {
-          const status = info.getValue();
-          return status ? (
-            <Badge
-              variant={
-                status.includes("Approved")
-                  ? "default"
-                  : status.includes("Rejected")
-                  ? "destructive"
-                  : "secondary"
-              }
-              className="text-xs"
-            >
-              {status}
-            </Badge>
-          ) : (
-            <span className="text-xs text-muted-foreground">-</span>
+          const plus = info.getValue();
+          const minus = info.row.original.tolerance_minus;
+          return (
+            <div className="text-xs text-muted-foreground text-center">
+              +{plus}/-{minus}
+            </div>
           );
         },
-        size: 130,
-      }),
-      columnHelper.display({
-        id: "consumption",
-        header: "用量",
-        cell: ({ row }) => (
-          <EditableConsumptionCell
-            item={row.original}
-            revisionId={revisionId}
-          />
-        ),
-        size: 180,
+        size: 70,
       }),
       columnHelper.accessor("unit", {
         header: "單位",
-        cell: (info) => <div className="text-sm">{info.getValue()}</div>,
-        size: 60,
-      }),
-      columnHelper.accessor("unit_price", {
-        header: "單價",
-        cell: (info) => (
-          <div className="text-sm">
-            {info.getValue() ? `$${info.getValue()}` : "-"}
-          </div>
-        ),
-        size: 80,
-      }),
-      columnHelper.accessor("leadtime_days", {
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-8 px-2"
-          >
-            交期(天)
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: (info) => <div className="text-sm">{info.getValue() || "-"}</div>,
-        size: 90,
+        cell: (info) => <div className="text-sm text-center">{info.getValue()}</div>,
+        size: 50,
       }),
       columnHelper.display({
         id: "actions",
         header: "操作",
         cell: ({ row }) => (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTranslatingItem(row.original)}
-              title="翻譯"
-            >
-              <Languages className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditingItem(row.original)}
-              title="編輯"
-            >
-              編輯
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setTranslatingItem(row.original)}
+            title="翻譯"
+          >
+            <Languages className="h-4 w-4" />
+          </Button>
         ),
-        size: 120,
+        size: 60,
       }),
     ],
-    [revisionId]
+    [sizeKeys]
   );
 
   const table = useReactTable({
-    data: bomData?.results || [],
+    data: measurementData?.results || [],
     columns,
     state: {
       sorting,
@@ -253,16 +190,21 @@ export default function BOMPage() {
     );
   }
 
-  const items = bomData?.results || [];
+  const items = measurementData?.results || [];
+
+  // Count translation stats
+  const translatedCount = items.filter(
+    (item) => item.point_name_zh && item.translation_status === "confirmed"
+  ).length;
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">BOM 物料清單</h1>
+          <h1 className="text-2xl font-bold">Spec 尺寸表</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            管理物料清單、供應商編號、用量與交期
+            管理尺寸規格與中文翻譯
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -275,7 +217,7 @@ export default function BOMPage() {
             {translateBatchMutation.isPending ? "翻譯中..." : "AI 批量翻譯"}
           </Button>
           <Badge variant="secondary" className="text-base px-3 py-1">
-            共 {items.length} 項
+            {translatedCount}/{items.length} 已翻譯
           </Badge>
         </div>
       </div>
@@ -283,7 +225,7 @@ export default function BOMPage() {
       {/* Search */}
       <div className="flex items-center gap-4">
         <Input
-          placeholder="搜尋物料名稱、供應商..."
+          placeholder="搜尋尺寸點名稱..."
           value={globalFilter ?? ""}
           onChange={(e) => setGlobalFilter(e.target.value)}
           className="max-w-sm"
@@ -301,7 +243,7 @@ export default function BOMPage() {
                     <th
                       key={header.id}
                       style={{ width: header.getSize() }}
-                      className="px-4 py-3 text-left text-sm font-medium text-muted-foreground"
+                      className="px-3 py-3 text-left text-sm font-medium text-muted-foreground"
                     >
                       {header.isPlaceholder
                         ? null
@@ -321,7 +263,7 @@ export default function BOMPage() {
                     colSpan={columns.length}
                     className="h-24 text-center text-muted-foreground"
                   >
-                    無 BOM 資料
+                    無尺寸資料
                   </td>
                 </tr>
               ) : (
@@ -334,7 +276,7 @@ export default function BOMPage() {
                       <td
                         key={cell.id}
                         style={{ width: cell.column.getSize() }}
-                        className="px-4 py-3"
+                        className="px-3 py-2"
                       >
                         {flexRender(
                           cell.column.columnDef.cell,
@@ -350,19 +292,9 @@ export default function BOMPage() {
         </div>
       </div>
 
-      {/* Edit Drawer */}
-      {editingItem && (
-        <BOMEditDrawer
-          item={editingItem}
-          revisionId={revisionId}
-          open={!!editingItem}
-          onClose={() => setEditingItem(null)}
-        />
-      )}
-
       {/* Translation Drawer */}
       {translatingItem && (
-        <BOMTranslationDrawer
+        <MeasurementTranslationDrawer
           item={translatingItem}
           revisionId={revisionId}
           open={!!translatingItem}

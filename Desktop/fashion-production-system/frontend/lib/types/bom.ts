@@ -14,6 +14,8 @@ export type MaterialStatus =
   | 'Rejected'
   | 'Discontinued';
 
+export type TranslationStatus = 'pending' | 'confirmed';
+
 export interface BOMItem {
   id: string;
   revision: string;
@@ -36,6 +38,12 @@ export interface BOMItem {
   leadtime_days: number | null;
   ai_confidence: number | null;
   is_verified: boolean;
+  // Translation fields
+  material_name_zh?: string;
+  description_zh?: string;
+  translation_status?: TranslationStatus;
+  translated_at?: string;
+  translated_by?: string;
 }
 
 export interface BOMListResponse {
@@ -53,4 +61,16 @@ export interface UpdateBOMItemPayload {
   leadtime_days?: number;
   wastage_rate?: string;
   is_verified?: boolean;
+  // Translation fields
+  material_name_zh?: string;
+  description_zh?: string;
+  translation_status?: TranslationStatus;
+}
+
+export interface TranslateBatchResponse {
+  success: boolean;
+  translated_count: number;
+  skipped_count: number;
+  error_count: number;
+  errors?: string[];
 }

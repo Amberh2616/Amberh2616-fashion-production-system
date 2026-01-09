@@ -6,6 +6,9 @@ AI extraction runs and draft review items
 from django.db import models
 import uuid
 
+# Import Revision from models_blocks to make 'parsing.Revision' resolvable
+from apps.parsing.models_blocks import Revision, RevisionPage, DraftBlock
+
 
 class UploadedDocument(models.Model):
     """
@@ -78,6 +81,16 @@ class UploadedDocument(models.Model):
         blank=True,
         related_name='uploaded_documents',
         help_text="Created StyleRevision after successful extraction"
+    )
+
+    # Link to created TechPackRevision (Revision) for DraftBlocks review
+    tech_pack_revision = models.ForeignKey(
+        'parsing.Revision',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_documents',
+        help_text="Created TechPackRevision for draft review (P0 interface)"
     )
 
     # Metadata

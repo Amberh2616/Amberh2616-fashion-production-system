@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-08
-**Version:** 4.2.0
-**Status:** P0-P5 完成 → BOM/Spec AI 翻譯 + MWO Spec Sheet ✅
+**Last Updated:** 2026-01-09
+**Version:** 4.5.0
+**Status:** P0-P8 完成 → MWO 完整匯出（Tech Pack + BOM + Spec）✅
 
 ---
 
@@ -115,6 +115,89 @@
 | **P3** | **PDF 匯出 + 批量 ZIP 打包** | **2026-01-04** | - |
 | **P4** | **Tech Pack 翻譯流程修復 + Request 按鈕** | **2026-01-07** | 見下方 |
 | **P5** | **BOM/Spec AI 翻譯 + MWO Spec Sheet** | **2026-01-08** | 見下方 |
+| **P6** | **BOM 中文翻譯編輯界面** | **2026-01-09** | 見下方 |
+| **P7** | **Measurement 中文翻譯編輯界面** | **2026-01-09** | 見下方 |
+| **P8** | **MWO 完整匯出（Tech Pack + BOM + Spec）** | **2026-01-09** | 見下方 |
+
+#### P8: MWO 完整匯出（2026-01-09）
+
+**功能：** 生成包含完整內容的 MWO PDF
+- 封面頁（中英雙語 MWO 資訊）
+- Tech Pack 頁面（中文疊加在原圖上）
+- BOM 物料表（含中文翻譯，藍色字）
+- Spec 尺寸表（含中文翻譯，藍色字）
+
+**技術實現：**
+- Pillow + PyMuPDF 渲染中文（避免 xhtml2pdf 亂碼）
+- 中文字體：微軟雅黑（msyh.ttc）
+- Tech Pack 疊加模式：半透明白底 + 中文翻譯
+
+**後端文件：**
+- `backend/apps/samples/services/mwo_complete_export.py` - 完整 MWO 匯出服務
+- `backend/apps/parsing/services/techpack_pdf_export.py` - Tech Pack 疊加匯出
+- `backend/apps/parsing/models.py` - 添加 Revision 模型導入
+
+**API 端點：**
+- `GET /api/v2/sample-runs/{id}/export-mwo-complete-pdf/` - 下載完整 MWO PDF
+
+**前端：**
+- Kanban 頁面每個 Run 卡片有「Complete MWO」按鈕
+
+**測試結果：**
+- PDF 生成成功（~80MB）
+- 中文正常顯示
+- 待真實 Tech Pack 資料測試完整翻譯覆蓋
+
+#### P7: Measurement 中文翻譯編輯界面（2026-01-09）
+
+**後端修改：**
+- `backend/apps/styles/serializers.py` - MeasurementSerializer 添加 `point_name_zh`, `translation_status`
+- `backend/apps/styles/views.py` - 新增 MeasurementViewSet（translate + translate_batch）
+- `backend/apps/styles/urls.py` - 添加 Measurement 路由
+
+**前端新增：**
+- `frontend/lib/types/measurement.ts` - Measurement 類型定義
+- `frontend/lib/api/measurement.ts` - Measurement API 客戶端
+- `frontend/lib/hooks/useMeasurement.ts` - Measurement React Query Hooks
+- `frontend/components/measurement/MeasurementTranslationDrawer.tsx` - 翻譯編輯組件
+- `frontend/app/dashboard/revisions/[id]/spec/page.tsx` - Spec 尺寸表主頁面
+
+**功能：**
+- 尺寸表展示：動態尺碼列（根據數據自動生成）
+- 單項翻譯：點擊翻譯圖標開啟編輯界面
+- 批量翻譯：一鍵 AI 翻譯所有尺寸點名稱
+- 翻譯狀態統計：顯示已翻譯/總數
+
+**API 端點：**
+- `GET /api/v2/style-revisions/{id}/measurements/` - 列表
+- `PATCH /api/v2/style-revisions/{id}/measurements/{item_id}/` - 更新
+- `POST /api/v2/style-revisions/{id}/measurements/{item_id}/translate/` - 單項翻譯
+- `POST /api/v2/style-revisions/{id}/measurements/translate-batch/` - 批量翻譯
+
+**頁面路徑：** `/dashboard/revisions/{id}/spec`
+
+#### P6: BOM 中文翻譯編輯界面（2026-01-09）
+
+**修改文件：**
+- `backend/apps/styles/serializers.py` - 添加翻譯字段到 BOMItemSerializer
+- `backend/apps/styles/views.py` - 添加 translate + translate_batch API 端點
+- `frontend/lib/types/bom.ts` - 添加翻譯類型定義
+- `frontend/lib/api/bom.ts` - 添加翻譯 API 函數
+- `frontend/lib/hooks/useBom.ts` - 添加翻譯 mutation hooks
+
+**新增文件：**
+- `frontend/components/bom/BOMTranslationDrawer.tsx` - BOM 翻譯編輯抽屜組件
+
+**功能：**
+- 單項翻譯：點擊翻譯圖標開啟編輯界面
+- 批量翻譯：一鍵 AI 翻譯所有 BOM 物料名稱
+- 翻譯狀態：pending / confirmed 狀態顯示
+- 手動編輯：可手動修改 AI 翻譯結果
+- 確認翻譯：將翻譯標記為已確認
+
+**API 端點：**
+- `POST /api/v2/style-revisions/{id}/bom/{item_id}/translate/` - 單項翻譯
+- `POST /api/v2/style-revisions/{id}/bom/translate-batch/` - 批量翻譯
 
 #### P5: BOM/Spec AI 翻譯（2026-01-08）
 
@@ -236,11 +319,12 @@ URL: /dashboard/samples/kanban
 | 優先級 | 功能 | 估計工時 | 文檔 | 狀態 |
 |--------|------|----------|------|------|
 | **P0** | **測試 Tech Pack 完整流程** | **0.5 天** | `docs/PROGRESS-UPDATE-2026-01-07-FINAL.md` | ✅ 已完成 |
-| **P1** | **BOM 中文翻譯編輯界面** ⭐ | **1 天** | - | ⏳ 明天執行 |
-| **P1** | **Measurement 中文翻譯編輯界面** | **1 天** | - | ⏳ 待實現 |
-| P2 | MWO 完整匯出（Tech Pack + BOM + Spec）| 2 天 | `docs/TECH-PACK-MWO-INTEGRATION.md` | ⏳ 待實現 |
+| **P1** | **BOM 中文翻譯編輯界面** | **1 天** | - | ✅ 已完成 (2026-01-09) |
+| **P1** | **Measurement 中文翻譯編輯界面** | **1 天** | - | ✅ 已完成 (2026-01-09) |
+| **P2** | **MWO 完整匯出（Tech Pack + BOM + Spec）** | **2 天** | `docs/TECH-PACK-MWO-INTEGRATION.md` | ✅ 已完成 (2026-01-09) |
 | P3 | 自訂 Excel/PDF 模板 | - | - | 📋 計劃中 |
 | P4 | Celery 異步批量匯出 | - | - | 📋 計劃中 |
+| P5 | 真實 Tech Pack 完整流程測試 | 0.5 天 | - | ⏳ 下一步 |
 | Phase B | 多人協作 + RBAC | - | - | 📋 計劃中 |
 | Phase B | Supplier Portal（品牌端查看）| - | - | 📋 計劃中 |
 
@@ -341,12 +425,12 @@ ANY → CANCELLED
 5. **雙 Revision 設計**：系統創建兩個 Revision：
    - `StyleRevision`：用於 BOM/Measurement 編輯
    - `TechPackRevision (Revision)`：用於 DraftBlocks 翻譯審校
-6. **中文字體**：PDF 文字渲染使用 PyMuPDF（`fontname="china-ss"`），不使用 Pillow
+6. **中文字體**：MWO 完整匯出使用 Pillow + PyMuPDF，字體為微軟雅黑（msyh.ttc）
 7. **終端編碼**：Cursor 終端已配置 UTF-8（`.vscode/settings.json`）
 
 ---
 
-## 🎯 Tech Pack 翻譯完整流程（2026-01-07 修復）
+## 🎯 Tech Pack 翻譯完整流程（2026-01-09 完成）
 
 ```
 階段 1：上傳與分類 ✅
@@ -365,11 +449,15 @@ ANY → CANCELLED
   └→ PATCH /api/v2/draft-blocks/{id}/ （編輯 edited_text）
   └→ POST /api/v2/revisions/{id}/approve/
 
-階段 4：MWO 導出 ⏳ 待實現
-  └→ 讀取 DraftBlock.edited_text
-  └→ 讀取 BOMItem.material_name_zh（⚠️ 無編輯界面）
-  └→ 讀取 Measurement.point_name_zh（⚠️ 無編輯界面）
-  └→ 生成 MWO.pdf（PyMuPDF，方案 B）
+階段 4：BOM/Spec 翻譯 ✅
+  └→ /dashboard/revisions/{id}/bom - BOM 翻譯編輯
+  └→ /dashboard/revisions/{id}/spec - Spec 翻譯編輯
+  └→ 單項翻譯 + 批量 AI 翻譯
+
+階段 5：MWO 完整匯出 ✅
+  └→ GET /api/v2/sample-runs/{id}/export-mwo-complete-pdf/
+  └→ 封面 + Tech Pack（中文疊加）+ BOM + Spec
+  └→ Pillow + PyMuPDF 渲染中文
 ```
 
 ---

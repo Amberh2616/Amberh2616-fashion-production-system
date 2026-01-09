@@ -3,7 +3,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchBOMItems, fetchBOMItem, updateBOMItem, deleteBOMItem } from '../api/bom';
+import { fetchBOMItems, fetchBOMItem, updateBOMItem, deleteBOMItem, translateBOMItem, translateBOMBatch } from '../api/bom';
 import type { UpdateBOMItemPayload } from '../types/bom';
 
 /**
@@ -82,6 +82,34 @@ export function useDeleteBOMItem(revisionId: string) {
 
   return useMutation({
     mutationFn: (itemId: string) => deleteBOMItem(revisionId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * Translate a single BOM item mutation
+ */
+export function useTranslateBOMItem(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (itemId: string) => translateBOMItem(revisionId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * Batch translate all BOM items mutation
+ */
+export function useTranslateBOMBatch(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (force: boolean = false) => translateBOMBatch(revisionId, force),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
     },

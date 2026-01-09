@@ -2,12 +2,18 @@
 P3: PDF Export Service
 複用 P2 Excel 架構，改用 HTML 模板生成 PDF
 使用雙引擎策略：WeasyPrint（Linux/Docker）或 xhtml2pdf（Windows）
+
+中文字體修復說明 (2026-01-07):
+- simsunb.ttf 是「宋體擴展B」，只包含 CJK Extension B 罕用字，不包含常用漢字
+- 正確的宋體是 simsun.ttc（TTC 格式，需要 subfontIndex=0）
+- 推薦字體優先級：SimSun > MSYaHei > KaiU
 """
 
 from django.template.loader import render_to_string
 from django.http import HttpResponse
 from django.utils import timezone
 from io import BytesIO
+import os
 
 # 雙引擎支援：優先使用 WeasyPrint，回退到 xhtml2pdf
 try:
@@ -65,7 +71,50 @@ class PDFExporter:
             return pdf
         else:  # xhtml2pdf
             result = BytesIO()
-            pisa_status = pisa.CreatePDF(html_string, dest=result)
+
+            # 為 xhtml2pdf 註冊中文字體
+            def link_callback(uri, rel):
+                """處理 xhtml2pdf 的資源載入"""
+                if uri.startswith('file:///'):
+                    return uri[8:]  # 去掉 file:/// 前綴
+                return uri
+
+            # 註冊中文字體（手動方式）
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+
+            # 正確的字體列表（包含常用漢字的字體）
+            # 重要：simsunb.ttf 是「宋體擴展B」，只包含罕用字，不要使用！
+            # 正確的宋體是 simsun.ttc（TTC 格式，需要 subfontIndex）
+            chinese_fonts = [
+                # TTC 格式需要 subfontIndex 參數
+                ('SimSun', 'C:/Windows/Fonts/simsun.ttc', 0),       # 宋體（推薦）
+                ('MSYaHei', 'C:/Windows/Fonts/msyh.ttc', 0),        # 微軟雅黑
+                ('MSYaHeiBold', 'C:/Windows/Fonts/msyhbd.ttc', 0),  # 微軟雅黑粗體
+                # TTF 格式不需要 subfontIndex
+                ('KaiU', 'C:/Windows/Fonts/kaiu.ttf', None),        # 標楷體
+            ]
+
+            registered_font = None
+            for font_name, font_path, subfont_index in chinese_fonts:
+                if os.path.exists(font_path):
+                    try:
+                        if subfont_index is not None:
+                            pdfmetrics.registerFont(TTFont(font_name, font_path, subfontIndex=subfont_index))
+                        else:
+                            pdfmetrics.registerFont(TTFont(font_name, font_path))
+                        registered_font = font_name
+                        print(f"[PDF] Registered font: {font_name} from {font_path}")
+                        break
+                    except Exception as e:
+                        print(f"[PDF] Failed to register {font_name}: {e}")
+                        continue
+
+            pisa_status = pisa.CreatePDF(
+                html_string,
+                dest=result,
+                link_callback=link_callback
+            )
 
             if pisa_status.err:
                 raise Exception(f"PDF generation failed with xhtml2pdf: {pisa_status.err}")

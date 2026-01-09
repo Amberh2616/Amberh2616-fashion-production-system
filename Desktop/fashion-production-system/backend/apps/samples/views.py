@@ -60,6 +60,7 @@ from .services.pdf_export import (
     EstimatePDFExporter,
     T2POPDFExporter,
 )
+from .services.mwo_complete_export import export_mwo_complete
 from .services.batch_export import batch_export_sample_runs
 from .services.auto_generation import create_with_initial_run
 
@@ -606,6 +607,36 @@ class SampleRunViewSet(viewsets.ModelViewSet):
 
         exporter = T2POPDFExporter()
         return exporter.export(po)
+
+    @action(detail=True, methods=["get"], url_path="export-mwo-complete-pdf")
+    def export_mwo_complete_pdf(self, request, pk=None):
+        """
+        Export complete MWO as PDF (Tech Pack + BOM + Spec with Chinese translations)
+        GET /api/v2/sample-runs/{id}/export-mwo-complete-pdf/
+
+        Query params:
+        - include_techpack: true/false (default: true)
+        """
+        run = self.get_object()
+
+        # Check if run has required data (revision from run or request)
+        style_revision = run.revision or run.sample_request.revision
+        if not style_revision:
+            return Response(
+                {'detail': 'No style revision linked to this run'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get include_techpack parameter
+        include_techpack = request.query_params.get('include_techpack', 'true').lower() == 'true'
+
+        try:
+            return export_mwo_complete(run, include_techpack=include_techpack)
+        except Exception as e:
+            return Response(
+                {'detail': f'Failed to generate MWO PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class SampleActualsViewSet(viewsets.ModelViewSet):

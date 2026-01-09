@@ -11,12 +11,13 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
-from .models import Style, StyleRevision, BOMItem
+from .models import Style, StyleRevision, BOMItem, Measurement
 from .serializers import (
     StyleSerializer,
     StyleListSerializer,
     StyleRevisionSerializer,
     BOMItemSerializer,
+    MeasurementSerializer,
     IntakeBulkCreateRequestSerializer,
 )
 from .services import bulk_create_styles_and_revisions, build_styles_queryset_with_risk
@@ -63,6 +64,115 @@ class BOMItemViewSet(viewsets.ModelViewSet):
             revision = get_object_or_404(StyleRevision, pk=revision_id)
 
         serializer.save(revision=revision)
+
+    @action(detail=True, methods=['post'])
+    def translate(self, request, revision_pk=None, pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/{id}/translate/
+        Translate a single BOM item's material name to Chinese
+        """
+        from apps.parsing.services.bom_translator import translate_single_bom_item
+
+        item = self.get_object()
+        result = translate_single_bom_item(item.id)
+
+        if result.get('success'):
+            item.refresh_from_db()
+            serializer = self.get_serializer(item)
+            return Response(serializer.data)
+        else:
+            return Response(
+                {'error': result.get('error', 'Translation failed')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'], url_path='translate-batch')
+    def translate_batch(self, request, revision_pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/translate-batch/
+        Batch translate all BOM items for a revision
+        """
+        from apps.parsing.services.bom_translator import translate_bom_items
+
+        force = request.data.get('force', False)
+        result = translate_bom_items(revision_id=revision_pk, force=force)
+        return Response(result)
+
+
+class MeasurementViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Measurement CRUD operations
+    Nested under StyleRevision: /api/v2/style-revisions/{revision_pk}/measurements/
+    """
+    serializer_class = MeasurementSerializer
+    permission_classes = []  # TODO: Enable authentication in production
+
+    def _get_organization(self, request):
+        """Get organization from request user (SaaS-Ready)."""
+        org = getattr(request.user, 'organization', None)
+        if org is None and settings.DEBUG:
+            from apps.core.models import Organization
+            org = Organization.objects.first()
+        return org
+
+    def get_queryset(self):
+        """Filter Measurements by revision with tenant awareness"""
+        revision_id = self.kwargs.get('revision_pk')
+        org = self._get_organization(self.request)
+
+        queryset = Measurement.objects.filter(revision_id=revision_id).order_by('point_name')
+
+        # SaaS-Ready: Ensure revision belongs to user's organization
+        if org is not None:
+            queryset = queryset.filter(revision__organization=org)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set revision when creating with tenant check"""
+        revision_id = self.kwargs.get('revision_pk')
+        org = self._get_organization(self.request)
+
+        # SaaS-Ready: Ensure revision belongs to user's organization
+        if org is not None:
+            revision = get_object_or_404(StyleRevision, pk=revision_id, organization=org)
+        else:
+            revision = get_object_or_404(StyleRevision, pk=revision_id)
+
+        serializer.save(revision=revision)
+
+    @action(detail=True, methods=['post'])
+    def translate(self, request, revision_pk=None, pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/measurements/{id}/translate/
+        Translate a single Measurement's point_name to Chinese
+        """
+        from apps.parsing.services.measurement_translator import translate_single_measurement
+
+        item = self.get_object()
+        result = translate_single_measurement(item.id)
+
+        if result.get('success'):
+            item.refresh_from_db()
+            serializer = self.get_serializer(item)
+            return Response(serializer.data)
+        else:
+            return Response(
+                {'error': result.get('error', 'Translation failed')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'], url_path='translate-batch')
+    def translate_batch(self, request, revision_pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/measurements/translate-batch/
+        Batch translate all Measurements for a revision
+        """
+        from apps.parsing.services.measurement_translator import translate_measurements
+
+        force = request.data.get('force', False)
+        result = translate_measurements(revision_id=revision_pk, force=force)
+        return Response(result)
 
 
 class StyleViewSet(viewsets.ViewSet):

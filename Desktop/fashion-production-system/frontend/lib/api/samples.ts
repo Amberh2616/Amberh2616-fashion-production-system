@@ -889,6 +889,33 @@ export async function exportPOPDF(runId: string): Promise<Blob> {
   return response.blob();
 }
 
+/**
+ * Export Complete MWO as PDF (Tech Pack + BOM + Spec with translations)
+ * GET /sample-runs/{id}/export-mwo-complete-pdf/
+ *
+ * @param runId - Sample Run ID
+ * @param includeTechpack - Whether to include Tech Pack pages (default: true)
+ */
+export async function exportMWOCompletePDF(
+  runId: string,
+  includeTechpack: boolean = true
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  params.set('include_techpack', String(includeTechpack));
+
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-mwo-complete-pdf/?${params.toString()}`,
+    { method: 'GET' }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to export complete MWO PDF');
+  }
+
+  return response.blob();
+}
+
 
 /**
  * Batch export multiple SampleRuns to ZIP

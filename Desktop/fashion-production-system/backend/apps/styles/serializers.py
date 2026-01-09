@@ -24,6 +24,9 @@ class BOMItemSerializer(serializers.ModelSerializer):
             'consumption', 'consumption_maturity', 'consumption_maturity_display',
             'unit', 'placement', 'wastage_rate', 'unit_price', 'leadtime_days',
             'ai_confidence', 'is_verified',
+            # Translation fields
+            'material_name_zh', 'description_zh', 'translation_status',
+            'translated_at', 'translated_by',
         ]
 
 
@@ -35,6 +38,8 @@ class MeasurementSerializer(serializers.ModelSerializer):
             'id', 'revision', 'point_name', 'point_code', 'values',
             'tolerance_plus', 'tolerance_minus', 'unit',
             'ai_confidence', 'is_verified',
+            # Translation fields
+            'point_name_zh', 'translation_status',
         ]
 
 

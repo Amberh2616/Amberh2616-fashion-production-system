@@ -24,6 +24,7 @@ import {
   exportMWOPDF,
   exportEstimatePDF,
   exportPOPDF,
+  exportMWOCompletePDF,
   batchExportSampleRuns,
   downloadBlob,
   type KanbanLane,
@@ -32,7 +33,7 @@ import {
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
 import { AlertsPanel } from '@/components/alerts/AlertsPanel';
-import { FileText, DollarSign, ShoppingCart, Download } from 'lucide-react';
+import { FileText, DollarSign, ShoppingCart, Download, Package } from 'lucide-react';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -826,6 +827,27 @@ function KanbanCard({
         >
           <ShoppingCart className="h-3 w-3" />
           <span>PDF</span>
+        </button>
+      </div>
+
+      {/* Complete MWO Export (Tech Pack + BOM + Spec) */}
+      <div className="mt-2">
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const blob = await exportMWOCompletePDF(run.id);
+              downloadBlob(blob, `MWO_Complete_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+            } catch (error) {
+              console.error('Export Complete MWO failed:', error);
+              alert('Failed to export Complete MWO. Please try again.');
+            }
+          }}
+          className="w-full flex items-center justify-center gap-1 py-1.5 text-xs bg-indigo-100 hover:bg-indigo-200 rounded transition-colors font-medium"
+          title="Download Complete MWO (Tech Pack + BOM + Spec with translations)"
+        >
+          <Package className="h-3 w-3" />
+          <span>Complete MWO</span>
         </button>
       </div>
     </div>

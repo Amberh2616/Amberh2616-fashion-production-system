@@ -323,6 +323,10 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
             'updated_at': doc.updated_at.isoformat(),
         }
 
+        # ⚡ Add tech_pack_revision_id if available (for P0 review navigation)
+        if doc.tech_pack_revision:
+            response_data['tech_pack_revision_id'] = str(doc.tech_pack_revision.id)
+
         return Response(response_data)
 
     @action(detail=True, methods=['post'], url_path='extract')
@@ -534,8 +538,9 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
 
             # 6. Update document status
             doc.style_revision = revision
+            doc.tech_pack_revision = tech_pack_revision  # ⚡ Save TechPackRevision reference
             doc.status = 'extracted'
-            doc.save(update_fields=['style_revision', 'status', 'extraction_errors', 'updated_at'])
+            doc.save(update_fields=['style_revision', 'tech_pack_revision', 'status', 'extraction_errors', 'updated_at'])
 
             logger.info(f"Extraction completed for {doc.id}: {extraction_stats}")
 
@@ -543,6 +548,7 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
             response_data = serializer.data
             response_data['extraction_stats'] = extraction_stats
             response_data['revision_id'] = str(revision.id)
+            response_data['tech_pack_revision_id'] = str(tech_pack_revision.id)  # ⚡ For P0 review navigation
 
             return Response(response_data)
 
