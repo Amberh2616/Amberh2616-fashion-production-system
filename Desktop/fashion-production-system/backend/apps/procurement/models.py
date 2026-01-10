@@ -295,7 +295,15 @@ class POLine(models.Model):
         related_name='lines'
     )
 
-    # Material reference
+    # Material reference (link to Material master)
+    material = models.ForeignKey(
+        Material,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='po_lines',
+        help_text="Link to Material master data"
+    )
     order_item_bom = models.ForeignKey(
         'consumption.OrderItemBOM',
         on_delete=models.PROTECT,
@@ -304,7 +312,7 @@ class POLine(models.Model):
         help_text="Link to OrderItemBOM if this PO is for a specific order"
     )
 
-    # Item details
+    # Item details (denormalized for display)
     material_name = models.CharField(max_length=200)
     color = models.CharField(max_length=100, blank=True)
     quantity = models.DecimalField(max_digits=12, decimal_places=4)
