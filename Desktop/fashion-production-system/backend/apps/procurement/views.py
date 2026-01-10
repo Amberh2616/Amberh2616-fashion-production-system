@@ -21,6 +21,12 @@ class SupplierViewSet(viewsets.ModelViewSet):
     filterset_fields = ['supplier_type', 'is_active']
     search_fields = ['name', 'supplier_code']
 
+    def perform_create(self, serializer):
+        # Auto-set organization from first available (demo mode)
+        from apps.core.models import Organization
+        org = Organization.objects.first()
+        serializer.save(organization=org)
+
 
 class MaterialViewSet(viewsets.ModelViewSet):
     queryset = Material.objects.select_related('supplier').all()
@@ -29,6 +35,12 @@ class MaterialViewSet(viewsets.ModelViewSet):
     filterset_fields = ['category', 'supplier', 'status', 'is_active']
     search_fields = ['article_no', 'name', 'name_zh', 'color']
 
+    def perform_create(self, serializer):
+        # Auto-set organization from first available (demo mode)
+        from apps.core.models import Organization
+        org = Organization.objects.first()
+        serializer.save(organization=org)
+
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     queryset = PurchaseOrder.objects.select_related('supplier').prefetch_related('lines').all()
@@ -36,6 +48,12 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['status', 'po_type', 'supplier']
     search_fields = ['po_number', 'supplier__name']
+
+    def perform_create(self, serializer):
+        # Auto-set organization from first available (demo mode)
+        from apps.core.models import Organization
+        org = Organization.objects.first()
+        serializer.save(organization=org)
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

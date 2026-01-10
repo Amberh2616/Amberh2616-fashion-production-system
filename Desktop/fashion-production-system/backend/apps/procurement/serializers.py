@@ -8,6 +8,7 @@ class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
         fields = '__all__'
+        read_only_fields = ['organization']
 
 
 class SupplierSimpleSerializer(serializers.ModelSerializer):
@@ -25,6 +26,7 @@ class MaterialSerializer(serializers.ModelSerializer):
     class Meta:
         model = Material
         fields = '__all__'
+        read_only_fields = ['organization']
 
 
 class MaterialSimpleSerializer(serializers.ModelSerializer):
@@ -62,6 +64,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PurchaseOrder
         fields = '__all__'
+        read_only_fields = ['organization', 'status', 'total_amount', 'actual_delivery', 'created_by']
 
 
 class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
@@ -75,3 +78,4 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = PurchaseOrder
         fields = '__all__'
+        read_only_fields = ['organization', 'status', 'total_amount', 'actual_delivery', 'created_by']

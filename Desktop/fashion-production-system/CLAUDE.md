@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-10
-**Version:** 4.10.0
-**Status:** P0-P11 + P14-P16 完成 ✅ | P14 供應商主檔 ✅ | P15 物料主檔 ✅ | P16 採購單工作流程 ✅
+**Version:** 4.11.0
+**Status:** P0-P11 + P14-P17 完成 ✅ | P18-P20 規劃中 (大貨報價加強/庫存/採購優化)
 
 ---
 
@@ -70,6 +70,98 @@
 
 ---
 
+## 📋 完整業務流程（2026-01-10 確立）
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           成衣廠完整工作流程                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+【Phase 1: 開發階段】 ✅ 已完成
+───────────────────────────────────────────────────────────────────────────────
+Tech Pack 上傳 → AI 解析 → BOM 提取 → 翻譯審校 → Style/Revision 批准
+
+
+【Phase 2: 樣衣階段】 ✅ 已完成
+───────────────────────────────────────────────────────────────────────────────
+SampleRequest
+├── Run 1: Proto Sample (原版樣) → Estimate ✅ 需報價
+├── Run 2: Fit Sample (尺寸樣) → Estimate ✅ 需報價
+├── Run 3: Size Set Sample (全套尺寸樣) → Estimate ✅ 需報價
+│                                              │
+│   ════════════════════════════════════════════════════════════════════════
+│   📍 用量確認 (confirmed_value → locked_value)
+│   📍 大貨報價 (CostSheet Bulk)
+│   📍 客戶確認下單 → ProductionOrder
+│   ════════════════════════════════════════════════════════════════════════
+│
+├── Run 4: PP Sample (產前樣) → ❌ 不報價（價格已定）
+└── Run 5: TOP Sample (頭缸樣) → ❌ 不報價（從大貨扣除）
+
+
+【Phase 3: 報價階段】 ⚠️ 模型存在，UI 需加強
+───────────────────────────────────────────────────────────────────────────────
+CostSheet (Bulk Costing)
+├── 用量：locked_value (鎖定用量)
+├── 物料成本 = BOM × locked_value × 單價 × (1 + 損耗%)
+├── 人工成本 + 製造費用 + 利潤 margin
+└── 輸出：報價單 PDF → 發給客戶
+
+
+【Phase 4: 大貨階段】 ✅ P17 完成 (2026-01-10)
+───────────────────────────────────────────────────────────────────────────────
+ProductionOrder (大貨訂單) ✅
+├── 客戶確認報價 → 下單
+├── 尺碼分解 (S=1000, M=3000, L=4000, XL=2000)
+└── 總數量：10,000 件
+         │
+         ↓
+MaterialRequirement (物料需求計算 MRP) ✅
+├── 每個 BOM 項目：訂單數量 × consumption × (1 + 損耗%)
+└── 輸出：物料需求清單（自動計算）
+         │
+         ↓
+PurchaseOrder (採購單自動生成) ✅
+├── 按供應商分組
+├── 自動生成 Production PO
+└── 發送給供應商 → 追蹤收貨
+```
+
+### 樣衣類型對照表
+
+| Run | 類型 | 數量 | 需報價？ | 說明 |
+|-----|------|------|----------|------|
+| 1 | Proto Sample (原版樣) | 1-3 件 | ✅ 是 | 確認版型設計 |
+| 2 | Fit Sample (尺寸樣) | 2-5 件 | ✅ 是 | 確認合身度 |
+| 3 | Size Set Sample (全套尺寸樣) | 5-50 件 | ✅ 是 | 最後報價樣 |
+| | **═══ 大貨報價 + 下單 ═══** | | | |
+| 4 | PP Sample (產前樣) | 10-30 件 | ❌ 否 | 價格已定 |
+| 5 | TOP Sample (頭缸樣) | 50+ 件 | ❌ 否 | 從大貨扣除 |
+
+### 用量數據流（三階段成熟度）
+
+```
+BOMItem.consumption (原始用量 - Tech Pack 標註)
+     │
+     ├──→ pre_estimate_value (預估用量)
+     │    ├─ 來源：工廠經驗估算
+     │    └─ 用途：RFQ 詢價單 ✅
+     │
+     ├──→ confirmed_value (確認用量)
+     │    ├─ 來源：Marker Report / 樣衣實際
+     │    └─ 用途：RFQ ✅ / 大貨報價 ✅ / 生產採購 ✅
+     │
+     └──→ locked_value (鎖定用量)
+          ├─ 來源：大貨確認鎖定（不可再改）
+          └─ 用途：最終生產採購 ✅ / MRP 計算 ✅ / 成本結算 ✅
+
+採購數量計算：
+= 訂單數量 × locked_value × (1 + wastage_pct%)
+= 10,000 件 × 0.82 yd × 1.05 = 8,610 yards
+```
+
+---
+
 ## 系統定位
 
 **AI-Augmented PLM + ERP Lite for Garment Factories**
@@ -121,6 +213,88 @@
 | **P14** | **供應商主檔管理系統** | **2026-01-10** | 見下方 |
 | **P15** | **物料主檔管理系統** | **2026-01-10** | 見下方 |
 | **P16** | **採購單工作流程** | **2026-01-10** | 見下方 |
+| **P17** | **大貨訂單系統 + MRP + 採購生成** | **2026-01-10** | 見下方 |
+
+#### P17: 大貨訂單系統 + MRP + 採購生成（2026-01-10）
+
+**功能：** 大貨訂單管理、物料需求計算（MRP）、採購單自動生成
+
+**後端模型（`backend/apps/orders/models.py`）：**
+```python
+class ProductionOrder:
+    # 大貨訂單
+    po_number         # 客戶 PO 號
+    order_number      # 內部訂單號
+    customer          # 客戶名稱
+    style_revision    # 關聯款式
+    total_quantity    # 總數量
+    size_breakdown    # {"S": 1000, "M": 3000, "L": 4000, "XL": 2000}
+    unit_price        # 成交單價
+    status            # draft → confirmed → materials_ordered → in_production → completed
+
+class MaterialRequirement:
+    # 物料需求（MRP 計算結果）
+    production_order  # 關聯大貨訂單
+    bom_item          # 關聯 BOM
+    consumption_per_piece  # 單件用量
+    wastage_pct       # 損耗率
+    order_quantity    # 訂單數量
+    gross_requirement # 毛需求 = qty × consumption
+    wastage_quantity  # 損耗量 = gross × wastage%
+    total_requirement # 總需求 = gross + wastage
+    order_quantity_needed  # 需採購量 = total - 庫存
+    status            # calculated → ordered → received
+```
+
+**後端服務（`backend/apps/orders/services/mrp_service.py`）：**
+- `MRPService.calculate_requirements()` - 計算物料需求
+- `MRPService.generate_purchase_orders()` - 自動生成採購單（按供應商分組）
+- `MRPService.get_requirements_summary()` - 需求摘要統計
+
+**前端文件：**
+- `frontend/lib/types/production-order.ts` - 類型定義
+- `frontend/lib/api/production-orders.ts` - API 客戶端
+- `frontend/lib/hooks/useProductionOrders.ts` - React Query Hooks
+- `frontend/app/dashboard/production-orders/page.tsx` - 列表頁（含統計卡片）
+- `frontend/app/dashboard/production-orders/[id]/page.tsx` - 詳情頁（含物料需求表）
+- `frontend/app/dashboard/production-orders/production-order-form-dialog.tsx` - 表單（含尺碼分解 UI）
+
+**API 端點：**
+- `GET /api/v2/production-orders/` - 列表
+- `POST /api/v2/production-orders/` - 創建
+- `GET /api/v2/production-orders/{id}/` - 詳情（含 material_requirements）
+- `POST /api/v2/production-orders/{id}/confirm/` - 確認訂單
+- `POST /api/v2/production-orders/{id}/calculate-mrp/` - 計算 MRP
+- `POST /api/v2/production-orders/{id}/generate-po/` - 生成採購單
+- `GET /api/v2/production-orders/stats/` - 統計儀表板
+- `GET /api/v2/material-requirements/` - 物料需求列表
+
+**頁面路徑：** `/dashboard/production-orders`
+
+**MRP 計算公式：**
+```
+gross_requirement = order_quantity × consumption_per_piece
+wastage_quantity = gross_requirement × wastage_pct%
+total_requirement = gross_requirement + wastage_quantity
+order_quantity_needed = max(0, total_requirement - current_stock)
+```
+
+**採購單生成流程：**
+```
+ProductionOrder (confirmed)
+     │
+     ↓ POST /calculate-mrp/
+MaterialRequirement[] (calculated)
+     │
+     ↓ POST /generate-po/ (group_by_supplier=true)
+     │
+     ↓ 按 supplier 分組
+     │
+PurchaseOrder[] (draft) + POLine[]
+     │
+MaterialRequirement.status = 'ordered'
+ProductionOrder.status = 'materials_ordered'
+```
 
 #### P16: 採購單工作流程（2026-01-10）
 
@@ -412,21 +586,64 @@ URL: /dashboard/samples/kanban
 
 ---
 
-### 📋 待做（從 P9 開始）
+### 📋 待做（從 P18 開始）
 
 | 編號 | 功能 | 估計工時 | 狀態 |
 |------|------|----------|------|
+| **P9** | **甘特圖進度儀表板（NetSuite 風格）** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P10** | **真實 Tech Pack 完整流程測試** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P11** | **MWO 品質修復（準確度 85-92%）** | **1 天** | **✅ 完成 (2026-01-10)** |
-| **P9** | **甘特圖進度儀表板（NetSuite 風格）** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P14** | **供應商主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P15** | **物料主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P16** | **採購單工作流程** | **0.5 天** | **✅ 完成 (2026-01-10)** |
-| P17 | 採購單明細管理 | 1 天 | 📋 下一步 |
+| **P17** | **大貨訂單系統 + MRP + 採購生成** | **1 天** | **✅ 完成 (2026-01-10)** |
+| **P18** | **大貨報價加強 (Bulk Costing UI)** | **1 天** | **🔴 下一步** |
+| **P19** | **庫存管理 (Inventory)** | **1 天** | **📋 規劃中** |
+| **P20** | **採購優化 (Procurement Enhancement)** | **1 天** | **📋 規劃中** |
 | P12 | 自訂 Excel/PDF 模板 | - | 📋 計劃中 |
 | P13 | Celery 異步批量匯出 | - | 📋 計劃中 |
 | Phase B | 多人協作 + RBAC | - | 📋 計劃中 |
 | Phase B | Supplier Portal（品牌端查看）| - | 📋 計劃中 |
+
+---
+
+## P18-P20 後續規劃（2026-01-10 更新）
+
+> **P17 已完成**：大貨訂單系統 + MRP + 採購自動生成（原 P18-P20 功能已合併實作）
+
+### P18: 大貨報價加強 (Bulk Costing UI) 🔴 下一步
+
+**目標：** 完善 CostSheet (bulk) 報價界面
+
+**功能：**
+- Bulk Costing 創建/編輯 UI
+- 用量選擇：confirmed_value 或 locked_value
+- 成本計算：物料 + 人工 + 製造費用 + 利潤
+- 報價單 PDF 匯出
+- 報價歷史版本管理
+- 與 ProductionOrder 關聯
+
+**現有模型：** `CostSheet` ✅ 已存在
+
+### P19: 庫存管理 (Inventory)
+
+**目標：** 物料庫存追蹤與管理
+
+**功能：**
+- 庫存數量追蹤（current_stock）
+- 入庫/出庫記錄
+- 庫存預警（低於安全庫存）
+- 與 MaterialRequirement 整合（扣除庫存計算採購量）
+
+### P20: 採購優化 (Procurement Enhancement)
+
+**目標：** 強化採購流程與效率
+
+**功能：**
+- 採購單合併（跨訂單合併同供應商採購）
+- 採購歷史價格分析
+- 供應商評價系統
+- 交期追蹤與預警
 
 ---
 

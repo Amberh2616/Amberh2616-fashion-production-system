@@ -33,6 +33,7 @@ urlpatterns = [
     path("api/v2/", include("apps.costing.urls")),
     path("api/v2/", include("apps.samples.urls")),  # Phase 3
     path("api/v2/", include("apps.procurement.urls")),  # P14: Suppliers & POs
+    path("api/v2/", include("apps.orders.urls")),  # P17: Production Orders
 
     # API Documentation (TODO: Uncomment when drf_spectacular is added)
     # path("api/v2/schema/", SpectacularAPIView.as_view(), name="schema"),

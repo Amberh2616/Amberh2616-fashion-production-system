@@ -30,6 +30,7 @@ const navigation = [
   { name: "Samples", href: "/dashboard/samples", icon: Shirt },
   { name: "Kanban", href: "/dashboard/samples/kanban", icon: Columns3 },
   { name: "Scheduler", href: "/dashboard/scheduler", icon: GanttChart },
+  { name: "Production", href: "/dashboard/production-orders", icon: Package },
   { name: "Procurement", href: "/dashboard/procurement", icon: ShoppingCart },
 ];
 
