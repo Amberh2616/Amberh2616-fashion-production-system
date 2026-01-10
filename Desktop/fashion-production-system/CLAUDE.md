@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-01-10
 **Version:** 4.10.0
-**Status:** P0-P11 + P14 + P15 完成 ✅ | P14 供應商主檔 ✅ | P15 物料主檔 ✅
+**Status:** P0-P11 + P14-P16 完成 ✅ | P14 供應商主檔 ✅ | P15 物料主檔 ✅ | P16 採購單工作流程 ✅
 
 ---
 
@@ -120,6 +120,43 @@
 | **P8** | **MWO 完整匯出（Tech Pack + BOM + Spec）** | **2026-01-09** | 見下方 |
 | **P14** | **供應商主檔管理系統** | **2026-01-10** | 見下方 |
 | **P15** | **物料主檔管理系統** | **2026-01-10** | 見下方 |
+| **P16** | **採購單工作流程** | **2026-01-10** | 見下方 |
+
+#### P16: 採購單工作流程（2026-01-10）
+
+**功能：** 採購單管理與狀態工作流程
+
+**狀態機：**
+```
+draft → sent → confirmed → partial_received/received
+any → cancelled
+```
+
+**後端增強：**
+- `backend/apps/procurement/views.py` - PurchaseOrderViewSet 添加 send/confirm/receive/cancel actions
+- `backend/apps/procurement/views.py` - POLineViewSet 添加 update_received action
+- `backend/apps/procurement/models.py` - POLine 添加 Material FK
+- `backend/apps/procurement/serializers.py` - 添加 supplier_name, status_display, lines_count
+
+**前端文件：**
+- `frontend/lib/types/purchase-order.ts` - PO 類型定義 + 狀態選項
+- `frontend/lib/api/purchase-orders.ts` - PO API 客戶端（含狀態轉換）
+- `frontend/lib/hooks/usePurchaseOrders.ts` - React Query Hooks
+- `frontend/app/dashboard/purchase-orders/page.tsx` - PO 列表頁面 + 統計卡片
+- `frontend/app/dashboard/purchase-orders/po-form-dialog.tsx` - PO 表單對話框
+
+**API 端點：**
+- `GET /api/v2/purchase-orders/` - 列表（支援 status, po_type, supplier 篩選）
+- `POST /api/v2/purchase-orders/` - 創建
+- `PATCH /api/v2/purchase-orders/{id}/` - 更新
+- `DELETE /api/v2/purchase-orders/{id}/` - 刪除
+- `GET /api/v2/purchase-orders/stats/` - 統計儀表板
+- `POST /api/v2/purchase-orders/{id}/send/` - 發送給供應商
+- `POST /api/v2/purchase-orders/{id}/confirm/` - 確認
+- `POST /api/v2/purchase-orders/{id}/receive/` - 收貨
+- `POST /api/v2/purchase-orders/{id}/cancel/` - 取消
+
+**頁面路徑：** `/dashboard/purchase-orders`
 
 #### P15: 物料主檔管理（2026-01-10）
 
@@ -384,7 +421,8 @@ URL: /dashboard/samples/kanban
 | **P9** | **甘特圖進度儀表板（NetSuite 風格）** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P14** | **供應商主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P15** | **物料主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
-| P16 | 採購單工作流程 | 1 天 | 📋 下一步 |
+| **P16** | **採購單工作流程** | **0.5 天** | **✅ 完成 (2026-01-10)** |
+| P17 | 採購單明細管理 | 1 天 | 📋 下一步 |
 | P12 | 自訂 Excel/PDF 模板 | - | 📋 計劃中 |
 | P13 | Celery 異步批量匯出 | - | 📋 計劃中 |
 | Phase B | 多人協作 + RBAC | - | 📋 計劃中 |
