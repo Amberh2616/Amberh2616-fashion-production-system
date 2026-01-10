@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-10
-**Version:** 4.8.0
-**Status:** P0-P11 完成 ✅ | P9 甘特圖 ✅ | Tech Pack 85-90% | BOM/Spec 92%
+**Version:** 4.9.0
+**Status:** P0-P11 + P14 完成 ✅ | P9 甘特圖 ✅ | P14 供應商主檔 ✅
 
 ---
 
@@ -118,6 +118,37 @@
 | **P6** | **BOM 中文翻譯編輯界面** | **2026-01-09** | 見下方 |
 | **P7** | **Measurement 中文翻譯編輯界面** | **2026-01-09** | 見下方 |
 | **P8** | **MWO 完整匯出（Tech Pack + BOM + Spec）** | **2026-01-09** | 見下方 |
+| **P14** | **供應商主檔管理系統** | **2026-01-10** | 見下方 |
+
+#### P14: 供應商主檔管理（2026-01-10）
+
+**功能：** 供應商 CRUD 管理界面
+- 供應商列表（搜尋、篩選、分頁）
+- 新增/編輯供應商（Dialog 表單）
+- 刪除確認
+- 供應商類型：布料、輔料、標籤、包裝、成衣工廠
+
+**後端（使用現有 procurement app）：**
+- `backend/apps/procurement/models.py` - Supplier 模型（已存在）
+- `backend/apps/procurement/serializers.py` - SupplierSerializer
+- `backend/apps/procurement/views.py` - SupplierViewSet
+- `backend/apps/procurement/urls.py` - 路由配置
+
+**前端文件：**
+- `frontend/lib/types/supplier.ts` - 類型定義
+- `frontend/lib/api/suppliers.ts` - API 客戶端
+- `frontend/lib/hooks/useSuppliers.ts` - React Query Hooks
+- `frontend/app/dashboard/suppliers/page.tsx` - 供應商列表頁
+- `frontend/app/dashboard/suppliers/supplier-form-dialog.tsx` - 表單對話框
+- `frontend/components/ui/dropdown-menu.tsx` - UI 組件
+
+**API 端點：**
+- `GET /api/v2/suppliers/` - 列表
+- `POST /api/v2/suppliers/` - 創建
+- `PATCH /api/v2/suppliers/{id}/` - 更新
+- `DELETE /api/v2/suppliers/{id}/` - 刪除
+
+**頁面路徑：** `/dashboard/suppliers`
 
 #### P8: MWO 完整匯出（2026-01-09）
 
@@ -321,6 +352,9 @@ URL: /dashboard/samples/kanban
 | **P10** | **真實 Tech Pack 完整流程測試** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P11** | **MWO 品質修復（準確度 85-92%）** | **1 天** | **✅ 完成 (2026-01-10)** |
 | **P9** | **甘特圖進度儀表板（NetSuite 風格）** | **0.5 天** | **✅ 完成 (2026-01-10)** |
+| **P14** | **供應商主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
+| P15 | 物料主檔管理系統 | 0.5 天 | 📋 下一步 |
+| P16 | 採購單工作流程 | 1 天 | 📋 計劃中 |
 | P12 | 自訂 Excel/PDF 模板 | - | 📋 計劃中 |
 | P13 | Celery 異步批量匯出 | - | 📋 計劃中 |
 | Phase B | 多人協作 + RBAC | - | 📋 計劃中 |
