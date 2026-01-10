@@ -136,8 +136,8 @@ def classify_page_batch(pdf_path: str, page_numbers: List[int], client: OpenAI) 
             try:
                 page = doc.load_page(page_num)
 
-                # Convert to PNG image (150 DPI for classification)
-                pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
+                # Convert to PNG image (300 DPI for better accuracy)
+                pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
                 img_bytes = pix.tobytes("png")
 
                 # Convert to base64
@@ -165,29 +165,32 @@ def classify_page_batch(pdf_path: str, page_numbers: List[int], client: OpenAI) 
             'reasoning': f'Failed to open PDF: {str(e)}'
         } for page_num in page_numbers]
 
-    # Construct prompt
+    # Construct prompt with actual page numbers (FIX: page number mapping bug)
+    actual_page_nums = [p + 1 for p in page_numbers]  # Convert 0-indexed to 1-indexed
+    page_mapping = ", ".join([f"Image {i+1} = Page {actual_page_nums[i]}" for i in range(len(page_numbers))])
+
     prompt = f"""You are a Fashion Tech Pack classification expert.
 
-Analyze these {len(page_numbers)} pages and classify each page into ONE of these types:
+Analyze these {len(page_numbers)} pages and classify each page into ONE of these types.
 
-1. **tech_pack**: Technical drawings with construction annotations (callouts, dimension lines, sewing instructions, CAD drawings)
-2. **bom_table**: Bill of Materials table (material list with columns like: Item#, Material Name, Supplier, Quantity, Unit, Price)
-3. **measurement_table**: Measurement specification table (size chart with columns like: Point Name, XS, S, M, L, XL, XXL, Tolerance)
+**CRITICAL: The images correspond to these ACTUAL page numbers (not 1,2,3...):**
+{page_mapping}
+
+Page types:
+1. **tech_pack**: Technical drawings with construction annotations
+2. **bom_table**: Bill of Materials table (material list with prices)
+3. **measurement_table**: Measurement specification table (size chart XS-XXL)
 4. **cover**: Cover page or title page
-5. **other**: Other content (notes, blank pages, approval signatures, etc.)
+5. **other**: Other content
 
 For each page, return:
-- page_number (1-indexed)
+- page (MUST use actual page numbers: {actual_page_nums})
 - type (one of the above)
 - confidence (0.0-1.0)
-- reasoning (brief explanation in English)
+- reasoning (brief explanation)
 
-Return ONLY a JSON array, no markdown formatting, no explanation:
-[
-  {{"page": 1, "type": "tech_pack", "confidence": 0.95, "reasoning": "Contains technical drawings with dimension callouts"}},
-  {{"page": 2, "type": "measurement_table", "confidence": 0.98, "reasoning": "Size chart with XS-XXL columns"}},
-  ...
-]
+Return ONLY a JSON array:
+[{{"page": {actual_page_nums[0]}, "type": "...", "confidence": 0.95, "reasoning": "..."}}]
 """
 
     # Construct API request (multiple images)
@@ -197,7 +200,7 @@ Return ONLY a JSON array, no markdown formatting, no explanation:
             "type": "image_url",
             "image_url": {
                 "url": f"data:image/png;base64,{img_b64}",
-                "detail": "low"  # Use low detail for faster/cheaper classification
+                "detail": "high"  # 2026-01-10: 改用 high detail 提升準確度
             }
         })
 

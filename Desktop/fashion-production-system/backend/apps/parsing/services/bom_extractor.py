@@ -1,12 +1,21 @@
 """
 BOM Extractor Service
-Uses pdfplumber to extract BOM tables from PDF pages
+Uses GPT-4o Vision to intelligently extract BOM tables from PDF pages
+
+2026-01-10: 重写，改用 Vision 智能识别表格结构（取代 pdfplumber 硬编码）
+- 自动识别列结构
+- 智能跳过表头
+- 支持不同 BOM 格式
 """
 
-import pdfplumber
+from openai import OpenAI
+from django.conf import settings
 from decimal import Decimal, InvalidOperation
 from typing import List, Dict
 from apps.styles.models import StyleRevision, BOMItem
+import fitz  # PyMuPDF
+import base64
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,7 +27,7 @@ def extract_bom_from_pages(
     revision: StyleRevision
 ) -> int:
     """
-    從指定頁面提取 BOM 表格
+    從指定頁面提取 BOM 表格（使用 GPT-4o Vision）
 
     Args:
         pdf_path: PDF 檔案路徑
@@ -28,111 +37,179 @@ def extract_bom_from_pages(
     Returns:
         創建的 BOMItem 數量
     """
-    logger.info(f"Extracting BOM from pages {page_numbers} in {pdf_path}")
+    logger.info(f"[Vision] Extracting BOM from pages {page_numbers} in {pdf_path}")
 
-    # 1. 提取所有表格行
-    all_rows = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page_num in page_numbers:
-            page = pdf.pages[page_num - 1]  # 轉為 0-indexed
-            tables = page.extract_tables()
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    total_created = 0
 
-            if tables:
-                # 選擇最大的表格（通常是主表）
-                main_table = max(tables, key=len)
-                all_rows.extend(main_table)
-                logger.info(f"Page {page_num}: Extracted {len(main_table)} rows")
-
-    logger.info(f"Total rows extracted: {len(all_rows)}")
-
-    # 2. 解析表格並創建 BOMItem
-    created_count = 0
-    item_number = 1
-    current_category = 'fabric'  # Default category
-
-    for row in all_rows:
-        # 判斷是否為 category header
-        first_cell = str(row[0]).lower().strip() if row and row[0] else ''
-
-        if first_cell in ['fabric', 'trim', 'packaging', 'label']:
-            current_category = first_cell
-            logger.debug(f"Category changed to: {current_category}")
-            continue
-
-        # 跳過 header rows
-        if 'supplier article' in str(row).lower() or 'material name' in str(row).lower():
-            continue
-
-        # 跳過空行
-        if not any(row):
-            continue
-
-        # 解析欄位（基於 Lululemon BOM 格式）
-        # 典型欄位：[Item#, Color, Size, Supplier Article#, Our Article#, Material Name, Supplier, ...]
+    for page_num in page_numbers:
         try:
-            material_name = clean_cell(row[5]) if len(row) > 5 else ''
+            count = extract_bom_from_single_page(pdf_path, page_num, revision, client)
+            total_created += count
+        except Exception as e:
+            logger.error(f"Failed to extract BOM from page {page_num}: {str(e)}")
+            continue
 
-            # 過濾無效行
-            if not material_name or len(material_name) < 3:
+    logger.info(f"[Vision] BOM extraction completed: {total_created} items created")
+    return total_created
+
+
+def extract_bom_from_single_page(
+    pdf_path: str,
+    page_number: int,
+    revision: StyleRevision,
+    client: OpenAI
+) -> int:
+    """
+    從單一頁面提取 BOM 表格
+    """
+    # 1. 轉換 PDF 頁面為圖片（300 DPI）
+    doc = fitz.open(pdf_path)
+    page = doc.load_page(page_number - 1)
+    pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
+    img_bytes = pix.tobytes("png")
+    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+    doc.close()
+
+    # 2. GPT-4o Vision Prompt
+    prompt = """You are a Fashion BOM (Bill of Materials) extraction expert.
+
+Extract ALL material items from this BOM table.
+
+CRITICAL RULES:
+1. **SKIP ALL HEADER ROWS** - Do NOT extract rows containing column titles like:
+   - "Material Name", "Supplier", "Article", "Description"
+   - "Consumption", "Unit", "Price", "Color", "Size"
+   - "Component", "Qty", "UOM", "Vendor"
+
+2. **SKIP CATEGORY HEADERS** - Do NOT extract rows like:
+   - "FABRIC", "TRIM", "PACKAGING", "LABEL", "ACCESSORY"
+
+3. **ONLY EXTRACT ACTUAL DATA ROWS** - Real materials like:
+   - "NULU LIGHT 4-WAY STRETCH" (fabric name)
+   - "YKK ZIPPER 18CM" (trim name)
+   - "WOVEN LABEL MAIN" (label name)
+
+4. **NO DUPLICATES** - Each material should appear only once
+
+For each material, extract:
+{
+  "category": "fabric" | "trim" | "packaging" | "label" | "other",
+  "material_name": "actual material name",
+  "supplier": "supplier name or null",
+  "supplier_article_no": "article number or null",
+  "consumption": number or null,
+  "unit": "YD" | "PCS" | "M" | "SET" | etc,
+  "unit_price": number or null
+}
+
+Return JSON array of materials ONLY (no headers, no categories):
+[
+  {"category": "fabric", "material_name": "NULU LIGHT", "supplier": "TAI YUAN", ...},
+  ...
+]
+
+Return ONLY valid JSON, no explanation, no markdown."""
+
+    # 3. API 調用
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{img_base64}",
+                        "detail": "high"
+                    }
+                }
+            ]
+        }],
+        max_tokens=4000,
+        temperature=0.1
+    )
+
+    # 4. 解析回應
+    result_text = response.choices[0].message.content
+
+    # 清理 markdown
+    if "```json" in result_text:
+        result_text = result_text.split("```json")[1].split("```")[0].strip()
+    elif "```" in result_text:
+        result_text = result_text.split("```")[1].split("```")[0].strip()
+
+    try:
+        bom_data = json.loads(result_text)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse BOM JSON: {str(e)}")
+        logger.error(f"Raw response: {result_text[:500]}")
+        return 0
+
+    logger.info(f"Page {page_number}: Vision extracted {len(bom_data)} BOM items")
+
+    # 5. 創建 BOMItem 記錄
+    from apps.parsing.utils.translate import machine_translate
+
+    created_count = 0
+    existing_items = BOMItem.objects.filter(revision=revision).count()
+    item_number = existing_items + 1
+
+    # 表頭關鍵字黑名單（二次過濾）
+    header_keywords = [
+        'material name', 'supplier', 'article', 'consumption',
+        'unit price', 'description', 'component', 'qty', 'uom',
+        'vendor', 'color', 'size', 'price', 'total', 'subtotal',
+        'item', 'no.', 'ref', 'code'
+    ]
+
+    for item in bom_data:
+        try:
+            material_name = str(item.get('material_name', '')).strip()
+
+            # 跳過空的
+            if not material_name or len(material_name) < 2:
                 continue
 
-            supplier = clean_cell(row[6]) if len(row) > 6 else ''
-            supplier_article_no = clean_cell(row[3]) if len(row) > 3 else ''
+            # 二次過濾：跳過疑似表頭
+            material_lower = material_name.lower()
+            if any(kw in material_lower for kw in header_keywords):
+                logger.debug(f"Skipping header-like row: {material_name}")
+                continue
 
-            # 用量和單位
-            consumption = parse_decimal(row[11]) if len(row) > 11 else Decimal('0')
-            unit = clean_cell(row[12]) if len(row) > 12 else 'pcs'
-
-            # 單價
-            unit_price = parse_decimal(row[13]) if len(row) > 13 else None
+            # 跳過純數字或單字母
+            if material_name.isdigit() or (len(material_name) == 1 and material_name.isalpha()):
+                continue
 
             # 翻譯 material_name
-            from apps.parsing.utils.translate import machine_translate
             material_name_zh = machine_translate(material_name)
 
-            # 創建 BOMItem（is_verified=False，待驗證）
             BOMItem.objects.create(
                 organization=revision.organization,
                 revision=revision,
                 item_number=item_number,
-                category=current_category,
+                category=str(item.get('category', 'other'))[:20],
                 material_name=material_name[:200],
-                material_name_zh=material_name_zh[:200],  # ⭐ 中文翻譯
-                supplier=supplier[:200],
-                supplier_article_no=supplier_article_no[:100],
-                consumption=consumption,
-                unit=unit[:20],
-                unit_price=unit_price,
-                is_verified=False,  # ⭐ 待人工驗證
-                ai_confidence=0.85,  # pdfplumber 提取信心度
+                material_name_zh=material_name_zh[:200] if material_name_zh else '',
+                supplier=str(item.get('supplier') or '')[:200],
+                supplier_article_no=str(item.get('supplier_article_no') or '')[:100],
+                consumption=parse_decimal(item.get('consumption')),
+                unit=str(item.get('unit') or 'pcs')[:20],
+                unit_price=parse_decimal(item.get('unit_price')) if item.get('unit_price') else None,
+                is_verified=False,
+                ai_confidence=0.90,
             )
 
             item_number += 1
             created_count += 1
-            logger.debug(f"Created BOMItem: {material_name}")
+            logger.debug(f"Created BOMItem #{item_number-1}: {material_name}")
 
         except Exception as e:
-            logger.warning(f"Failed to parse row: {row[:3]}... Error: {str(e)}")
+            logger.warning(f"Failed to create BOMItem: {str(e)}")
             continue
 
-    logger.info(f"BOM extraction completed: {created_count} items created")
     return created_count
-
-
-def clean_cell(value) -> str:
-    """清理表格單元格內容"""
-    if value is None:
-        return ''
-
-    text = str(value).strip()
-
-    # 移除換行符
-    text = text.replace('\n', ' ').replace('\r', ' ')
-
-    # 移除多餘空格
-    text = ' '.join(text.split())
-
-    return text
 
 
 def parse_decimal(value) -> Decimal:
@@ -141,7 +218,9 @@ def parse_decimal(value) -> Decimal:
         return Decimal('0')
 
     try:
-        # 移除非數字字元（保留小數點和負號）
+        if isinstance(value, (int, float)):
+            return Decimal(str(value))
+
         clean_value = ''.join(c for c in str(value) if c.isdigit() or c in '.-')
 
         if not clean_value or clean_value in ['-', '.', '-.']:

@@ -1,14 +1,15 @@
 """
 Measurement Extractor Service
 Uses GPT-4o Vision to extract measurement specifications from PDF tables
+
+2026-01-10: 改用 PyMuPDF + 300 DPI，與其他提取器保持一致
 """
 
 from openai import OpenAI
 from django.conf import settings
 from apps.styles.models import StyleRevision, Measurement
-import pdfplumber
+import fitz  # PyMuPDF
 import base64
-import io
 import json
 from decimal import Decimal
 from typing import List, Dict
@@ -36,15 +37,13 @@ def extract_measurements_from_page(
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
     try:
-        # 1. Convert page to high-resolution image
-        with pdfplumber.open(pdf_path) as pdf:
-            page = pdf.pages[page_number - 1]  # Convert to 0-indexed
-            im = page.to_image(resolution=200)  # High resolution for table clarity
-            pil_image = im.original
-
-            buffered = io.BytesIO()
-            pil_image.save(buffered, format="PNG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        # 1. Convert page to high-resolution image (PyMuPDF + 300 DPI)
+        doc = fitz.open(pdf_path)
+        page = doc.load_page(page_number - 1)  # Convert to 0-indexed
+        pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))  # 300 DPI
+        img_bytes = pix.tobytes("png")
+        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+        doc.close()
 
         # 2. GPT-4o Vision Prompt
         prompt = """You are a Fashion Tech Pack measurement table extraction expert.
@@ -136,13 +135,13 @@ IMPORTANT:
                     organization=revision.organization,
                     revision=revision,
                     point_name=point_name,
-                    point_name_zh=point_name_zh,  # ⭐ 中文翻譯
+                    point_name_zh=point_name_zh,  # 中文翻譯
                     point_code=m_data.get('point_code', ''),
                     values=m_data.get('values', {}),  # JSON field
                     tolerance_plus=Decimal(str(m_data.get('tolerance_plus', 0.5))),
                     tolerance_minus=Decimal(str(m_data.get('tolerance_minus', 0.5))),
                     unit=m_data.get('unit', 'cm'),
-                    is_verified=False,  # ⭐ Requires human verification
+                    is_verified=False,  # Requires human verification
                     ai_confidence=0.90,  # Vision-based extraction confidence
                 )
                 created_count += 1

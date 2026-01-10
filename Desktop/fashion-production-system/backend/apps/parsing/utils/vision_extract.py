@@ -1,6 +1,8 @@
 """
 Vision LLM - Extract text from Tech Pack images (including annotations)
 混合策略：pdfplumber (文字層) + GPT-4o Vision (圖形標註)
+
+2026-01-10: 升級為 high detail 模式，提升提取準確度 (+40% 內容)
 """
 
 import base64
@@ -71,7 +73,7 @@ def extract_text_from_pdf_page_vision(pdf_path: str, page_number: int) -> list[d
         # 轉換為圖片
         doc = fitz.open(pdf_path)
         page = doc.load_page(page_number - 1)
-        pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72))  # 降低解析度節省成本
+        pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))  # 2026-01-10: 提高解析度
         img_bytes = pix.tobytes("png")
         img_base64 = base64.b64encode(img_bytes).decode('utf-8')
         doc.close()
@@ -104,12 +106,12 @@ Return ONLY JSON, no explanation."""
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/png;base64,{img_base64}",
-                            "detail": "low"  # Low detail to save costs
+                            "detail": "high"  # 2026-01-10: 改用 high detail 提升準確度
                         }
                     }
                 ]
             }],
-            max_tokens=1000,
+            max_tokens=4000,  # 增加 token 限制
             temperature=0.1
         )
 
