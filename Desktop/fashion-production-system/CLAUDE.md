@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-10
-**Version:** 4.7.1
-**Status:** P0-P8 + P10 + P11 完成 ✅ | Tech Pack 85-90% | BOM/Spec 92%
+**Version:** 4.8.0
+**Status:** P0-P11 完成 ✅ | P9 甘特圖 ✅ | Tech Pack 85-90% | BOM/Spec 92%
 
 ---
 
@@ -320,7 +320,7 @@ URL: /dashboard/samples/kanban
 |------|------|----------|------|
 | **P10** | **真實 Tech Pack 完整流程測試** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P11** | **MWO 品質修復（準確度 85-92%）** | **1 天** | **✅ 完成 (2026-01-10)** |
-| P9 | 甘特圖進度儀表板（NetSuite/Oracle 風格）| 2-3 天 | 📋 計劃中 |
+| **P9** | **甘特圖進度儀表板（NetSuite 風格）** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | P12 | 自訂 Excel/PDF 模板 | - | 📋 計劃中 |
 | P13 | Celery 異步批量匯出 | - | 📋 計劃中 |
 | Phase B | 多人協作 + RBAC | - | 📋 計劃中 |
@@ -493,57 +493,65 @@ URL: /dashboard/samples/kanban
 
 ---
 
-## P9 甘特圖進度儀表板設計（2026-01-09 規劃）
+## P9 甘特圖進度儀表板（2026-01-10 ✅ 完成）
 
 **參考：** [Oracle NetSuite Manufacturing Scheduler](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_0223104719.html)
 
-### 功能規格
+### 實作內容
 
-| 功能 | 說明 |
+| 項目 | 說明 |
 |------|------|
-| **視圖切換** | Style（按款式分組）/ Run（平鋪顯示） |
-| **時間粒度** | 日 / 週 / 月 三種 |
-| **Summary Bar** | 款式總進度條 |
-| **Task Bar** | 單個 Run 進度條 |
-| **顏色編碼** | 12 狀態對應不同顏色 |
-| **逾期標記** | 🔴 紅色 + 逾期天數 |
-| **展開/折疊** | 按款式展開或折疊 |
-| **分頁控制** | 10/25/50 筆每頁 |
-| **搜尋篩選** | 款式編號搜尋 |
+| **後端 API** | `GET /api/v2/scheduler/` - 支援 Style/Run 視圖 |
+| **前端頁面** | `/dashboard/scheduler` |
+| **側邊導航** | 已添加 Scheduler 連結（GanttChart icon） |
 
-### UI 草圖
+### 功能特色
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  📊 Manufacturing Scheduler Dashboard                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│  [View ▼] [Style ⚫/Run ○] [日/週/月]  ◀ Jan 6-12 ▶  🔍 搜尋           │
-├─────────────────────────────────────────────────────────────────────────┤
-│  Style / Run          │  Mon 6  │ Tue 7  │ Wed 8  │ Thu 9  │ Fri 10   │
-├───────────────────────┼─────────────────────────────────────────────────┤
-│  ▼ LW1FLWS (3 runs)   │ ████████████████████████░░░░░░░  78%           │
-│    ├─ Run#1 Sample    │ ████████████████████  COMPLETED ✅             │
-│    ├─ Run#2 PP        │      ████████░░░░░░  IN_PRODUCTION             │
-│    └─ Run#3 TOP       │           ░░░░░░░░  PENDING ⏳                 │
-│  ▼ LM5BBJS (2 runs)   │ ████████░░░░░░░░░░░░░░░░  45%  🔴 逾期         │
-├─────────────────────────────────────────────────────────────────────────┤
-│  Legend: ██ Completed ██ In Production ██ Materials ░░ Pending 🔴 Overdue│
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| 功能 | 說明 | 狀態 |
+|------|------|------|
+| **視圖切換** | Style（按款式分組）/ Run（平鋪顯示）| ✅ |
+| **時間粒度** | 日 / 週 / 月 三種 | ✅ |
+| **Summary Bar** | 款式總進度條（漸層色） | ✅ |
+| **Task Bar** | 單個 Run 進度條（狀態色） | ✅ |
+| **顏色編碼** | 12 狀態對應不同顏色 | ✅ |
+| **逾期標記** | 紅色背景 + 遲延天數 | ✅ |
+| **展開/折疊** | 按款式展開或折疊 | ✅ |
+| **分頁控制** | 10/25/50 筆每頁 | ✅ |
+| **搜尋篩選** | 款式編號搜尋 | ✅ |
+| **日期導航** | 前/後移動 + 回到今天 | ✅ |
+| **Legend** | 底部狀態顏色圖例 | ✅ |
 
-### 資料對照
+### 12 狀態進度對照
 
-| NetSuite | 本系統 |
-|----------|--------|
-| Work Center | Style（款式） |
-| Work Order | SampleRun（樣品單） |
-| Manufacturing Operation | 12 狀態階段 |
+| 狀態 | 進度 | 顏色 |
+|------|------|------|
+| draft | 0% | slate-400 |
+| materials_planning | 10% | amber-400 |
+| po_drafted | 20% | orange-500 |
+| po_issued | 30% | green-500 |
+| mwo_drafted | 40% | blue-500 |
+| mwo_issued | 50% | indigo-500 |
+| in_progress | 60% | violet-500 |
+| sample_done | 70% | cyan-500 |
+| actuals_recorded | 80% | teal-500 |
+| costing_generated | 90% | emerald-500 |
+| quoted | 95% | lime-500 |
+| accepted | 100% | green-500 |
 
-### 技術方案
+### 修改文件
 
-- **前端**：Tailwind CSS + date-fns（已有）
-- **後端**：現有 `/api/v2/kanban/runs/` API
-- **頁面**：`/dashboard/scheduler` 或 `/dashboard/gantt`
+| 文件 | 內容 |
+|------|------|
+| `backend/apps/samples/views.py` | 新增 `scheduler_data()` API |
+| `backend/apps/samples/urls.py` | 新增 `/scheduler/` 路由 |
+| `frontend/lib/api/samples.ts` | 新增 Scheduler 類型和 API |
+| `frontend/app/dashboard/scheduler/page.tsx` | 新頁面（500+ 行） |
+| `frontend/components/layout/Sidebar.tsx` | 新增 Scheduler 導航 |
+| `frontend/app/dashboard/samples/kanban/page.tsx` | 新增 Scheduler 連結 |
+
+### 頁面路徑
+
+`http://localhost:3000/dashboard/scheduler`
 
 ---
 

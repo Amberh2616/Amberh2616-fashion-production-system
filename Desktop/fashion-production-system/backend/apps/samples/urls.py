@@ -26,6 +26,8 @@ from .views import (
     get_alerts,
     # P3: Batch Export
     batch_export,
+    # P9: Scheduler/Gantt
+    scheduler_data,
 )
 
 router = DefaultRouter()
@@ -97,10 +99,12 @@ router.register(
 # P0-2: Kanban API endpoints
 # P1: Batch Operations & Alerts
 # P3: Batch Export
+# P9: Scheduler/Gantt
 urlpatterns = [
     path('kanban/counts/', kanban_counts, name='kanban-counts'),
     path('kanban/runs/', kanban_runs, name='kanban-runs'),
     path('sample-runs/batch-transition/', batch_transition, name='batch-transition'),
     path('sample-runs/batch-export/', batch_export, name='batch-export'),
     path('alerts/', get_alerts, name='alerts'),
+    path('scheduler/', scheduler_data, name='scheduler'),
 ] + router.urls

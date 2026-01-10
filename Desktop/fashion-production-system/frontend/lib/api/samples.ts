@@ -946,3 +946,87 @@ export async function batchExportSampleRuns(
 
   return response.blob();
 }
+
+
+// ==================== P9: Scheduler/Gantt API ====================
+
+export interface SchedulerRunItem {
+  id: string;
+  run_no: number;
+  run_type: string;
+  run_type_label: string;
+  status: string;
+  status_label: string;
+  progress: number;
+  color: string;
+  start_date: string | null;
+  target_due_date: string | null;
+  is_overdue: boolean | null;
+  days_until_due: number | null;
+  quantity: number;
+  brand_name: string | null;
+  priority: string;
+}
+
+export interface SchedulerStyleItem {
+  id: string;
+  style_number: string;
+  style_name: string;
+  runs_count: number;
+  progress: number;
+  is_overdue: boolean;
+  earliest_due: string | null;
+  latest_due: string | null;
+  runs: SchedulerRunItem[];
+}
+
+export interface SchedulerResponse {
+  styles?: SchedulerStyleItem[];
+  runs?: (SchedulerRunItem & { style: { id: string; style_number: string; style_name: string } | null })[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total_pages: number;
+    total_count: number;
+  };
+  date_range: {
+    start: string;
+    end: string;
+  };
+  status_colors: Record<string, string>;
+  meta: {
+    as_of: string;
+    view: 'style' | 'run';
+  };
+}
+
+export interface SchedulerFilters {
+  view?: 'style' | 'run';
+  start_date?: string;
+  end_date?: string;
+  search?: string;
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
+/**
+ * Get Scheduler/Gantt data
+ * GET /scheduler/
+ */
+export async function fetchSchedulerData(params?: SchedulerFilters): Promise<SchedulerResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.view) searchParams.set('view', params.view);
+  if (params?.start_date) searchParams.set('start_date', params.start_date);
+  if (params?.end_date) searchParams.set('end_date', params.end_date);
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.status) searchParams.set('status', params.status);
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+
+  const queryString = searchParams.toString();
+  const url = `/scheduler/${queryString ? `?${queryString}` : ''}`;
+
+  return apiClient.get<SchedulerResponse>(url);
+}

@@ -1369,3 +1369,355 @@ def batch_export(request):
         format=format_type,
         organization=organization
     )
+
+
+# ==================== P9: Scheduler/Gantt API ====================
+
+# Status progress mapping (percentage through workflow)
+STATUS_PROGRESS = {
+    'draft': 0,
+    'materials_planning': 10,
+    'po_drafted': 20,
+    'po_issued': 30,
+    'mwo_drafted': 40,
+    'mwo_issued': 50,
+    'in_progress': 60,
+    'sample_done': 70,
+    'actuals_recorded': 80,
+    'costing_generated': 90,
+    'quoted': 95,
+    'accepted': 100,
+    'cancelled': 0,
+}
+
+# Status colors for Gantt chart
+STATUS_COLORS = {
+    'draft': '#94a3b8',           # slate-400
+    'materials_planning': '#fbbf24',  # amber-400
+    'po_drafted': '#f97316',      # orange-500
+    'po_issued': '#22c55e',       # green-500
+    'mwo_drafted': '#3b82f6',     # blue-500
+    'mwo_issued': '#6366f1',      # indigo-500
+    'in_progress': '#8b5cf6',     # violet-500
+    'sample_done': '#06b6d4',     # cyan-500
+    'actuals_recorded': '#14b8a6', # teal-500
+    'costing_generated': '#10b981', # emerald-500
+    'quoted': '#84cc16',          # lime-500
+    'accepted': '#22c55e',        # green-500
+    'cancelled': '#ef4444',       # red-500
+}
+
+
+@api_view(['GET'])
+@perm_classes([AllowAny])
+def scheduler_data(request):
+    """
+    P9: Get Scheduler/Gantt chart data
+
+    GET /api/v2/scheduler/
+
+    Query params:
+    - view: 'style' (grouped by style) or 'run' (flat list), default 'style'
+    - start_date: Start date for date range (YYYY-MM-DD), default 14 days ago
+    - end_date: End date for date range (YYYY-MM-DD), default 14 days ahead
+    - search: Search style number
+    - status: Filter by status (comma-separated)
+    - page: Page number (default 1)
+    - page_size: Items per page (10/25/50, default 25)
+
+    Response for view=style:
+    {
+        "styles": [
+            {
+                "id": "uuid",
+                "style_number": "LW1FLWS",
+                "style_name": "...",
+                "runs_count": 3,
+                "progress": 65,  // overall progress percentage
+                "is_overdue": false,
+                "earliest_due": "2026-01-15",
+                "latest_due": "2026-01-20",
+                "runs": [
+                    {
+                        "id": "uuid",
+                        "run_no": 1,
+                        "run_type": "proto",
+                        "status": "in_progress",
+                        "status_label": "In Progress",
+                        "progress": 60,
+                        "color": "#8b5cf6",
+                        "start_date": "2026-01-01",
+                        "target_due_date": "2026-01-15",
+                        "is_overdue": false,
+                        "days_until_due": 5
+                    }
+                ]
+            }
+        ],
+        "pagination": {
+            "page": 1,
+            "page_size": 25,
+            "total_pages": 2,
+            "total_count": 30
+        },
+        "date_range": {
+            "start": "2025-12-27",
+            "end": "2026-01-24"
+        },
+        "meta": {
+            "as_of": "2026-01-10T...",
+            "view": "style"
+        }
+    }
+    """
+    today = timezone.now().date()
+
+    # Parse query params
+    view_type = request.query_params.get('view', 'style')
+    start_date_str = request.query_params.get('start_date')
+    end_date_str = request.query_params.get('end_date')
+    search = request.query_params.get('search', '')
+    status_filter = request.query_params.get('status', '')
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 25))
+
+    # Validate page_size
+    if page_size not in [10, 25, 50]:
+        page_size = 25
+
+    # Parse date range (default: 14 days ago to 14 days ahead)
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = today - timedelta(days=14)
+    else:
+        start_date = today - timedelta(days=14)
+
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            end_date = today + timedelta(days=14)
+    else:
+        end_date = today + timedelta(days=14)
+
+    # SaaS-Ready: Tenant filtering
+    org = _get_user_organization(request)
+
+    # Base queryset
+    queryset = SampleRun.objects.select_related(
+        'sample_request',
+        'sample_request__revision',
+        'sample_request__revision__style',
+    ).exclude(
+        status=SampleRunStatus.CANCELLED
+    )
+
+    if org is not None:
+        queryset = queryset.for_tenant(org)
+    else:
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response({
+                'styles': [],
+                'runs': [],
+                'pagination': {'page': 1, 'page_size': page_size, 'total_pages': 0, 'total_count': 0},
+                'date_range': {'start': start_date.isoformat(), 'end': end_date.isoformat()},
+                'meta': {'as_of': timezone.now().isoformat(), 'view': view_type}
+            })
+
+    # Apply search filter
+    if search:
+        queryset = queryset.filter(
+            Q(sample_request__revision__style__style_number__icontains=search) |
+            Q(sample_request__revision__style__style_name__icontains=search)
+        )
+
+    # Apply status filter
+    if status_filter:
+        statuses = [s.strip() for s in status_filter.split(',')]
+        queryset = queryset.filter(status__in=statuses)
+
+    # Order by style and run number
+    queryset = queryset.order_by(
+        'sample_request__revision__style__style_number',
+        'run_no'
+    )
+
+    if view_type == 'style':
+        return _build_style_view(queryset, today, start_date, end_date, page, page_size)
+    else:
+        return _build_run_view(queryset, today, start_date, end_date, page, page_size)
+
+
+def _build_style_view(queryset, today, start_date, end_date, page, page_size):
+    """Build Style-grouped view for Scheduler"""
+    from collections import OrderedDict
+
+    # Group runs by style
+    styles_dict = OrderedDict()
+
+    for run in queryset:
+        request_obj = run.sample_request
+        revision = request_obj.revision if request_obj else None
+        style = revision.style if revision else None
+
+        if not style:
+            continue
+
+        style_id = str(style.id)
+
+        if style_id not in styles_dict:
+            styles_dict[style_id] = {
+                'id': style_id,
+                'style_number': style.style_number,
+                'style_name': style.style_name or '',
+                'runs': [],
+            }
+
+        # Calculate progress for this run
+        progress = STATUS_PROGRESS.get(run.status, 0)
+        color = STATUS_COLORS.get(run.status, '#94a3b8')
+
+        # Calculate overdue status
+        is_overdue = run.target_due_date and run.target_due_date < today
+        days_until_due = (run.target_due_date - today).days if run.target_due_date else None
+
+        styles_dict[style_id]['runs'].append({
+            'id': str(run.id),
+            'run_no': run.run_no,
+            'run_type': run.run_type,
+            'run_type_label': run.get_run_type_display(),
+            'status': run.status,
+            'status_label': run.get_status_display(),
+            'progress': progress,
+            'color': color,
+            'start_date': run.created_at.date().isoformat() if run.created_at else None,
+            'target_due_date': run.target_due_date.isoformat() if run.target_due_date else None,
+            'is_overdue': is_overdue,
+            'days_until_due': days_until_due,
+            'quantity': run.quantity,
+            'brand_name': request_obj.brand_name if request_obj else None,
+            'priority': request_obj.priority if request_obj else 'normal',
+        })
+
+    # Calculate style-level aggregates
+    styles_list = []
+    for style_data in styles_dict.values():
+        runs = style_data['runs']
+        if not runs:
+            continue
+
+        # Overall progress = average of all runs
+        avg_progress = sum(r['progress'] for r in runs) / len(runs)
+
+        # Check if any run is overdue
+        any_overdue = any(r['is_overdue'] for r in runs)
+
+        # Get earliest and latest due dates
+        due_dates = [r['target_due_date'] for r in runs if r['target_due_date']]
+        earliest_due = min(due_dates) if due_dates else None
+        latest_due = max(due_dates) if due_dates else None
+
+        styles_list.append({
+            'id': style_data['id'],
+            'style_number': style_data['style_number'],
+            'style_name': style_data['style_name'],
+            'runs_count': len(runs),
+            'progress': round(avg_progress),
+            'is_overdue': any_overdue,
+            'earliest_due': earliest_due,
+            'latest_due': latest_due,
+            'runs': runs,
+        })
+
+    # Pagination
+    total_count = len(styles_list)
+    total_pages = (total_count + page_size - 1) // page_size
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_styles = styles_list[start_idx:end_idx]
+
+    return Response({
+        'styles': paginated_styles,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'total_count': total_count,
+        },
+        'date_range': {
+            'start': start_date.isoformat(),
+            'end': end_date.isoformat(),
+        },
+        'status_colors': STATUS_COLORS,
+        'meta': {
+            'as_of': timezone.now().isoformat(),
+            'view': 'style',
+        }
+    })
+
+
+def _build_run_view(queryset, today, start_date, end_date, page, page_size):
+    """Build flat Run view for Scheduler"""
+    runs_list = []
+
+    for run in queryset:
+        request_obj = run.sample_request
+        revision = request_obj.revision if request_obj else None
+        style = revision.style if revision else None
+
+        progress = STATUS_PROGRESS.get(run.status, 0)
+        color = STATUS_COLORS.get(run.status, '#94a3b8')
+        is_overdue = run.target_due_date and run.target_due_date < today
+        days_until_due = (run.target_due_date - today).days if run.target_due_date else None
+
+        runs_list.append({
+            'id': str(run.id),
+            'run_no': run.run_no,
+            'run_type': run.run_type,
+            'run_type_label': run.get_run_type_display(),
+            'status': run.status,
+            'status_label': run.get_status_display(),
+            'progress': progress,
+            'color': color,
+            'start_date': run.created_at.date().isoformat() if run.created_at else None,
+            'target_due_date': run.target_due_date.isoformat() if run.target_due_date else None,
+            'is_overdue': is_overdue,
+            'days_until_due': days_until_due,
+            'quantity': run.quantity,
+            'style': {
+                'id': str(style.id) if style else None,
+                'style_number': style.style_number if style else None,
+                'style_name': style.style_name if style else None,
+            } if style else None,
+            'brand_name': request_obj.brand_name if request_obj else None,
+            'priority': request_obj.priority if request_obj else 'normal',
+        })
+
+    # Pagination
+    total_count = len(runs_list)
+    total_pages = (total_count + page_size - 1) // page_size
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_runs = runs_list[start_idx:end_idx]
+
+    return Response({
+        'runs': paginated_runs,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'total_count': total_count,
+        },
+        'date_range': {
+            'start': start_date.isoformat(),
+            'end': end_date.isoformat(),
+        },
+        'status_colors': STATUS_COLORS,
+        'meta': {
+            'as_of': timezone.now().isoformat(),
+            'view': 'run',
+        }
+    })

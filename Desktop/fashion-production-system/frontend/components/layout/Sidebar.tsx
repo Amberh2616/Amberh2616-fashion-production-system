@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Upload,
   Columns3,
+  GanttChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -28,6 +29,7 @@ const navigation = [
   { name: "BOM", href: "/dashboard/bom", icon: Package },
   { name: "Samples", href: "/dashboard/samples", icon: Shirt },
   { name: "Kanban", href: "/dashboard/samples/kanban", icon: Columns3 },
+  { name: "Scheduler", href: "/dashboard/scheduler", icon: GanttChart },
   { name: "Procurement", href: "/dashboard/procurement", icon: ShoppingCart },
 ];
 

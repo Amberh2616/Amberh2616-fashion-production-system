@@ -402,6 +402,12 @@ export default function KanbanPage() {
             {showAlerts ? 'Hide Alerts' : 'Show Alerts'}
           </button>
           <Link
+            href="/dashboard/scheduler"
+            className="px-4 py-1.5 text-sm border rounded-md hover:bg-gray-50 bg-blue-50 border-blue-200 text-blue-700"
+          >
+            Scheduler
+          </Link>
+          <Link
             href="/dashboard/samples"
             className="px-4 py-1.5 text-sm border rounded-md hover:bg-gray-50"
           >
