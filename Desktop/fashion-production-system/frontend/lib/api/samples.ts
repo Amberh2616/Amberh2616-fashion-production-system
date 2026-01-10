@@ -1028,5 +1028,5 @@ export async function fetchSchedulerData(params?: SchedulerFilters): Promise<Sch
   const queryString = searchParams.toString();
   const url = `/scheduler/${queryString ? `?${queryString}` : ''}`;
 
-  return apiClient.get<SchedulerResponse>(url);
+  return apiClient<SchedulerResponse>(url);
 }

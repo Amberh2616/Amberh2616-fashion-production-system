@@ -12,7 +12,7 @@ from rest_framework.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q, Case, When, Value, IntegerField
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from .models import (
     SampleRequest,
@@ -1552,13 +1552,78 @@ def scheduler_data(request):
 
 
 def _build_style_view(queryset, today, start_date, end_date, page, page_size):
-    """Build Style-grouped view for Scheduler"""
-    from collections import OrderedDict
+    """
+    Build Style-grouped view for Scheduler
 
-    # Group runs by style
-    styles_dict = OrderedDict()
+    Optimized for 300+ styles:
+    1. First get distinct style IDs with pagination at DB level
+    2. Then fetch runs only for those paginated styles
+    """
+    from apps.styles.models import Style
 
-    for run in queryset:
+    # Step 1: Get distinct style IDs from runs (database level)
+    style_ids_with_runs = queryset.values_list(
+        'sample_request__revision__style_id', flat=True
+    ).distinct()
+
+    # Get unique style IDs (filter None)
+    unique_style_ids = [sid for sid in style_ids_with_runs if sid is not None]
+
+    # Step 2: Paginate styles at database level
+    total_count = len(unique_style_ids)
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_style_ids = unique_style_ids[start_idx:end_idx]
+
+    if not paginated_style_ids:
+        return Response({
+            'styles': [],
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'total_count': total_count,
+            },
+            'date_range': {
+                'start': start_date.isoformat(),
+                'end': end_date.isoformat(),
+            },
+            'status_colors': STATUS_COLORS,
+            'meta': {
+                'as_of': timezone.now().isoformat(),
+                'view': 'style',
+            }
+        })
+
+    # Step 3: Fetch styles and runs only for paginated subset
+    styles_map = {
+        str(s.id): s for s in Style.objects.filter(id__in=paginated_style_ids)
+    }
+
+    # Fetch runs only for paginated styles
+    paginated_runs = queryset.filter(
+        sample_request__revision__style_id__in=paginated_style_ids
+    ).select_related(
+        'sample_request',
+        'sample_request__revision',
+        'sample_request__revision__style',
+    ).order_by('sample_request__revision__style__style_number', 'run_no')
+
+    # Step 4: Group runs by style
+    styles_dict = {}
+    for style_id in paginated_style_ids:
+        style_id_str = str(style_id)
+        style = styles_map.get(style_id_str)
+        if style:
+            styles_dict[style_id_str] = {
+                'id': style_id_str,
+                'style_number': style.style_number,
+                'style_name': style.style_name or '',
+                'runs': [],
+            }
+
+    for run in paginated_runs:
         request_obj = run.sample_request
         revision = request_obj.revision if request_obj else None
         style = revision.style if revision else None
@@ -1567,14 +1632,8 @@ def _build_style_view(queryset, today, start_date, end_date, page, page_size):
             continue
 
         style_id = str(style.id)
-
         if style_id not in styles_dict:
-            styles_dict[style_id] = {
-                'id': style_id,
-                'style_number': style.style_number,
-                'style_name': style.style_name or '',
-                'runs': [],
-            }
+            continue
 
         # Calculate progress for this run
         progress = STATUS_PROGRESS.get(run.status, 0)
@@ -1602,9 +1661,14 @@ def _build_style_view(queryset, today, start_date, end_date, page, page_size):
             'priority': request_obj.priority if request_obj else 'normal',
         })
 
-    # Calculate style-level aggregates
+    # Step 5: Calculate style-level aggregates (only for paginated styles)
     styles_list = []
-    for style_data in styles_dict.values():
+    for style_id in paginated_style_ids:
+        style_id_str = str(style_id)
+        style_data = styles_dict.get(style_id_str)
+        if not style_data:
+            continue
+
         runs = style_data['runs']
         if not runs:
             continue
@@ -1632,15 +1696,8 @@ def _build_style_view(queryset, today, start_date, end_date, page, page_size):
             'runs': runs,
         })
 
-    # Pagination
-    total_count = len(styles_list)
-    total_pages = (total_count + page_size - 1) // page_size
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    paginated_styles = styles_list[start_idx:end_idx]
-
     return Response({
-        'styles': paginated_styles,
+        'styles': styles_list,
         'pagination': {
             'page': page,
             'page_size': page_size,
