@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-10
-**Version:** 4.9.0
-**Status:** P0-P11 + P14 完成 ✅ | P9 甘特圖 ✅ | P14 供應商主檔 ✅
+**Version:** 4.10.0
+**Status:** P0-P11 + P14 + P15 完成 ✅ | P14 供應商主檔 ✅ | P15 物料主檔 ✅
 
 ---
 
@@ -119,6 +119,36 @@
 | **P7** | **Measurement 中文翻譯編輯界面** | **2026-01-09** | 見下方 |
 | **P8** | **MWO 完整匯出（Tech Pack + BOM + Spec）** | **2026-01-09** | 見下方 |
 | **P14** | **供應商主檔管理系統** | **2026-01-10** | 見下方 |
+| **P15** | **物料主檔管理系統** | **2026-01-10** | 見下方 |
+
+#### P15: 物料主檔管理（2026-01-10）
+
+**功能：** 物料主檔 CRUD 管理界面
+- 物料列表（搜尋、類別/供應商/狀態篩選、分頁）
+- 新增/編輯物料（Dialog 表單）
+- 供應商關聯
+- 完整物料資訊：規格、價格、交期、MOQ、耗損率
+
+**後端：**
+- `backend/apps/procurement/models.py` - Material 模型
+- `backend/apps/procurement/serializers.py` - MaterialSerializer
+- `backend/apps/procurement/views.py` - MaterialViewSet（含篩選/搜尋）
+- `backend/apps/procurement/urls.py` - 路由配置
+
+**前端文件：**
+- `frontend/lib/types/material.ts` - 類型定義
+- `frontend/lib/api/materials.ts` - API 客戶端
+- `frontend/lib/hooks/useMaterials.ts` - React Query Hooks
+- `frontend/app/dashboard/materials/page.tsx` - 物料列表頁
+- `frontend/app/dashboard/materials/material-form-dialog.tsx` - 表單對話框
+
+**API 端點：**
+- `GET /api/v2/materials/` - 列表（支援 category, supplier, status, search 篩選）
+- `POST /api/v2/materials/` - 創建
+- `PATCH /api/v2/materials/{id}/` - 更新
+- `DELETE /api/v2/materials/{id}/` - 刪除
+
+**頁面路徑：** `/dashboard/materials`
 
 #### P14: 供應商主檔管理（2026-01-10）
 
@@ -353,8 +383,8 @@ URL: /dashboard/samples/kanban
 | **P11** | **MWO 品質修復（準確度 85-92%）** | **1 天** | **✅ 完成 (2026-01-10)** |
 | **P9** | **甘特圖進度儀表板（NetSuite 風格）** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P14** | **供應商主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
-| P15 | 物料主檔管理系統 | 0.5 天 | 📋 下一步 |
-| P16 | 採購單工作流程 | 1 天 | 📋 計劃中 |
+| **P15** | **物料主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
+| P16 | 採購單工作流程 | 1 天 | 📋 下一步 |
 | P12 | 自訂 Excel/PDF 模板 | - | 📋 計劃中 |
 | P13 | Celery 異步批量匯出 | - | 📋 計劃中 |
 | Phase B | 多人協作 + RBAC | - | 📋 計劃中 |
