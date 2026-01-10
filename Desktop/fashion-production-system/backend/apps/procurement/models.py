@@ -1,6 +1,6 @@
 """
-Procurement Models - v2.2.1
-Purchase orders, suppliers
+Procurement Models - v2.3.0
+Purchase orders, suppliers, materials
 """
 
 from django.db import models
@@ -62,6 +62,142 @@ class Supplier(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_supplier_type_display()})"
+
+
+class Material(models.Model):
+    """
+    Material Master Data (物料主檔)
+    Central repository for all materials used across styles
+    Can be linked from BOMItem via article_no or material FK
+    """
+    CATEGORY_CHOICES = [
+        ('fabric', 'Fabric'),
+        ('trim', 'Trim'),
+        ('label', 'Label'),
+        ('packaging', 'Packaging'),
+    ]
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('pending_approval', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('discontinued', 'Discontinued'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='materials'
+    )
+
+    # Basic info
+    article_no = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Supplier article number (unique per supplier)"
+    )
+    name = models.CharField(max_length=200, help_text="Material name in English")
+    name_zh = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Material name in Chinese"
+    )
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+
+    # Supplier link
+    supplier = models.ForeignKey(
+        Supplier,
+        on_delete=models.PROTECT,
+        related_name='materials',
+        null=True,
+        blank=True
+    )
+
+    # Specifications
+    color = models.CharField(max_length=100, blank=True)
+    color_code = models.CharField(max_length=50, blank=True)
+    composition = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="e.g., 80% Nylon, 20% Spandex"
+    )
+    weight = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="e.g., 180 GSM"
+    )
+    width = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="e.g., 150 cm"
+    )
+    unit = models.CharField(
+        max_length=20,
+        default='yards',
+        help_text="Standard unit: yards, meters, pcs, etc."
+    )
+
+    # Pricing
+    unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Standard unit price"
+    )
+    currency = models.CharField(
+        max_length=3,
+        default='USD',
+        help_text="Currency code: USD, TWD, CNY, etc."
+    )
+    moq = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Minimum Order Quantity"
+    )
+
+    # Lead time & wastage
+    lead_time_days = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Standard lead time in days"
+    )
+    wastage_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=5.00,
+        help_text="Standard wastage percentage"
+    )
+
+    # Status & approval
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='active'
+    )
+    is_active = models.BooleanField(default=True)
+
+    # Metadata
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'materials'
+        verbose_name = 'Material'
+        verbose_name_plural = 'Materials'
+        ordering = ['name']
+        # Article number unique within organization + supplier
+        unique_together = [['organization', 'supplier', 'article_no']]
+
+    # SaaS-Ready: Tenant-aware manager
+    objects = TenantManager()
+
+    def __str__(self):
+        supplier_name = self.supplier.name if self.supplier else 'No Supplier'
+        return f"{self.article_no} - {self.name} ({supplier_name})"
 
 
 class PurchaseOrder(models.Model):

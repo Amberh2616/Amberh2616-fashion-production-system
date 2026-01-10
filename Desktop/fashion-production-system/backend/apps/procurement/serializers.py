@@ -1,10 +1,20 @@
 from rest_framework import serializers
-from .models import Supplier, PurchaseOrder, POLine
+from .models import Supplier, Material, PurchaseOrder, POLine
 
 
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
+        fields = '__all__'
+
+
+class MaterialSerializer(serializers.ModelSerializer):
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = Material
         fields = '__all__'
 
 
