@@ -546,7 +546,7 @@ export default function DraftReviewPage() {
 
         {/* Sidebar Footer */}
         <div className="border-t border-gray-200 px-6 py-4 bg-white space-y-3">
-          {revision.status === 'completed' ? (
+          {revision.status === 'approved' ? (
             <>
               {/* Status Badge */}
               <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
