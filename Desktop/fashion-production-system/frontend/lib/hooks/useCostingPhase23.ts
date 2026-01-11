@@ -12,6 +12,14 @@ import {
   submitCostSheetVersion,
   updateCostSheetSummary,
   updateCostLine,
+  // P18: Sample → Bulk APIs
+  createBulkQuote,
+  acceptCostSheetVersion,
+  rejectCostSheetVersion,
+  // P18: T8 Create Production Order
+  createProductionOrderFromQuote,
+  type CreateBulkQuotePayload,
+  type CreateProductionOrderPayload,
 } from '../api/costing-phase23';
 import type {
   CreateCostSheetPayload,
@@ -199,6 +207,111 @@ export function useUpdateCostLine(costSheetId: string, styleId: string) {
       queryClient.invalidateQueries({ queryKey: ['cost-sheet-version', csId] });
       // Invalidate list to refresh unit_price
       queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', sId] });
+    },
+  });
+}
+
+// ========================================
+// P18: Sample → Bulk Quotation Hooks
+// ========================================
+
+/**
+ * P18: Create Bulk Quote from Sample CostSheetVersion (T6 核心連結)
+ * Creates new Bulk costing version linked to accepted Sample via cloned_from
+ */
+export function useCreateBulkQuote(styleId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      sampleCostSheetId,
+      payload,
+    }: {
+      sampleCostSheetId: string;
+      payload?: CreateBulkQuotePayload;
+    }) => createBulkQuote(sampleCostSheetId, payload),
+    onSuccess: (data) => {
+      // Invalidate list to show new Bulk version
+      queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', styleId] });
+      // Set detail cache for new Bulk CostSheetVersion
+      queryClient.setQueryData(['cost-sheet-version', data.id], data);
+      // Invalidate sample runs to update UI (may show "Bulk Quote Created" badge)
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+    },
+  });
+}
+
+/**
+ * P18: Accept CostSheetVersion (Submitted → Accepted)
+ * Used for both Sample and Bulk quotations
+ */
+export function useAcceptCostSheetVersion(styleId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (costSheetId: string) => acceptCostSheetVersion(costSheetId),
+    onSuccess: (data) => {
+      // Update detail cache (status changed to accepted)
+      queryClient.setQueryData(['cost-sheet-version', data.id], data);
+      // Invalidate list to refresh status badges
+      queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', styleId] });
+      // Invalidate sample runs to update Kanban status
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+    },
+  });
+}
+
+/**
+ * P18: Reject CostSheetVersion (Submitted → Rejected)
+ * Used for both Sample and Bulk quotations
+ */
+export function useRejectCostSheetVersion(styleId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ costSheetId, reason }: { costSheetId: string; reason?: string }) =>
+      rejectCostSheetVersion(costSheetId, reason),
+    onSuccess: (data) => {
+      // Update detail cache (status changed to rejected)
+      queryClient.setQueryData(['cost-sheet-version', data.id], data);
+      // Invalidate list to refresh status badges
+      queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', styleId] });
+      // Invalidate sample runs to update Kanban status
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+    },
+  });
+}
+
+// ========================================
+// P18: T8 Create Production Order from Bulk Quote
+// ========================================
+
+/**
+ * P18: T8 核心 - Create Production Order from Accepted Bulk Quote
+ * Creates ProductionOrder with MRP calculation from accepted Bulk CostSheetVersion
+ */
+export function useCreateProductionOrder(styleId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      bulkCostSheetId,
+      payload,
+    }: {
+      bulkCostSheetId: string;
+      payload: CreateProductionOrderPayload;
+    }) => createProductionOrderFromQuote(bulkCostSheetId, payload),
+    onSuccess: () => {
+      // Invalidate cost sheet versions to update UI
+      queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', styleId] });
+      // Invalidate production orders list
+      queryClient.invalidateQueries({ queryKey: ['production-orders'] });
+      // Invalidate sample runs / kanban
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
     },
   });
 }

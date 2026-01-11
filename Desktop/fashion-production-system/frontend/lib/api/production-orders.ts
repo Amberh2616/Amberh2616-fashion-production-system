@@ -2,7 +2,7 @@
  * Production Order API Client
  */
 
-import { apiClient } from "./client";
+import { apiClient, uploadFile } from "./client";
 import type {
   ProductionOrder,
   ProductionOrderDetail,
@@ -17,10 +17,12 @@ import type {
   RequirementsSummary,
   MaterialRequirement,
   MaterialRequirementListResponse,
+  ReviewMaterialRequirementPayload,
+  GeneratePOFromMRResponse,
 } from "../types/production-order";
 
-const BASE_URL = "/api/v2/production-orders";
-const REQUIREMENTS_URL = "/api/v2/material-requirements";
+const BASE_URL = "/production-orders";
+const REQUIREMENTS_URL = "/material-requirements";
 
 // ============================================================================
 // Production Order API
@@ -120,6 +122,39 @@ export async function getProductionOrderStats(): Promise<ProductionOrderStats> {
 }
 
 // ============================================================================
+// Excel Import
+// ============================================================================
+
+export interface ImportExcelResponse {
+  success: boolean;
+  message: string;
+  created: Array<{
+    row: number;
+    id: string;
+    po_number: string;
+    order_number: string;
+    customer: string;
+    style_number: string;
+    total_quantity: number;
+    unit_price: number;
+    total_amount: number;
+  }>;
+  errors: Array<{
+    row: number;
+    error: string;
+  }>;
+  total_rows_processed: number;
+}
+
+export async function importProductionOrdersExcel(
+  file: File
+): Promise<ImportExcelResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return uploadFile<ImportExcelResponse>(`${BASE_URL}/import_excel/`, formData);
+}
+
+// ============================================================================
 // Material Requirements API
 // ============================================================================
 
@@ -162,5 +197,53 @@ export async function updateMaterialRequirementStock(
   return apiClient.patch<{ id: string; current_stock: number; order_quantity_needed: number; message: string }>(
     `${REQUIREMENTS_URL}/${id}/update-stock/`,
     { current_stock: currentStock }
+  );
+}
+
+// ============================================================================
+// Material Requirements Review API
+// ============================================================================
+
+/**
+ * Review and confirm a single material requirement
+ */
+export async function reviewMaterialRequirement(
+  id: string,
+  payload: ReviewMaterialRequirementPayload
+): Promise<{
+  id: string;
+  is_reviewed: boolean;
+  reviewed_quantity: string;
+  reviewed_unit_price: string;
+  message: string;
+}> {
+  return apiClient.post<{
+    id: string;
+    is_reviewed: boolean;
+    reviewed_quantity: string;
+    reviewed_unit_price: string;
+    message: string;
+  }>(`${REQUIREMENTS_URL}/${id}/review/`, payload);
+}
+
+/**
+ * Unreview a material requirement for re-editing
+ */
+export async function unreviewMaterialRequirement(
+  id: string
+): Promise<{ id: string; is_reviewed: boolean; message: string }> {
+  return apiClient.post<{ id: string; is_reviewed: boolean; message: string }>(
+    `${REQUIREMENTS_URL}/${id}/unreview/`
+  );
+}
+
+/**
+ * Generate a single PurchaseOrder from a reviewed material requirement
+ */
+export async function generatePOFromMaterialRequirement(
+  id: string
+): Promise<GeneratePOFromMRResponse> {
+  return apiClient.post<GeneratePOFromMRResponse>(
+    `${REQUIREMENTS_URL}/${id}/generate-po/`
   );
 }

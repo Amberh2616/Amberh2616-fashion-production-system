@@ -164,6 +164,16 @@ class ProductionOrder(models.Model):
         help_text='Confirmed bulk costing for this order'
     )
 
+    # Link to approved sample run (P18: 追蹤哪個樣衣階段批准進入大貨)
+    approved_sample_run = models.ForeignKey(
+        'samples.SampleRun',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='production_orders',
+        help_text='The Sample Run (typically Size Set) that was approved before bulk production'
+    )
+
     # Quantities
     total_quantity = models.IntegerField(help_text='Total order quantity')
     size_breakdown = models.JSONField(
@@ -316,6 +326,43 @@ class MaterialRequirement(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default='calculated'
+    )
+
+    # Review status (before generating PO)
+    is_reviewed = models.BooleanField(
+        default=False,
+        help_text='Whether this requirement has been reviewed'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_notes = models.TextField(
+        blank=True,
+        help_text='Notes from review process'
+    )
+    # Allow editing during review
+    reviewed_quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Adjusted quantity after review (if different from calculated)'
+    )
+    reviewed_unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Confirmed unit price for this material'
+    )
+    # Delivery planning
+    required_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='物料需求日期（生產需要的時間）'
+    )
+    expected_delivery = models.DateField(
+        null=True,
+        blank=True,
+        help_text='預計交期（從供應商 lead time 計算）'
     )
 
     # Link to generated PO (if any)

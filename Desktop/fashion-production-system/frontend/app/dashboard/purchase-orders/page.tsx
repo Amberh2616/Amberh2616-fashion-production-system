@@ -9,6 +9,7 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+import Link from "next/link";
 import {
   Plus,
   Search,
@@ -20,6 +21,7 @@ import {
   PackageCheck,
   XCircle,
   FileText,
+  Eye,
 } from "lucide-react";
 
 import {
@@ -131,9 +133,12 @@ export default function PurchaseOrdersPage() {
       accessorKey: "po_number",
       header: "PO Number",
       cell: ({ row }) => (
-        <div className="font-mono text-sm font-medium text-blue-600">
+        <Link
+          href={`/dashboard/purchase-orders/${row.original.id}`}
+          className="font-mono text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+        >
           {row.getValue("po_number")}
-        </div>
+        </Link>
       ),
     },
     {
@@ -183,6 +188,12 @@ export default function PurchaseOrdersPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/dashboard/purchase-orders/${po.id}`}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Details
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
                   setEditingPO(po);

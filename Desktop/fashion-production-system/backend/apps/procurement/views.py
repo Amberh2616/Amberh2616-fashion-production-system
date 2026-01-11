@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db.models import Sum, Count
+from django.http import HttpResponse
 from .models import Supplier, Material, PurchaseOrder, POLine
+from .services.po_pdf_export import export_po_pdf
 from .serializers import (
     SupplierSerializer,
     MaterialSerializer,
@@ -136,6 +138,52 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             stats['by_status'][item['status']] = item['count']
         return Response(stats)
 
+    # Export PO as PDF
+    @action(detail=True, methods=['get'], url_path='export-pdf')
+    def export_pdf(self, request, pk=None):
+        """匯出採購單 PDF (需全部 Line 確認後才能下載)"""
+        po = self.get_object()
+
+        # Check if all lines are confirmed
+        if not po.all_lines_confirmed:
+            return Response(
+                {
+                    'error': 'Cannot export PDF: Not all lines are confirmed',
+                    'confirmed_lines_count': po.confirmed_lines_count,
+                    'total_lines_count': po.total_lines_count,
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            pdf_bytes = export_po_pdf(po)
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{po.po_number}.pdf"'
+            return response
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # Confirm all lines at once
+    @action(detail=True, methods=['post'], url_path='confirm-all-lines')
+    def confirm_all_lines(self, request, pk=None):
+        """Confirm all lines in this PO at once"""
+        po = self.get_object()
+        now = timezone.now()
+
+        updated_count = po.lines.filter(is_confirmed=False).update(
+            is_confirmed=True,
+            confirmed_at=now
+        )
+
+        return Response({
+            'confirmed_count': updated_count,
+            'all_lines_confirmed': po.all_lines_confirmed,
+            'message': f'{updated_count} lines confirmed'
+        })
+
 
 class POLineViewSet(viewsets.ModelViewSet):
     queryset = POLine.objects.select_related('purchase_order', 'material').all()
@@ -159,4 +207,56 @@ class POLineViewSet(viewsets.ModelViewSet):
             'id': str(line.id),
             'quantity_received': str(line.quantity_received),
             'message': 'Quantity received updated'
+        })
+
+    # Confirm a single line after review
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        """Confirm a POLine after review"""
+        line = self.get_object()
+
+        # Allow updating fields before confirming
+        if 'quantity' in request.data:
+            line.quantity = request.data['quantity']
+        if 'unit_price' in request.data:
+            line.unit_price = request.data['unit_price']
+        if 'notes' in request.data:
+            line.notes = request.data['notes']
+
+        # Recalculate line total if quantity or price changed
+        from decimal import Decimal
+        line.line_total = Decimal(str(line.quantity)) * Decimal(str(line.unit_price))
+
+        # Mark as confirmed
+        line.is_confirmed = True
+        line.confirmed_at = timezone.now()
+        line.save()
+
+        # Update PO total
+        po = line.purchase_order
+        po.total_amount = sum(l.line_total for l in po.lines.all())
+        po.save(update_fields=['total_amount'])
+
+        return Response({
+            'id': str(line.id),
+            'is_confirmed': True,
+            'line_total': str(line.line_total),
+            'po_total_amount': str(po.total_amount),
+            'all_lines_confirmed': po.all_lines_confirmed,
+            'message': 'Line confirmed successfully'
+        })
+
+    # Unconfirm a line (for re-editing)
+    @action(detail=True, methods=['post'])
+    def unconfirm(self, request, pk=None):
+        """Unconfirm a POLine for re-editing"""
+        line = self.get_object()
+        line.is_confirmed = False
+        line.confirmed_at = None
+        line.save()
+
+        return Response({
+            'id': str(line.id),
+            'is_confirmed': False,
+            'message': 'Line unconfirmed for re-editing'
         })

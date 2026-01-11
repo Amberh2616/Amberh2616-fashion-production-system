@@ -18,20 +18,28 @@ import {
   Upload,
   Columns3,
   GanttChart,
+  ClipboardList,
+  Truck,
+  Building2,
+  Boxes,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Progress", href: "/dashboard/progress", icon: Activity },
   { name: "Upload", href: "/dashboard/upload", icon: Upload },
   { name: "Styles", href: "/dashboard/styles", icon: FolderKanban },
   { name: "BOM", href: "/dashboard/bom", icon: Package },
   { name: "Samples", href: "/dashboard/samples", icon: Shirt },
   { name: "Kanban", href: "/dashboard/samples/kanban", icon: Columns3 },
   { name: "Scheduler", href: "/dashboard/scheduler", icon: GanttChart },
-  { name: "Production", href: "/dashboard/production-orders", icon: Package },
-  { name: "Procurement", href: "/dashboard/procurement", icon: ShoppingCart },
+  { name: "Production", href: "/dashboard/production-orders", icon: ClipboardList },
+  { name: "Purchase Orders", href: "/dashboard/purchase-orders", icon: Truck },
+  { name: "Suppliers", href: "/dashboard/suppliers", icon: Building2 },
+  { name: "Materials", href: "/dashboard/materials", icon: Boxes },
 ];
 
 const bottomNavigation = [

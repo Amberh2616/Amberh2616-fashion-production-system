@@ -21,6 +21,7 @@ import { useCostSheetVersions } from '@/lib/hooks/useCostingPhase23';
 import { CostingDetailDrawer } from './CostingDetailDrawer';
 import type { CostSheetVersion, CostingType } from '@/types/costing-phase23';
 import { cn } from '@/lib/utils';
+import { Link2 } from 'lucide-react';
 
 export interface CostingVersionsTimelineProps {
   styleId: string;
@@ -150,6 +151,14 @@ export function CostingVersionsTimeline({ styleId, onCreateNew }: CostingVersion
               <div className="text-xs text-green-600">
                 Submitted by {version.submitted_by} •{' '}
                 {new Date(version.submitted_at).toLocaleDateString()}
+              </div>
+            )}
+
+            {/* P18: Bulk quote link to Sample */}
+            {version.cloned_from && (
+              <div className="flex items-center gap-1 text-xs text-purple-600 mt-1">
+                <Link2 className="h-3 w-3" />
+                <span>From Sample Quote</span>
               </div>
             )}
           </div>

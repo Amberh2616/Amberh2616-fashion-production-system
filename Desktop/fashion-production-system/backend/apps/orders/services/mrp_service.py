@@ -71,8 +71,8 @@ class MRPService:
                 )
             else:
                 # Fall back to BOM item consumption
-                consumption = bom_item.consumption_per_unit or Decimal('0')
-                wastage_pct = default_wastage_pct
+                consumption = bom_item.consumption or Decimal('0')
+                wastage_pct = bom_item.wastage_rate if bom_item.wastage_rate else default_wastage_pct
 
             # Skip if no consumption
             if not consumption or consumption == Decimal('0'):
@@ -312,11 +312,11 @@ class MRPService:
             line = POLine.objects.create(
                 purchase_order=po,
                 material=material,
+                material_name=req.material_name,
                 quantity=req.order_quantity_needed,
                 unit=req.unit,
                 unit_price=unit_price,
-                line_amount=line_amount,
-                notes=f'For {production_order.order_number}',
+                line_total=line_amount,
             )
 
             total_amount += line_amount

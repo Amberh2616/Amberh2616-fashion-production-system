@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -20,6 +20,10 @@ import {
   FileText,
   Package,
   Eye,
+  Upload,
+  Download,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 import {
@@ -29,7 +33,9 @@ import {
   useCalculateMRP,
   useGeneratePO,
   useProductionOrderStats,
+  useImportProductionOrdersExcel,
 } from "@/lib/hooks/useProductionOrders";
+import type { ImportExcelResponse } from "@/lib/api/production-orders";
 import type { ProductionOrder, ProductionOrderStatus } from "@/lib/types/production-order";
 import { PRODUCTION_ORDER_STATUS_OPTIONS } from "@/lib/types/production-order";
 import { Button } from "@/components/ui/button";
@@ -104,6 +110,9 @@ export default function ProductionOrdersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<ProductionOrder | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<ImportExcelResponse | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch data
   const { data, isLoading, isError } = useProductionOrders({
@@ -120,6 +129,50 @@ export default function ProductionOrdersPage() {
   const confirmOrder = useConfirmProductionOrder();
   const calculateMRP = useCalculateMRP();
   const generatePO = useGeneratePO();
+  const importExcel = useImportProductionOrdersExcel();
+
+  // Handle Excel import
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const result = await importExcel.mutateAsync(file);
+      setImportResult(result);
+    } catch (error: unknown) {
+      // Extract error message from API error response
+      let errorMessage = "Import failed";
+      if (error && typeof error === "object") {
+        if ("message" in error && typeof error.message === "string") {
+          errorMessage = error.message;
+        } else if ("error" in error && typeof error.error === "string") {
+          errorMessage = error.error;
+        }
+      }
+      setImportResult({
+        success: false,
+        message: errorMessage,
+        created: [],
+        errors: [{ row: 0, error: errorMessage }],
+        total_rows_processed: 0,
+      });
+    } finally {
+      setIsImporting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    window.open("/api/v2/production-orders/template/", "_blank");
+  };
 
   // Table columns
   const columns: ColumnDef<ProductionOrder>[] = [
@@ -290,6 +343,15 @@ export default function ProductionOrdersPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".xlsx,.xls"
+        className="hidden"
+      />
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -301,10 +363,16 @@ export default function ProductionOrdersPage() {
             Manage bulk production orders ({data?.count || 0} total)
           </p>
         </div>
-        <Button onClick={() => setIsFormOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Order
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleImportClick} disabled={isImporting}>
+            <Upload className="w-4 h-4 mr-2" />
+            {isImporting ? "Importing..." : "Import Excel"}
+          </Button>
+          <Button onClick={() => setIsFormOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Order
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -478,6 +546,90 @@ export default function ProductionOrdersPage() {
             >
               {deleteOrder.isPending ? "Deleting..." : "Delete"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Result Dialog */}
+      <Dialog open={!!importResult} onOpenChange={() => setImportResult(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {importResult?.created && importResult.created.length > 0 ? (
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-red-600" />
+              )}
+              Import Result
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Summary */}
+            <div className="bg-slate-50 rounded-lg p-4">
+              <p className="text-lg font-medium">{importResult?.message}</p>
+              <p className="text-sm text-slate-500 mt-1">
+                Processed {importResult?.total_rows_processed} rows
+              </p>
+            </div>
+
+            {/* Created Orders */}
+            {importResult?.created && importResult.created.length > 0 && (
+              <div>
+                <h4 className="font-medium text-green-700 mb-2 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Successfully Created ({importResult.created.length})
+                </h4>
+                <div className="bg-green-50 rounded-lg border border-green-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-green-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Row</th>
+                        <th className="px-3 py-2 text-left">Order #</th>
+                        <th className="px-3 py-2 text-left">PO #</th>
+                        <th className="px-3 py-2 text-left">Customer</th>
+                        <th className="px-3 py-2 text-left">Style</th>
+                        <th className="px-3 py-2 text-right">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importResult.created.map((order) => (
+                        <tr key={order.id} className="border-t border-green-200">
+                          <td className="px-3 py-2">{order.row}</td>
+                          <td className="px-3 py-2 font-mono">{order.order_number}</td>
+                          <td className="px-3 py-2">{order.po_number}</td>
+                          <td className="px-3 py-2">{order.customer}</td>
+                          <td className="px-3 py-2">{order.style_number}</td>
+                          <td className="px-3 py-2 text-right">{formatNumber(order.total_quantity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Errors */}
+            {importResult?.errors && importResult.errors.length > 0 && (
+              <div>
+                <h4 className="font-medium text-red-700 mb-2 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Errors ({importResult.errors.length})
+                </h4>
+                <div className="bg-red-50 rounded-lg border border-red-200 p-3 space-y-2">
+                  {importResult.errors.map((err, idx) => (
+                    <div key={idx} className="text-sm">
+                      <span className="font-medium">Row {err.row}:</span>{" "}
+                      <span className="text-red-600">{err.error}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end mt-4">
+            <Button onClick={() => setImportResult(null)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>

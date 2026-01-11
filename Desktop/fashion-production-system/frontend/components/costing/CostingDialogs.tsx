@@ -36,6 +36,9 @@ import {
   useCreateCostSheetVersion,
   useCloneCostSheetVersion,
   useUpdateCostSheetSummary,
+  // P18: Sample → Bulk
+  useCreateBulkQuote,
+  useAcceptCostSheetVersion,
 } from '@/lib/hooks/useCostingPhase23';
 import type {
   CreateCostSheetPayload,
@@ -43,6 +46,7 @@ import type {
   UpdateCostSheetSummaryPayload,
   CostingType,
 } from '@/types/costing-phase23';
+import type { CreateBulkQuotePayload } from '@/lib/api/costing-phase23';
 
 // ========================================
 // 1. Create Cost Sheet Dialog
@@ -444,6 +448,129 @@ export function EditSummaryDialog({
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ========================================
+// 4. P18: Create Bulk Quote Dialog
+// ========================================
+
+export interface CreateBulkQuoteDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  styleId: string;
+  sampleCostSheetId: string;
+  sampleVersion?: number;
+  onSuccess?: () => void;
+}
+
+export function CreateBulkQuoteDialog({
+  open,
+  onOpenChange,
+  styleId,
+  sampleCostSheetId,
+  sampleVersion,
+  onSuccess,
+}: CreateBulkQuoteDialogProps) {
+  const form = useForm<CreateBulkQuotePayload>({
+    defaultValues: {
+      expected_quantity: 1000,
+      copy_labor_overhead: true,
+      change_reason: '',
+    },
+  });
+
+  const createBulkQuoteMutation = useCreateBulkQuote(styleId);
+
+  const onSubmit = async (data: CreateBulkQuotePayload) => {
+    try {
+      await createBulkQuoteMutation.mutateAsync({
+        sampleCostSheetId,
+        payload: data,
+      });
+      onOpenChange(false);
+      form.reset();
+      onSuccess?.();
+    } catch (err) {
+      console.error('Create Bulk Quote failed:', err);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Create Bulk Quote</DialogTitle>
+          <DialogDescription>
+            Create a bulk production quote from Sample Costing v{sampleVersion || '?'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* Expected Quantity */}
+          <div>
+            <Label htmlFor="expected_quantity">Expected Production Quantity</Label>
+            <Input
+              id="expected_quantity"
+              type="number"
+              min="1"
+              {...form.register('expected_quantity', { valueAsNumber: true })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Used for volume-based pricing adjustments
+            </p>
+          </div>
+
+          {/* Copy Labor/Overhead */}
+          <div className="flex items-center gap-2">
+            <input
+              id="copy_labor_overhead"
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300"
+              {...form.register('copy_labor_overhead')}
+            />
+            <Label htmlFor="copy_labor_overhead" className="font-normal">
+              Copy labor and overhead costs from sample
+            </Label>
+          </div>
+
+          {/* Change Reason */}
+          <div>
+            <Label htmlFor="change_reason">Notes / Change Reason</Label>
+            <Textarea
+              id="change_reason"
+              {...form.register('change_reason')}
+              placeholder="e.g., Bulk quote for PO #12345"
+              rows={2}
+            />
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm">
+            <p className="text-blue-800">
+              This will create a new <strong>Bulk</strong> costing version linked to the
+              accepted Sample quote. You can then adjust prices for production volume.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={createBulkQuoteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createBulkQuoteMutation.isPending}>
+              {createBulkQuoteMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Create Bulk Quote
             </Button>
           </DialogFooter>
         </form>

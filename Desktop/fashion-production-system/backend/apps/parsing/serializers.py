@@ -223,6 +223,7 @@ class UploadedDocumentSerializer(serializers.ModelSerializer):
     UploadedDocument serializer for upload pipeline
     """
     file_url = serializers.SerializerMethodField()
+    tech_pack_revision_id = serializers.SerializerMethodField()
 
     class Meta:
         model = UploadedDocument
@@ -235,11 +236,18 @@ class UploadedDocumentSerializer(serializers.ModelSerializer):
             'classification_result',
             'extraction_errors',
             'style_revision',
+            'tech_pack_revision_id',
             'created_at',
             'updated_at',
             'file_url',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'file_url']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'file_url', 'tech_pack_revision_id']
+
+    def get_tech_pack_revision_id(self, obj):
+        """Return tech_pack_revision ID as string for frontend matching"""
+        if obj.tech_pack_revision:
+            return str(obj.tech_pack_revision.id)
+        return None
 
     def get_file_url(self, obj):
         """Return file URL"""

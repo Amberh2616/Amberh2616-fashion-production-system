@@ -28,6 +28,8 @@ from .views import (
     batch_export,
     # P9: Scheduler/Gantt
     scheduler_data,
+    # P18: Progress Dashboard
+    progress_dashboard,
 )
 
 router = DefaultRouter()
@@ -100,6 +102,7 @@ router.register(
 # P1: Batch Operations & Alerts
 # P3: Batch Export
 # P9: Scheduler/Gantt
+# P18: Progress Dashboard
 urlpatterns = [
     path('kanban/counts/', kanban_counts, name='kanban-counts'),
     path('kanban/runs/', kanban_runs, name='kanban-runs'),
@@ -107,4 +110,5 @@ urlpatterns = [
     path('sample-runs/batch-export/', batch_export, name='batch-export'),
     path('alerts/', get_alerts, name='alerts'),
     path('scheduler/', scheduler_data, name='scheduler'),
+    path('progress-dashboard/', progress_dashboard, name='progress-dashboard'),
 ] + router.urls

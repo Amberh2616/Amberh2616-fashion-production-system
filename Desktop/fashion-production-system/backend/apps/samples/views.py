@@ -1778,3 +1778,262 @@ def _build_run_view(queryset, today, start_date, end_date, page, page_size):
             'view': 'run',
         }
     })
+
+
+# ========================================
+# P18: Unified Progress Dashboard API
+# ========================================
+
+@api_view(['GET'])
+@perm_classes([AllowAny])
+def progress_dashboard(request):
+    """
+    P18: 統一進度追蹤儀表板 API
+
+    GET /api/v2/progress-dashboard/
+
+    Returns aggregated progress data for:
+    - Sample progress (SampleRun by status)
+    - Quotation progress (CostSheetVersion by status)
+    - Procurement progress (PurchaseOrder by status)
+    - Production progress (ProductionOrder by status)
+    - Delivery alerts (overdue/delayed items)
+
+    Query params:
+    - style_id: Filter by specific style
+    - days_ahead: Days to look ahead for due dates (default: 14)
+    """
+    from apps.costing.models import CostSheetVersion
+    from apps.procurement.models import PurchaseOrder, POLine
+    from apps.orders.models import ProductionOrder, MaterialRequirement
+
+    today = timezone.now().date()
+    days_ahead = int(request.query_params.get('days_ahead', 14))
+    style_id = request.query_params.get('style_id')
+
+    # SaaS-Ready: Tenant filtering
+    org = _get_user_organization(request)
+
+    # ========================================
+    # 1. Sample Progress
+    # ========================================
+    sample_runs = SampleRun.objects.exclude(status=SampleRunStatus.CANCELLED)
+    if org:
+        sample_runs = sample_runs.for_tenant(org)
+    if style_id:
+        sample_runs = sample_runs.filter(sample_request__revision__style_id=style_id)
+
+    sample_by_status = {}
+    for status_choice in SampleRunStatus.CHOICES:
+        status_value = status_choice[0]
+        count = sample_runs.filter(status=status_value).count()
+        if count > 0:
+            sample_by_status[status_value] = {
+                'count': count,
+                'label': status_choice[1],
+                'progress': STATUS_PROGRESS.get(status_value, 0),
+                'color': STATUS_COLORS.get(status_value, '#94a3b8'),
+            }
+
+    # Overdue samples
+    overdue_samples = sample_runs.filter(
+        target_due_date__lt=today
+    ).exclude(status__in=['accepted', 'sample_done']).count()
+
+    # Due soon samples (within days_ahead)
+    due_soon_samples = sample_runs.filter(
+        target_due_date__gte=today,
+        target_due_date__lte=today + timedelta(days=days_ahead)
+    ).exclude(status__in=['accepted', 'sample_done']).count()
+
+    # ========================================
+    # 2. Quotation Progress
+    # ========================================
+    cost_sheets = CostSheetVersion.objects.all()
+    if style_id:
+        cost_sheets = cost_sheets.filter(cost_sheet_group__style_id=style_id)
+
+    quote_by_status = {}
+    quote_by_type = {'sample': 0, 'bulk': 0}
+    for cs in cost_sheets:
+        status = cs.status
+        if status not in quote_by_status:
+            quote_by_status[status] = {'count': 0, 'label': status.title()}
+        quote_by_status[status]['count'] += 1
+
+        costing_type = cs.costing_type
+        if costing_type in quote_by_type:
+            quote_by_type[costing_type] += 1
+
+    # Pending quotes (draft or submitted)
+    pending_quotes = cost_sheets.filter(status__in=['draft', 'submitted']).count()
+
+    # ========================================
+    # 3. Procurement Progress
+    # ========================================
+    purchase_orders = PurchaseOrder.objects.all()
+    if org:
+        purchase_orders = purchase_orders.for_tenant(org)
+
+    po_by_status = {}
+    for status_choice in PurchaseOrder.STATUS_CHOICES:
+        status_value = status_choice[0]
+        count = purchase_orders.filter(status=status_value).count()
+        if count > 0:
+            po_by_status[status_value] = {
+                'count': count,
+                'label': status_choice[1],
+            }
+
+    # Overdue deliveries
+    overdue_deliveries = POLine.objects.filter(
+        delivery_status__in=['pending', 'shipped', 'partial'],
+        expected_delivery__lt=today
+    ).count()
+
+    # Due soon deliveries
+    due_soon_deliveries = POLine.objects.filter(
+        delivery_status__in=['pending', 'shipped'],
+        expected_delivery__gte=today,
+        expected_delivery__lte=today + timedelta(days=days_ahead)
+    ).count()
+
+    # ========================================
+    # 4. Production Order Progress
+    # ========================================
+    production_orders = ProductionOrder.objects.all()
+    if org:
+        production_orders = production_orders.for_tenant(org)
+    if style_id:
+        production_orders = production_orders.filter(style_revision__style_id=style_id)
+
+    prod_by_status = {}
+    for status_choice in ProductionOrder.STATUS_CHOICES:
+        status_value = status_choice[0]
+        count = production_orders.filter(status=status_value).count()
+        if count > 0:
+            prod_by_status[status_value] = {
+                'count': count,
+                'label': status_choice[1],
+            }
+
+    # Overdue production orders
+    overdue_prod = production_orders.filter(
+        delivery_date__lt=today
+    ).exclude(status__in=['completed', 'cancelled']).count()
+
+    # ========================================
+    # 5. Material Requirements Progress
+    # ========================================
+    material_reqs = MaterialRequirement.objects.all()
+    if style_id:
+        material_reqs = material_reqs.filter(
+            production_order__style_revision__style_id=style_id
+        )
+
+    mat_req_by_status = {}
+    for status_choice in MaterialRequirement.STATUS_CHOICES:
+        status_value = status_choice[0]
+        count = material_reqs.filter(status=status_value).count()
+        if count > 0:
+            mat_req_by_status[status_value] = {
+                'count': count,
+                'label': status_choice[1],
+            }
+
+    # ========================================
+    # 6. Summary Statistics
+    # ========================================
+    summary = {
+        'total_samples': sample_runs.count(),
+        'active_samples': sample_runs.exclude(
+            status__in=['accepted', 'sample_done', 'cancelled']
+        ).count(),
+        'total_quotes': cost_sheets.count(),
+        'pending_quotes': pending_quotes,
+        'total_po': purchase_orders.count(),
+        'active_po': purchase_orders.exclude(
+            status__in=['received', 'cancelled']
+        ).count(),
+        'total_prod_orders': production_orders.count(),
+        'active_prod_orders': production_orders.exclude(
+            status__in=['completed', 'cancelled']
+        ).count(),
+    }
+
+    # ========================================
+    # 7. Alerts
+    # ========================================
+    alerts = []
+
+    if overdue_samples > 0:
+        alerts.append({
+            'type': 'error',
+            'category': 'sample',
+            'title': f'{overdue_samples} Overdue Sample(s)',
+            'description': 'Sample runs past their due date',
+        })
+
+    if due_soon_samples > 0:
+        alerts.append({
+            'type': 'warning',
+            'category': 'sample',
+            'title': f'{due_soon_samples} Sample(s) Due Soon',
+            'description': f'Sample runs due within {days_ahead} days',
+        })
+
+    if overdue_deliveries > 0:
+        alerts.append({
+            'type': 'error',
+            'category': 'procurement',
+            'title': f'{overdue_deliveries} Overdue Delivery(s)',
+            'description': 'PO lines past expected delivery date',
+        })
+
+    if due_soon_deliveries > 0:
+        alerts.append({
+            'type': 'warning',
+            'category': 'procurement',
+            'title': f'{due_soon_deliveries} Delivery(s) Due Soon',
+            'description': f'PO lines with delivery expected within {days_ahead} days',
+        })
+
+    if overdue_prod > 0:
+        alerts.append({
+            'type': 'error',
+            'category': 'production',
+            'title': f'{overdue_prod} Overdue Production Order(s)',
+            'description': 'Production orders past delivery date',
+        })
+
+    return Response({
+        'sample_progress': {
+            'by_status': sample_by_status,
+            'overdue': overdue_samples,
+            'due_soon': due_soon_samples,
+        },
+        'quotation_progress': {
+            'by_status': quote_by_status,
+            'by_type': quote_by_type,
+            'pending': pending_quotes,
+        },
+        'procurement_progress': {
+            'by_status': po_by_status,
+            'overdue_deliveries': overdue_deliveries,
+            'due_soon_deliveries': due_soon_deliveries,
+        },
+        'production_progress': {
+            'by_status': prod_by_status,
+            'overdue': overdue_prod,
+        },
+        'material_progress': {
+            'by_status': mat_req_by_status,
+        },
+        'summary': summary,
+        'alerts': alerts,
+        'meta': {
+            'as_of': timezone.now().isoformat(),
+            'days_ahead': days_ahead,
+            'style_filter': style_id,
+        }
+    })

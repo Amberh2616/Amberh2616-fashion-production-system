@@ -83,6 +83,15 @@ export interface UpdateProductionOrderPayload
 // Material Requirement Types
 export type MaterialRequirementStatus = "calculated" | "ordered" | "received";
 
+export interface PurchaseOrderInfo {
+  id: string;
+  po_number: string;
+  supplier_name?: string;
+  status: string;
+  expected_delivery?: string | null;
+  delivery_status: string;
+}
+
 export interface MaterialRequirement {
   id: string;
   production_order: string;
@@ -103,7 +112,18 @@ export interface MaterialRequirement {
   current_stock: number;
   order_quantity_needed: number;
   status: MaterialRequirementStatus;
+  // Review fields
+  is_reviewed: boolean;
+  reviewed_at?: string | null;
+  review_notes?: string;
+  reviewed_quantity?: number | null;
+  reviewed_unit_price?: number | null;
+  // Delivery tracking
+  required_date?: string | null;
+  expected_delivery?: string | null;
+  // PO link
   purchase_order_line?: string | null;
+  purchase_order_info?: PurchaseOrderInfo | null;
   unit_price?: number;
   line_amount?: number;
   calculated_at: string;
@@ -115,9 +135,38 @@ export interface MaterialRequirementSimple {
   material_name: string;
   material_name_zh?: string;
   category: string;
+  supplier?: string;
   total_requirement: number;
+  order_quantity_needed: number;
   unit: string;
   status: MaterialRequirementStatus;
+  is_reviewed: boolean;
+  required_date?: string | null;
+  expected_delivery?: string | null;
+}
+
+// Review payload
+export interface ReviewMaterialRequirementPayload {
+  quantity?: string;
+  unit_price?: string;
+  notes?: string;
+  required_date?: string;
+  expected_delivery?: string;
+}
+
+// Generate PO from single MR
+export interface GeneratePOFromMRResponse {
+  id: string;
+  status: string;
+  purchase_order: {
+    id: string;
+    po_number: string;
+    supplier: string;
+    quantity: number;
+    unit_price: number;
+    total_amount: number;
+  };
+  message: string;
 }
 
 // MRP Calculation

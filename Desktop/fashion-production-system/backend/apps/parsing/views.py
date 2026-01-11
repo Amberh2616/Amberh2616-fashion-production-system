@@ -567,3 +567,147 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
                 {'error': f'Extraction failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=False, methods=['post'], url_path='batch-upload')
+    def batch_upload(self, request):
+        """
+        批量上傳 Tech Pack（ZIP 文件）
+
+        POST /api/v2/uploaded-documents/batch-upload/
+
+        Request:
+        - file: ZIP file containing PDFs
+
+        File naming conventions:
+        - Case A: {style_number}.pdf - 單個 PDF 包含所有內容
+        - Case B: {style_number}_techpack.pdf, {style_number}_bom.pdf - 多個 PDF 按款式分組
+
+        Response:
+        {
+            "total_files": 10,
+            "styles_found": 5,
+            "styles_created": 3,
+            "documents_created": 10,
+            "errors": [],
+            "style_results": {
+                "LW1FLWS": {
+                    "style_id": "uuid",
+                    "revision_id": "uuid",
+                    "documents": [...],
+                    "status": "created"
+                }
+            }
+        }
+        """
+        if 'file' not in request.FILES:
+            return Response(
+                {'error': 'No file provided. Please upload a ZIP file.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        uploaded_file = request.FILES['file']
+
+        # Validate file type
+        if not uploaded_file.name.lower().endswith('.zip'):
+            return Response(
+                {'error': 'Invalid file type. Please upload a ZIP file.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from apps.parsing.services.batch_upload_service import BatchUploadService
+
+            service = BatchUploadService(user=request.user if request.user.is_authenticated else None)
+            result = service.process_zip(uploaded_file)
+
+            return Response({
+                'total_files': result.total_files,
+                'styles_found': result.styles_found,
+                'styles_created': result.styles_created,
+                'documents_created': result.documents_created,
+                'errors': result.errors,
+                'style_results': result.style_results,
+            }, status=status.HTTP_200_OK if not result.errors else status.HTTP_207_MULTI_STATUS)
+
+        except Exception as e:
+            logger.error(f"Batch upload failed: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Batch upload failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='batch-process')
+    def batch_process(self, request):
+        """
+        批量處理已上傳的文檔（分類 + 提取）
+
+        POST /api/v2/uploaded-documents/batch-process/
+
+        Request:
+        {
+            "document_ids": ["uuid1", "uuid2", ...],
+            "async": false  // 是否異步處理
+        }
+
+        Response:
+        {
+            "total": 10,
+            "processed": 8,
+            "failed": 2,
+            "results": {
+                "uuid1": {"status": "completed", "blocks_count": 50},
+                "uuid2": {"status": "error", "error": "..."}
+            }
+        }
+        """
+        document_ids = request.data.get('document_ids', [])
+
+        if not document_ids:
+            return Response(
+                {'error': 'No document_ids provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate document IDs
+        existing_docs = UploadedDocument.objects.filter(id__in=document_ids)
+        if existing_docs.count() != len(document_ids):
+            found_ids = set(str(d.id) for d in existing_docs)
+            missing_ids = [did for did in document_ids if did not in found_ids]
+            return Response(
+                {'error': f'Documents not found: {missing_ids}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if async processing is requested
+        run_async = request.data.get('async', False)
+
+        if run_async:
+            # TODO: Implement Celery task for async processing
+            return Response(
+                {'error': 'Async processing not yet implemented'},
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+
+        try:
+            from apps.parsing.services.batch_upload_service import BatchProcessingService
+
+            service = BatchProcessingService()
+            results = service.process_documents(document_ids)
+
+            # Calculate summary
+            completed = sum(1 for r in results.values() if r.get('status') == 'completed')
+            failed = sum(1 for r in results.values() if r.get('status') == 'error')
+
+            return Response({
+                'total': len(document_ids),
+                'processed': completed,
+                'failed': failed,
+                'results': results,
+            }, status=status.HTTP_200_OK if failed == 0 else status.HTTP_207_MULTI_STATUS)
+
+        except Exception as e:
+            logger.error(f"Batch process failed: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Batch process failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

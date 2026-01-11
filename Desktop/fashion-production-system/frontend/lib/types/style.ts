@@ -159,10 +159,12 @@ export interface StyleListItem {
   status: StyleStatus;
   latest_revision_status: RevisionStatus | null;
   latest_revision_number: number | null;
+  latest_revision_id?: string | null;
   documents_count: number;
   issues_count: number;
   created_at: string;
   updated_at: string;
+  revisions?: StyleRevision[];  // Optional: included when expand_revisions=true
 }
 
 export interface StyleDetail extends Style {

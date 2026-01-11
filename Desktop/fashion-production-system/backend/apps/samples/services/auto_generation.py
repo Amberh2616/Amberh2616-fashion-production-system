@@ -25,6 +25,13 @@ import hashlib
 import json
 
 from apps.styles.models import StyleRevision, BOMItem, ConstructionStep
+from apps.costing.models import (
+    UsageScenario,
+    UsageLine,
+    CostSheetGroup,
+    CostSheetVersion,
+    CostLineV2,
+)
 from ..models import (
     SampleRequest,
     SampleRun,
@@ -105,6 +112,12 @@ def get_next_sequence(prefix: str) -> int:
             snapshot_hash__startswith=f"EST-{timezone.now().strftime('%y%m')}"
         ).count()
         return last + 1
+    elif prefix == 'ORD':
+        # Production Order sequence
+        from apps.orders.models import ProductionOrder
+        last = ProductionOrder.objects.filter(
+            order_number__startswith=f"ORD-{timezone.now().strftime('%y%m')}"
+        ).aggregate(Max('order_number'))['order_number__max']
     else:
         return 1
 
@@ -416,7 +429,7 @@ def create_with_initial_run(
         documents['mwo_id'] = str(mwo.id)
         documents['mwo_no'] = mwo.mwo_no
 
-        # 10. Create Estimate (draft)
+        # 10. Create Estimate (draft) - Legacy, kept for backward compatibility
         # Calculate material cost from BOM
         material_cost = Decimal('0.00')
         for bom_line in run.bom_lines.all():
@@ -456,4 +469,198 @@ def create_with_initial_run(
         documents['estimate_id'] = str(estimate.id)
         documents['estimate_no'] = generate_estimate_no()
 
+        # ============================================================
+        # P18: Create Sample Quote (UsageScenario + CostSheetVersion)
+        # 統一報價架構 - 樣衣報價使用 Phase 2-3 三層架構
+        # ============================================================
+        sample_quote_result = create_sample_quote_from_run(
+            run=run,
+            revision=revision,
+            user=user,
+        )
+        documents['sample_quote_usage_id'] = str(sample_quote_result['usage_scenario_id'])
+        documents['sample_quote_cost_sheet_id'] = str(sample_quote_result['cost_sheet_version_id'])
+
     return request, run, documents
+
+
+# ==================== P18: Sample Quote Generation ====================
+
+def create_sample_quote_from_run(
+    run: SampleRun,
+    revision: StyleRevision,
+    user=None,
+) -> Dict[str, Any]:
+    """
+    P18: 從 SampleRun 創建樣衣報價
+
+    創建：
+    1. UsageScenario (purpose='sample_quote') - 樣衣報價用量
+    2. UsageLine（從 RunBOMLine 複製）
+    3. CostSheetGroup（按 Style）
+    4. CostSheetVersion (costing_type='sample') - 樣衣報價 v1
+    5. CostLineV2（從 UsageLine 快照）
+
+    Args:
+        run: SampleRun instance
+        revision: StyleRevision instance
+        user: Optional User instance
+
+    Returns:
+        Dict with usage_scenario_id, cost_sheet_version_id
+    """
+    style = revision.style
+
+    # 1. 計算 version_no（檢查是否已有同 purpose 的 scenario）
+    existing_scenario = UsageScenario.objects.filter(
+        revision=revision,
+        purpose='sample_quote'
+    ).order_by('-version_no').first()
+    scenario_version = (existing_scenario.version_no + 1) if existing_scenario else 1
+
+    # 2. 建立 UsageScenario (purpose='sample_quote')
+    usage_scenario = UsageScenario.objects.create(
+        revision=revision,
+        purpose='sample_quote',
+        version_no=scenario_version,
+        wastage_pct=Decimal('5.00'),  # 預設 5% 損耗
+        status='draft',
+        created_by=user,
+    )
+
+    # 3. 從 RunBOMLine 建立 UsageLines
+    bom_items_map = {}  # material_name -> BOMItem (for FK reference)
+    verified_bom_items = BOMItem.objects.filter(
+        revision=revision,
+        is_verified=True
+    )
+    for item in verified_bom_items:
+        bom_items_map[item.material_name] = item
+
+    created_bom_item_ids = set()  # 追蹤已創建的 bom_item，避免重複
+    sort_order = 0
+
+    for bom_line in run.bom_lines.all().order_by('line_no'):
+        # 找到對應的 BOMItem（用於 FK）
+        bom_item = bom_items_map.get(bom_line.material_name)
+        if not bom_item:
+            # 如果找不到，嘗試用 source_bom_item_id
+            if bom_line.source_bom_item_id:
+                try:
+                    bom_item = BOMItem.objects.get(id=bom_line.source_bom_item_id)
+                except BOMItem.DoesNotExist:
+                    continue
+            else:
+                continue
+
+        # 避免重複創建（同一 bom_item 只創建一個 UsageLine）
+        if bom_item.id in created_bom_item_ids:
+            continue
+        created_bom_item_ids.add(bom_item.id)
+        sort_order += 1
+
+        UsageLine.objects.create(
+            usage_scenario=usage_scenario,
+            bom_item=bom_item,
+            consumption=bom_line.consumption or Decimal('0.0000'),
+            consumption_unit=bom_line.uom or 'pcs',
+            consumption_status='estimated',
+            sort_order=sort_order,
+        )
+
+    # 4. 找或建 CostSheetGroup（按 Style）
+    cost_sheet_group, _ = CostSheetGroup.objects.get_or_create(
+        style=style,
+    )
+
+    # 5. 計算 Sample CostSheetVersion 版本號
+    last_sample_version = CostSheetVersion.objects.filter(
+        cost_sheet_group=cost_sheet_group,
+        costing_type='sample'
+    ).order_by('-version_no').first()
+    csv_version = (last_sample_version.version_no + 1) if last_sample_version else 1
+
+    # 6. 計算 material_cost
+    material_cost = Decimal('0.00')
+    for usage_line in usage_scenario.usage_lines.select_related('bom_item').all():
+        unit_price = usage_line.bom_item.unit_price or Decimal('0.00')
+        line_cost = (usage_line.consumption * unit_price).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+        material_cost += line_cost
+
+    # 7. 計算總成本與單價（初始 labor/overhead 為 0，可後續編輯）
+    labor_cost = Decimal('0.00')
+    overhead_cost = Decimal('0.00')
+    freight_cost = Decimal('0.00')
+    packing_cost = Decimal('0.00')
+    margin_pct = Decimal('30.00')  # 預設 30%
+
+    total_cost = material_cost + labor_cost + overhead_cost + freight_cost + packing_cost
+    divisor = Decimal('1.00') - (margin_pct / Decimal('100.00'))
+    if divisor > 0:
+        unit_price = (total_cost / divisor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    else:
+        unit_price = total_cost
+
+    # 8. 建立 CostSheetVersion (costing_type='sample')
+    cost_sheet_version = CostSheetVersion.objects.create(
+        cost_sheet_group=cost_sheet_group,
+        techpack_revision=revision,
+        usage_scenario=usage_scenario,
+        version_no=csv_version,
+        costing_type='sample',
+        status='draft',
+        material_cost=material_cost,
+        labor_cost=labor_cost,
+        overhead_cost=overhead_cost,
+        freight_cost=freight_cost,
+        packing_cost=packing_cost,
+        margin_pct=margin_pct,
+        total_cost=total_cost,
+        unit_price=unit_price,
+        change_reason=f"Auto-generated from Sample Run #{run.run_no}",
+        created_by=user,
+    )
+
+    # 9. 建立 CostLineV2（從 UsageLine 快照）
+    for usage_line in usage_scenario.usage_lines.select_related('bom_item').all():
+        bom_item = usage_line.bom_item
+        unit_price_val = bom_item.unit_price or Decimal('0.00')
+        line_cost = (usage_line.consumption * unit_price_val).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+
+        CostLineV2.objects.create(
+            cost_sheet_version=cost_sheet_version,
+            # Source tracking
+            source_revision_id=revision.id,
+            source_usage_scenario_id=usage_scenario.id,
+            source_usage_scenario_version_no=usage_scenario.version_no,
+            source_bom_item_id=bom_item.id,
+            source_usage_line_id=usage_line.id,
+            # Material info
+            material_name=bom_item.material_name or '',
+            material_name_zh=getattr(bom_item, 'material_name_zh', '') or '',
+            category=bom_item.category or '',
+            supplier=bom_item.supplier or '',
+            supplier_article_no=bom_item.supplier_article_no or '',
+            unit=usage_line.consumption_unit or 'pcs',
+            # Consumption & Price
+            consumption_snapshot=usage_line.consumption,
+            consumption_adjusted=usage_line.consumption,
+            unit_price_snapshot=unit_price_val,
+            unit_price_adjusted=unit_price_val,
+            line_cost=line_cost,
+            sort_order=usage_line.sort_order,
+        )
+
+    # 10. 關聯 guidance_usage 到 Run（使用同一個 UsageScenario）
+    # 注意：這裡我們把 sample_quote 場景同時當作 guidance_usage
+    run.guidance_usage = usage_scenario
+    run.save(update_fields=['guidance_usage'])
+
+    return {
+        'usage_scenario_id': usage_scenario.id,
+        'cost_sheet_version_id': cost_sheet_version.id,
+    }

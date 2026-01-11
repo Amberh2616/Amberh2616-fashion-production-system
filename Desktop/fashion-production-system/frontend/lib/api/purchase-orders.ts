@@ -173,3 +173,43 @@ export async function updatePOLineReceived(id: string, quantityReceived: string)
     body: JSON.stringify({ quantity_received: quantityReceived }),
   });
 }
+
+/**
+ * Get PO PDF export URL
+ */
+export function getPOPdfUrl(id: string): string {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2';
+  return `${baseUrl}/purchase-orders/${id}/export-pdf/`;
+}
+
+/**
+ * Confirm all lines in a PO at once
+ */
+export async function confirmAllLines(id: string): Promise<{ confirmed_count: number; all_lines_confirmed: boolean; message: string }> {
+  return apiClient<{ confirmed_count: number; all_lines_confirmed: boolean; message: string }>(`/purchase-orders/${id}/confirm-all-lines/`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Confirm a single PO line
+ */
+export async function confirmPOLine(
+  id: string,
+  data?: { quantity?: string; unit_price?: string; notes?: string }
+): Promise<{ id: string; is_confirmed: boolean; line_total: string; po_total_amount: string; all_lines_confirmed: boolean; message: string }> {
+  return apiClient<{ id: string; is_confirmed: boolean; line_total: string; po_total_amount: string; all_lines_confirmed: boolean; message: string }>(`/po-lines/${id}/confirm/`, {
+    method: 'POST',
+    headers: data ? { 'Content-Type': 'application/json' } : undefined,
+    body: data ? JSON.stringify(data) : undefined,
+  });
+}
+
+/**
+ * Unconfirm a PO line for re-editing
+ */
+export async function unconfirmPOLine(id: string): Promise<{ id: string; is_confirmed: boolean; message: string }> {
+  return apiClient<{ id: string; is_confirmed: boolean; message: string }>(`/po-lines/${id}/unconfirm/`, {
+    method: 'POST',
+  });
+}

@@ -19,6 +19,9 @@ import {
   updatePOLine,
   deletePOLine,
   updatePOLineReceived,
+  confirmAllLines,
+  confirmPOLine,
+  unconfirmPOLine,
 } from '../api/purchase-orders';
 import type {
   CreatePOPayload,
@@ -240,6 +243,56 @@ export function useUpdatePOLineReceived(purchaseOrderId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['po-lines', purchaseOrderId] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+  });
+}
+
+// ============ Line Confirmation ============
+
+/**
+ * Confirm all lines in a PO
+ */
+export function useConfirmAllLines() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => confirmAllLines(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['po-lines'] });
+    },
+  });
+}
+
+/**
+ * Confirm a single PO line
+ */
+export function useConfirmPOLine(purchaseOrderId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data?: { quantity?: string; unit_price?: string; notes?: string } }) =>
+      confirmPOLine(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders', purchaseOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['po-lines', purchaseOrderId] });
+    },
+  });
+}
+
+/**
+ * Unconfirm a PO line for re-editing
+ */
+export function useUnconfirmPOLine(purchaseOrderId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => unconfirmPOLine(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders', purchaseOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['po-lines', purchaseOrderId] });
     },
   });
 }

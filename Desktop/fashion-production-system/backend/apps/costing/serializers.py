@@ -1,11 +1,21 @@
 """
 Costing Serializers
 Phase 2-2I: 版本策略 - Guard Rules
+P18: 統一報價架構 (Sample → Bulk)
 """
 
 from decimal import Decimal
 from rest_framework import serializers
-from .models import CostSheet, CostLine
+from .models import (
+    CostSheet,
+    CostLine,
+    # P18: 三層架構模型
+    UsageScenario,
+    UsageLine,
+    CostSheetGroup,
+    CostSheetVersion,
+    CostLineV2,
+)
 
 
 # A/B Fields Definition (版本策略)
@@ -272,3 +282,196 @@ class CostSheetDuplicateSerializer(serializers.Serializer):
                 "wastage_pct": "Must be in [0, 100]."
             })
         return attrs
+
+
+# ============================================================================
+# P18: 統一報價架構 Serializers
+# ============================================================================
+
+class UsageLineSerializer(serializers.ModelSerializer):
+    """UsageLine 序列化器"""
+    bom_item_name = serializers.CharField(source='bom_item.material_name', read_only=True)
+    bom_item_category = serializers.CharField(source='bom_item.category', read_only=True)
+
+    class Meta:
+        model = UsageLine
+        fields = [
+            'id',
+            'bom_item',
+            'bom_item_name',
+            'bom_item_category',
+            'consumption',
+            'consumption_unit',
+            'consumption_status',
+            'wastage_pct_override',
+            'sort_order',
+        ]
+        read_only_fields = ['id']
+
+
+class UsageScenarioSerializer(serializers.ModelSerializer):
+    """UsageScenario 序列化器"""
+    purpose_display = serializers.CharField(source='get_purpose_display', read_only=True)
+    usage_lines = UsageLineSerializer(many=True, read_only=True)
+    is_locked = serializers.BooleanField(read_only=True)
+    line_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UsageScenario
+        fields = [
+            'id',
+            'revision',
+            'purpose',
+            'purpose_display',
+            'version_no',
+            'wastage_pct',
+            'status',
+            'is_locked',
+            'line_count',
+            'usage_lines',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'version_no', 'created_at']
+
+    def get_line_count(self, obj):
+        return obj.usage_lines.count()
+
+
+class CostLineV2Serializer(serializers.ModelSerializer):
+    """CostLineV2 序列化器"""
+
+    class Meta:
+        model = CostLineV2
+        fields = [
+            'id',
+            'material_name',
+            'material_name_zh',
+            'category',
+            'supplier',
+            'supplier_article_no',
+            'unit',
+            'consumption_snapshot',
+            'consumption_adjusted',
+            'unit_price_snapshot',
+            'unit_price_adjusted',
+            'is_consumption_adjusted',
+            'is_price_adjusted',
+            'adjustment_reason',
+            'line_cost',
+            'sort_order',
+        ]
+        read_only_fields = ['id', 'consumption_snapshot', 'unit_price_snapshot']
+
+
+class CostSheetVersionSerializer(serializers.ModelSerializer):
+    """CostSheetVersion 序列化器（P18 核心）"""
+    costing_type_display = serializers.CharField(source='get_costing_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    style_number = serializers.CharField(source='cost_sheet_group.style.style_number', read_only=True)
+    revision_label = serializers.CharField(source='techpack_revision.revision_label', read_only=True)
+    cloned_from_info = serializers.SerializerMethodField()
+    cost_lines = CostLineV2Serializer(many=True, read_only=True)
+    line_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CostSheetVersion
+        fields = [
+            'id',
+            'cost_sheet_group',
+            'style_number',
+            'techpack_revision',
+            'revision_label',
+            'usage_scenario',
+            'version_no',
+            'costing_type',
+            'costing_type_display',
+            'status',
+            'status_display',
+            # 成本參數
+            'labor_cost',
+            'overhead_cost',
+            'freight_cost',
+            'packing_cost',
+            'margin_pct',
+            'currency',
+            'exchange_rate',
+            # 計算結果
+            'material_cost',
+            'total_cost',
+            'unit_price',
+            # 版本追溯
+            'cloned_from',
+            'cloned_from_info',
+            'change_reason',
+            # 時間戳
+            'created_at',
+            'submitted_at',
+            # 明細
+            'cost_lines',
+            'line_count',
+        ]
+        read_only_fields = [
+            'id', 'version_no', 'material_cost', 'total_cost', 'unit_price',
+            'created_at', 'submitted_at', 'cost_lines',
+        ]
+
+    def get_cloned_from_info(self, obj):
+        if obj.cloned_from:
+            return {
+                'id': str(obj.cloned_from.id),
+                'version_no': obj.cloned_from.version_no,
+                'costing_type': obj.cloned_from.costing_type,
+            }
+        return None
+
+    def get_line_count(self, obj):
+        return obj.cost_lines.count()
+
+
+class CostSheetVersionListSerializer(serializers.ModelSerializer):
+    """CostSheetVersion 列表序列化器（輕量版）"""
+    costing_type_display = serializers.CharField(source='get_costing_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    style_number = serializers.CharField(source='cost_sheet_group.style.style_number', read_only=True)
+    line_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CostSheetVersion
+        fields = [
+            'id',
+            'style_number',
+            'version_no',
+            'costing_type',
+            'costing_type_display',
+            'status',
+            'status_display',
+            'material_cost',
+            'total_cost',
+            'unit_price',
+            'line_count',
+            'created_at',
+        ]
+
+    def get_line_count(self, obj):
+        return obj.cost_lines.count()
+
+
+class CreateBulkQuoteSerializer(serializers.Serializer):
+    """創建大貨報價的請求序列化器"""
+    expected_quantity = serializers.IntegerField(
+        required=False,
+        default=1000,
+        min_value=1,
+        help_text="預估大貨數量（用於量大折扣計算）"
+    )
+    copy_labor_overhead = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="是否複製人工/製費"
+    )
+    change_reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="報價變更原因"
+    )

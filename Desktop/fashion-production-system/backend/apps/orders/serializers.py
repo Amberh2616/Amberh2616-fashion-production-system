@@ -30,6 +30,7 @@ class MaterialRequirementSerializer(serializers.ModelSerializer):
         read_only=True
     )
     line_amount = serializers.SerializerMethodField()
+    purchase_order_info = serializers.SerializerMethodField()
 
     class Meta:
         model = MaterialRequirement
@@ -53,7 +54,18 @@ class MaterialRequirementSerializer(serializers.ModelSerializer):
             'current_stock',
             'order_quantity_needed',
             'status',
+            # Review fields
+            'is_reviewed',
+            'reviewed_at',
+            'review_notes',
+            'reviewed_quantity',
+            'reviewed_unit_price',
+            # Delivery tracking
+            'required_date',
+            'expected_delivery',
+            # PO link
             'purchase_order_line',
+            'purchase_order_info',
             'unit_price',
             'line_amount',
             'calculated_at',
@@ -74,6 +86,20 @@ class MaterialRequirementSerializer(serializers.ModelSerializer):
         unit_price = obj.bom_item.unit_price if obj.bom_item.unit_price else 0
         return float(obj.total_requirement * unit_price)
 
+    def get_purchase_order_info(self, obj):
+        """Get linked PO information if exists"""
+        if not obj.purchase_order_line:
+            return None
+        po = obj.purchase_order_line.purchase_order
+        return {
+            'id': str(po.id),
+            'po_number': po.po_number,
+            'supplier_name': po.supplier.name if po.supplier else None,
+            'status': po.status,
+            'expected_delivery': obj.purchase_order_line.expected_delivery,
+            'delivery_status': obj.purchase_order_line.delivery_status,
+        }
+
 
 class MaterialRequirementSimpleSerializer(serializers.ModelSerializer):
     """Simplified serializer for list views"""
@@ -84,9 +110,14 @@ class MaterialRequirementSimpleSerializer(serializers.ModelSerializer):
             'material_name',
             'material_name_zh',
             'category',
+            'supplier',
             'total_requirement',
+            'order_quantity_needed',
             'unit',
             'status',
+            'is_reviewed',
+            'required_date',
+            'expected_delivery',
         ]
 
 

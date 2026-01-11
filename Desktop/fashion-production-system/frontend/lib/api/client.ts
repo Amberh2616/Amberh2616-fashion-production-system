@@ -84,4 +84,29 @@ export async function uploadFile<T>(
   });
 }
 
+// Object-style API client (for compatibility)
+apiClient.get = async function<T>(endpoint: string): Promise<T> {
+  return apiClient<T>(endpoint, { method: 'GET' });
+};
+
+apiClient.post = async function<T>(endpoint: string, data?: unknown): Promise<T> {
+  return apiClient<T>(endpoint, {
+    method: 'POST',
+    headers: data ? { 'Content-Type': 'application/json' } : undefined,
+    body: data ? JSON.stringify(data) : undefined,
+  });
+};
+
+apiClient.patch = async function<T>(endpoint: string, data?: unknown): Promise<T> {
+  return apiClient<T>(endpoint, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+};
+
+apiClient.delete = async function<T>(endpoint: string): Promise<T> {
+  return apiClient<T>(endpoint, { method: 'DELETE' });
+};
+
 export { API_BASE_URL };

@@ -1,29 +1,20 @@
 'use client';
 
 /**
- * Block-Based Draft Review Page (with Bilingual Overlay)
+ * Block-Based Draft Review Page
  * Route: /dashboard/revisions/[id]/review
  *
  * Layout:
- * - Left (60%): PDF viewer with bilingual overlay (原文 + 中文)
+ * - Left (60%): PDF viewer (iframe)
  * - Right (40%): Coverage Panel + Block editor sidebar
  */
 
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
 import { useDraft, useUpdateDraftBlock } from '@/lib/hooks/useDraft';
 import type { DraftBlock as DraftBlockType } from '@/lib/types/revision';
 import { approveRevision } from '@/lib/api/approve';
-import { BilingualOverlay } from '@/components/review/BilingualOverlay';
 import { CoveragePanel } from '@/components/review/CoveragePanel';
-import type { DraftBlock } from '@/components/review/BlockOverlayItem';
-
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
-
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function DraftReviewPage() {
   const params = useParams();
@@ -38,12 +29,6 @@ export default function DraftReviewPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [isCreatingRequest, setIsCreatingRequest] = useState(false);
   const [showMissingOnly, setShowMissingOnly] = useState(false);
-  const [overlayMode, setOverlayMode] = useState<'none' | 'all'>('all'); // ⭐ 叠層顯示模式
-
-  // PDF render states
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const [pageWidth, setPageWidth] = useState<number>(0);
-  const [scale, setScale] = useState<number>(1.0);
 
   // Loading state
   if (isLoading) {
@@ -84,20 +69,6 @@ export default function DraftReviewPage() {
   const allBlocksWithPage = revision.pages.flatMap(p =>
     p.blocks.map(b => ({ ...b, page_number: p.page_number }))
   );
-
-  // Convert to BilingualOverlay format
-  let currentPageBlocks: DraftBlock[] = currentPageData?.blocks || [];
-
-  // ⭐ 叠層顯示模式過濾
-  if (overlayMode === 'none') {
-    currentPageBlocks = [];
-  }
-  // overlayMode === 'all' → 顯示全部（只顯示中文，隱藏英文原文）
-
-  // Get selected block for bbox highlighting
-  const selectedBlock = selectedBlockId
-    ? allBlocksWithPage.find(b => b.id === selectedBlockId)
-    : null;
 
   const handleBlockClick = (block: DraftBlockType) => {
     setSelectedBlockId(block.id);
@@ -189,7 +160,7 @@ export default function DraftReviewPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          revision_id: document.style_revision, // ⭐ Use StyleRevision ID
+          revision: document.style_revision, // ⭐ Use StyleRevision ID (field name is 'revision')
           request_type: 'proto',
           quantity_requested: 5,
           priority: 'normal',
@@ -233,21 +204,8 @@ export default function DraftReviewPage() {
     }
   };
 
-  function onDocumentLoadSuccess({ numPages: nextNumPages }: { numPages: number }) {
-    setNumPages(nextNumPages);
-  }
-
-  function onPageLoadSuccess(page: any) {
-    const viewport = page.getViewport({ scale: 1 });
-    setPageWidth(viewport.width);
-    // Auto scale to fit container (假設容器寬度約 800px)
-    const containerWidth = 800;
-    const autoScale = containerWidth / viewport.width;
-    setScale(autoScale);
-  }
-
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Left: PDF Viewer with Bilingual Overlay */}
       <div className="w-[60%] bg-white border-r border-gray-200 flex flex-col">
         {/* Header */}
@@ -270,36 +228,10 @@ export default function DraftReviewPage() {
               </span>
             </div>
             <p className="text-sm text-gray-500">
-              Page {currentPage} of {numPages || revision.page_count}
+              Page {currentPage} of {revision.page_count}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* 叠層顯示模式切換 */}
-            <div className="flex items-center gap-1 border border-gray-300 rounded overflow-hidden">
-              <button
-                onClick={() => setOverlayMode('none')}
-                className={`px-3 py-1 text-xs transition-colors ${
-                  overlayMode === 'none'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-                title="不顯示叠層"
-              >
-                無
-              </button>
-              <button
-                onClick={() => setOverlayMode('all')}
-                className={`px-3 py-1 text-xs transition-colors ${
-                  overlayMode === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-                title="顯示全部（僅中文翻譯）"
-              >
-                全部
-              </button>
-            </div>
-
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
@@ -308,8 +240,8 @@ export default function DraftReviewPage() {
               ← Prev
             </button>
             <button
-              onClick={() => setCurrentPage(p => Math.min(numPages || revision.page_count, p + 1))}
-              disabled={currentPage === (numPages || revision.page_count)}
+              onClick={() => setCurrentPage(p => Math.min(revision.page_count, p + 1))}
+              disabled={currentPage === (revision.page_count)}
               className="px-3 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
             >
               Next →
@@ -317,72 +249,30 @@ export default function DraftReviewPage() {
           </div>
         </div>
 
-        {/* PDF Content with Overlay */}
-        <div className="flex-1 overflow-auto p-6">
-          <div className="bg-gray-100 rounded-lg overflow-hidden inline-block">
-            {revision.file_url ? (
-              <div style={{ position: 'relative' }}>
-                <Document
-                  file={revision.file_url}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  loading={
-                    <div className="flex items-center justify-center p-12">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    </div>
-                  }
-                  error={
-                    <div className="flex items-center justify-center p-12 text-red-600">
-                      Failed to load PDF
-                    </div>
-                  }
-                >
-                  <Page
-                    pageNumber={currentPage}
-                    scale={scale}
-                    renderTextLayer={false}  // 關鍵：避免文字層干擾
-                    renderAnnotationLayer={false}
-                    onLoadSuccess={onPageLoadSuccess}
-                  />
-                </Document>
-
-                {/* 🆕 Bilingual Overlay */}
-                <BilingualOverlay
-                  blocks={currentPageBlocks}
-                  scale={scale}
-                  selectedId={selectedBlockId}
-                  onSelect={(id) => setSelectedBlockId(id)}
-                  showMissingOnly={showMissingOnly}
-                  showSourceText={false}
-                />
+        {/* PDF Content */}
+        <div className="flex-1 overflow-hidden">
+          {revision.file_url ? (
+            <iframe
+              src={revision.file_url}
+              className="w-full h-full border-none"
+              title="PDF Preview"
+            />
+          ) : (
+            <div className="flex items-center justify-center bg-gray-200 h-full">
+              <div className="text-center text-gray-500">
+                <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <p className="text-sm font-medium">PDF Preview Not Available</p>
+                <p className="text-xs mt-1">File not uploaded yet</p>
               </div>
-            ) : (
-              <div className="flex items-center justify-center bg-gray-200 rounded-lg" style={{ height: 'calc(100vh - 200px)' }}>
-                <div className="text-center text-gray-500">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-sm font-medium">PDF Preview Not Available</p>
-                  <p className="text-xs mt-1">File not uploaded yet</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Page Info */}
-          {currentPageData && (
-            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <span className="font-medium">{currentPageData.blocks.length}</span> blocks on this page
-                <span className="mx-2">•</span>
-                <span className="text-blue-600">Scale: {(scale * 100).toFixed(0)}%</span>
-              </p>
             </div>
           )}
         </div>
       </div>
 
       {/* Right: Coverage Panel + Block Editor Sidebar */}
-      <div className="w-[40%] flex flex-col">
+      <div className="w-[40%] flex flex-col overflow-hidden">
         {/* 🆕 Coverage Panel */}
         <div className="px-4 pt-4">
           <CoveragePanel
@@ -546,7 +436,7 @@ export default function DraftReviewPage() {
 
         {/* Sidebar Footer */}
         <div className="border-t border-gray-200 px-6 py-4 bg-white space-y-3">
-          {revision.status === 'approved' ? (
+          {(revision.status === 'approved' || revision.status === 'completed') ? (
             <>
               {/* Status Badge */}
               <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">

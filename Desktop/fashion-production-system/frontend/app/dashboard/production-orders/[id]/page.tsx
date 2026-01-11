@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,18 +13,31 @@ import {
   DollarSign,
   Layers,
   RefreshCcw,
+  Eye,
+  Send,
+  ExternalLink,
+  Clock,
+  Truck,
 } from "lucide-react";
 
 import {
   useProductionOrder,
   useCalculateMRP,
-  useGeneratePO,
   useConfirmProductionOrder,
   useRequirementsSummary,
+  useReviewMaterialRequirement,
+  useUnreviewMaterialRequirement,
+  useGeneratePOFromMaterialRequirement,
 } from "@/lib/hooks/useProductionOrders";
-import type { ProductionOrderStatus, MaterialRequirement } from "@/lib/types/production-order";
+import type {
+  ProductionOrderStatus,
+  MaterialRequirement,
+} from "@/lib/types/production-order";
 import { PRODUCTION_ORDER_STATUS_OPTIONS } from "@/lib/types/production-order";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -33,6 +46,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 function StatusBadge({ status }: { status: ProductionOrderStatus }) {
   const statusColors: Record<ProductionOrderStatus, string> = {
@@ -51,7 +71,8 @@ function StatusBadge({ status }: { status: ProductionOrderStatus }) {
   );
 }
 
-function formatDate(dateString: string): string {
+function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return "-";
   const date = new Date(dateString);
   return new Intl.DateTimeFormat("zh-TW", {
     year: "numeric",
@@ -91,7 +112,19 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
 
   const confirmOrder = useConfirmProductionOrder();
   const calculateMRP = useCalculateMRP();
-  const generatePO = useGeneratePO();
+  const reviewMR = useReviewMaterialRequirement(id);
+  const unreviewMR = useUnreviewMaterialRequirement(id);
+  const generatePO = useGeneratePOFromMaterialRequirement(id);
+
+  // Sheet state
+  const [selectedMR, setSelectedMR] = useState<MaterialRequirement | null>(null);
+  const [reviewForm, setReviewForm] = useState({
+    quantity: "",
+    unit_price: "",
+    notes: "",
+    required_date: "",
+    expected_delivery: "",
+  });
 
   if (isLoading) {
     return (
@@ -134,17 +167,51 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
     }
   };
 
-  const handleGeneratePO = async () => {
+  const openReviewSheet = (mr: MaterialRequirement) => {
+    setSelectedMR(mr);
+    setReviewForm({
+      quantity: String(mr.order_quantity_needed || 0),
+      unit_price: String(mr.unit_price || 0),
+      notes: mr.review_notes || "",
+      required_date: mr.required_date || order.delivery_date || "",
+      expected_delivery: mr.expected_delivery || "",
+    });
+  };
+
+  const handleReview = async () => {
+    if (!selectedMR) return;
     try {
-      const result = await generatePO.mutateAsync({ id });
-      if (result.purchase_orders.length > 0) {
-        // Could navigate to PO list
-        alert(`Generated ${result.purchase_orders.length} purchase order(s)`);
-      }
+      await reviewMR.mutateAsync({
+        id: selectedMR.id,
+        payload: reviewForm,
+      });
+      setSelectedMR(null);
+    } catch (error) {
+      console.error("Failed to review:", error);
+    }
+  };
+
+  const handleUnreview = async (mrId: string) => {
+    try {
+      await unreviewMR.mutateAsync(mrId);
+    } catch (error) {
+      console.error("Failed to unreview:", error);
+    }
+  };
+
+  const handleGeneratePO = async (mrId: string) => {
+    try {
+      const result = await generatePO.mutateAsync(mrId);
+      alert(`採購單 ${result.purchase_order.po_number} 已生成`);
     } catch (error) {
       console.error("Failed to generate PO:", error);
     }
   };
+
+  // Count reviewed items
+  const reviewedCount = order.material_requirements?.filter((mr) => mr.is_reviewed).length || 0;
+  const totalCount = order.material_requirements?.length || 0;
+  const orderedCount = order.material_requirements?.filter((mr) => mr.status === "ordered").length || 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -168,7 +235,6 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Action buttons based on status */}
           {order.status === "draft" && (
             <Button onClick={handleConfirm} disabled={confirmOrder.isPending}>
               <CheckCircle className="w-4 h-4 mr-2" />
@@ -184,20 +250,14 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
           )}
 
           {order.status === "confirmed" && order.mrp_calculated && (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleCalculateMRP}
-                disabled={calculateMRP.isPending}
-              >
-                <RefreshCcw className="w-4 h-4 mr-2" />
-                Recalculate
-              </Button>
-              <Button onClick={handleGeneratePO} disabled={generatePO.isPending}>
-                <FileText className="w-4 h-4 mr-2" />
-                {generatePO.isPending ? "Generating..." : "Generate PO"}
-              </Button>
-            </>
+            <Button
+              variant="outline"
+              onClick={handleCalculateMRP}
+              disabled={calculateMRP.isPending}
+            >
+              <RefreshCcw className="w-4 h-4 mr-2" />
+              Recalculate
+            </Button>
           )}
         </div>
       </div>
@@ -253,28 +313,33 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* MRP Summary */}
-      {order.mrp_calculated && summary && (
+      {/* Material Requirements Progress */}
+      {order.mrp_calculated && (
         <div className="bg-white rounded-lg border p-4">
-          <h2 className="text-lg font-semibold mb-3">Material Requirements Summary</h2>
-          <div className="grid grid-cols-4 gap-4">
-            <div className="bg-blue-50 rounded-lg p-3">
-              <div className="text-sm text-blue-600">Total Items</div>
-              <div className="text-2xl font-bold text-blue-700">{summary.total_items}</div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">物料需求審核進度</h2>
+            <div className="text-sm text-slate-500">
+              已審核 {reviewedCount}/{totalCount} | 已下單 {orderedCount}/{totalCount}
             </div>
-            <div className="bg-green-50 rounded-lg p-3">
-              <div className="text-sm text-green-600">Ready for PO</div>
-              <div className="text-2xl font-bold text-green-700">{summary.ready_for_po}</div>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-4">
+            <div
+              className="bg-blue-600 h-4 rounded-full transition-all"
+              style={{ width: `${totalCount > 0 ? (orderedCount / totalCount) * 100 : 0}%` }}
+            ></div>
+          </div>
+          <div className="flex gap-4 mt-2 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-gray-300"></div>
+              <span>待審核</span>
             </div>
-            <div className="bg-purple-50 rounded-lg p-3">
-              <div className="text-sm text-purple-600">Already Ordered</div>
-              <div className="text-2xl font-bold text-purple-700">{summary.already_ordered}</div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <span>已審核待下單</span>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <div className="text-sm text-slate-600">Categories</div>
-              <div className="text-2xl font-bold text-slate-700">
-                {Object.keys(summary.by_category).length}
-              </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+              <span>已下單</span>
             </div>
           </div>
         </div>
@@ -285,63 +350,141 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
         <div className="bg-white rounded-lg border">
           <div className="p-4 border-b">
             <h2 className="text-lg font-semibold">
-              Material Requirements ({order.material_requirements.length})
+              物料需求清單 ({order.material_requirements.length})
             </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              點擊「審核」按鈕確認數量和單價，審核後可生成採購單
+            </p>
           </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Category</TableHead>
-                <TableHead>Material</TableHead>
-                <TableHead>Supplier</TableHead>
-                <TableHead className="text-right">Consumption</TableHead>
-                <TableHead className="text-right">Wastage %</TableHead>
-                <TableHead className="text-right">Gross Req.</TableHead>
-                <TableHead className="text-right">Total Req.</TableHead>
-                <TableHead className="text-right">To Order</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Material / Supplier</TableHead>
+                <TableHead className="text-right">需求量</TableHead>
+                <TableHead className="text-right">單價</TableHead>
+                <TableHead>需求日期</TableHead>
+                <TableHead>狀態</TableHead>
+                <TableHead className="text-center">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {order.material_requirements.map((req: MaterialRequirement) => (
-                <TableRow key={req.id}>
+                <TableRow
+                  key={req.id}
+                  className={
+                    req.status === "ordered"
+                      ? "bg-blue-50"
+                      : req.is_reviewed
+                      ? "bg-yellow-50"
+                      : ""
+                  }
+                >
                   <TableCell>
                     <span className="px-2 py-1 bg-slate-100 rounded text-xs font-medium">
                       {req.category}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <div>{req.material_name}</div>
+                    <div className="font-medium">{req.material_name}</div>
                     {req.material_name_zh && (
                       <div className="text-sm text-slate-500">{req.material_name_zh}</div>
                     )}
+                    <div className="text-xs text-slate-400">{req.supplier || "-"}</div>
                   </TableCell>
-                  <TableCell>{req.supplier || "-"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="font-mono font-medium">
+                      {formatDecimal(req.reviewed_quantity || req.order_quantity_needed)} {req.unit}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      (毛需求: {formatDecimal(req.total_requirement)})
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatDecimal(req.consumption_per_piece)} {req.unit}
-                  </TableCell>
-                  <TableCell className="text-right">{req.wastage_pct}%</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatDecimal(req.gross_requirement)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono font-medium">
-                    {formatDecimal(req.total_requirement)} {req.unit}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-blue-600 font-medium">
-                    {formatDecimal(req.order_quantity_needed)}
+                    ${formatDecimal(req.reviewed_unit_price || req.unit_price || 0)}
                   </TableCell>
                   <TableCell>
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        req.status === "ordered"
-                          ? "bg-green-100 text-green-800"
-                          : req.status === "received"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {req.status}
-                    </span>
+                    <div className="flex items-center gap-1 text-sm">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      {formatDate(req.required_date)}
+                    </div>
+                    {req.expected_delivery && (
+                      <div className="flex items-center gap-1 text-xs text-slate-500">
+                        <Truck className="w-3 h-3" />
+                        {formatDate(req.expected_delivery)}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {req.status === "ordered" ? (
+                      <div>
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          已下單
+                        </span>
+                        {req.purchase_order_info && (
+                          <Link
+                            href={`/dashboard/purchase-orders/${req.purchase_order_info.id}`}
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
+                          >
+                            {req.purchase_order_info.po_number}
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        )}
+                      </div>
+                    ) : req.is_reviewed ? (
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                        已審核
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                        待審核
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      {req.status !== "ordered" && (
+                        <>
+                          {!req.is_reviewed ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openReviewSheet(req)}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              審核
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleUnreview(req.id)}
+                                disabled={unreviewMR.isPending}
+                              >
+                                取消
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleGeneratePO(req.id)}
+                                disabled={generatePO.isPending}
+                              >
+                                <Send className="w-4 h-4 mr-1" />
+                                下採購單
+                              </Button>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {req.status === "ordered" && req.purchase_order_info && (
+                        <Link href={`/dashboard/purchase-orders/${req.purchase_order_info.id}`}>
+                          <Button variant="outline" size="sm">
+                            <FileText className="w-4 h-4 mr-1" />
+                            查看 PO
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -357,6 +500,155 @@ export default function ProductionOrderDetailPage({ params }: PageProps) {
           <p className="text-slate-600 whitespace-pre-wrap">{order.notes}</p>
         </div>
       )}
+
+      {/* Review Sheet */}
+      <Sheet open={!!selectedMR} onOpenChange={(open) => !open && setSelectedMR(null)}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>審核物料需求</SheetTitle>
+            <SheetDescription>
+              確認採購數量、單價和交期後，可生成採購單
+            </SheetDescription>
+          </SheetHeader>
+
+          {selectedMR && (
+            <div className="space-y-6 mt-6">
+              {/* Material Info */}
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h3 className="font-semibold text-lg">{selectedMR.material_name}</h3>
+                {selectedMR.material_name_zh && (
+                  <p className="text-slate-600">{selectedMR.material_name_zh}</p>
+                )}
+                <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-slate-500">Category:</span>{" "}
+                    <span className="font-medium">{selectedMR.category}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Supplier:</span>{" "}
+                    <span className="font-medium">{selectedMR.supplier || "-"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* MRP Calculation */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">MRP 計算明細</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">訂單數量:</span>
+                    <span className="font-mono">{formatNumber(selectedMR.order_quantity)} pcs</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">單件用量:</span>
+                    <span className="font-mono">
+                      {formatDecimal(selectedMR.consumption_per_piece)} {selectedMR.unit}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">損耗率:</span>
+                    <span className="font-mono">{selectedMR.wastage_pct}%</span>
+                  </div>
+                  <hr className="border-blue-200 my-2" />
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">毛需求:</span>
+                    <span className="font-mono">{formatDecimal(selectedMR.gross_requirement)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">損耗量:</span>
+                    <span className="font-mono">{formatDecimal(selectedMR.wastage_quantity)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span className="text-blue-800">總需求:</span>
+                    <span className="font-mono text-blue-900">
+                      {formatDecimal(selectedMR.total_requirement)} {selectedMR.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Editable Fields */}
+              <div className="space-y-4">
+                <div>
+                  <Label>採購數量 ({selectedMR.unit})</Label>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={reviewForm.quantity}
+                    onChange={(e) =>
+                      setReviewForm({ ...reviewForm, quantity: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label>單價 (USD)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={reviewForm.unit_price}
+                    onChange={(e) =>
+                      setReviewForm({ ...reviewForm, unit_price: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label>物料需求日期</Label>
+                  <Input
+                    type="date"
+                    value={reviewForm.required_date}
+                    onChange={(e) =>
+                      setReviewForm({ ...reviewForm, required_date: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label>預計交期</Label>
+                  <Input
+                    type="date"
+                    value={reviewForm.expected_delivery}
+                    onChange={(e) =>
+                      setReviewForm({ ...reviewForm, expected_delivery: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label>備註</Label>
+                  <Textarea
+                    value={reviewForm.notes}
+                    onChange={(e) =>
+                      setReviewForm({ ...reviewForm, notes: e.target.value })
+                    }
+                    placeholder="審核備註..."
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setSelectedMR(null)}
+                >
+                  取消
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleReview}
+                  disabled={reviewMR.isPending}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {reviewMR.isPending ? "處理中..." : "確認審核"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

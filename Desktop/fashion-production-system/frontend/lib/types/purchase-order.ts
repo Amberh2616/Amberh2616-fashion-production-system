@@ -6,6 +6,26 @@ export type POStatus = 'draft' | 'sent' | 'confirmed' | 'partial_received' | 're
 
 export type POType = 'rfq' | 'production';
 
+export interface POLineSourceInfo {
+  // Style info
+  style_number: string | null;
+  style_name: string | null;
+  revision_label: string | null;
+  // BOM item info
+  bom_item_id: string | null;
+  bom_item_number: number | null;
+  bom_category: string | null;
+  bom_placement: string | null;
+  // MRP calculation
+  production_order_number: string;
+  order_quantity: number;
+  consumption_per_piece: string;
+  wastage_pct: string;
+  gross_requirement: string;
+  wastage_quantity: string;
+  total_requirement: string;
+}
+
 export interface POLine {
   id: string;
   purchase_order: string;
@@ -20,6 +40,12 @@ export interface POLine {
   unit_price: string;
   line_total: string;
   quantity_received: string;
+  // Confirmation status
+  is_confirmed: boolean;
+  confirmed_at: string | null;
+  notes: string;
+  // Source traceability
+  source_info?: POLineSourceInfo | null;
 }
 
 export interface PurchaseOrder {
@@ -48,6 +74,10 @@ export interface PurchaseOrder {
   created_by: string | null;
   lines?: POLine[];
   lines_count?: number;
+  // Confirmation status
+  all_lines_confirmed?: boolean;
+  confirmed_lines_count?: number;
+  total_lines_count?: number;
 }
 
 export interface POListResponse {

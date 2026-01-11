@@ -1030,3 +1030,80 @@ export async function fetchSchedulerData(params?: SchedulerFilters): Promise<Sch
 
   return apiClient<SchedulerResponse>(url);
 }
+
+
+// ==================== P18: Progress Dashboard API ====================
+
+export interface StatusCount {
+  count: number;
+  label: string;
+  progress?: number;
+  color?: string;
+}
+
+export interface ProgressAlert {
+  type: 'error' | 'warning' | 'info';
+  category: 'sample' | 'procurement' | 'production';
+  title: string;
+  description: string;
+}
+
+export interface ProgressDashboardResponse {
+  sample_progress: {
+    by_status: Record<string, StatusCount>;
+    overdue: number;
+    due_soon: number;
+  };
+  quotation_progress: {
+    by_status: Record<string, StatusCount>;
+    by_type: { sample: number; bulk: number };
+    pending: number;
+  };
+  procurement_progress: {
+    by_status: Record<string, StatusCount>;
+    overdue_deliveries: number;
+    due_soon_deliveries: number;
+  };
+  production_progress: {
+    by_status: Record<string, StatusCount>;
+    overdue: number;
+  };
+  material_progress: {
+    by_status: Record<string, StatusCount>;
+  };
+  summary: {
+    total_samples: number;
+    active_samples: number;
+    total_quotes: number;
+    pending_quotes: number;
+    total_po: number;
+    active_po: number;
+    total_prod_orders: number;
+    active_prod_orders: number;
+  };
+  alerts: ProgressAlert[];
+  meta: {
+    as_of: string;
+    days_ahead: number;
+    style_filter: string | null;
+  };
+}
+
+/**
+ * P18: Get unified progress dashboard data
+ * GET /progress-dashboard/
+ */
+export async function fetchProgressDashboard(params?: {
+  style_id?: string;
+  days_ahead?: number;
+}): Promise<ProgressDashboardResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.style_id) searchParams.set('style_id', params.style_id);
+  if (params?.days_ahead) searchParams.set('days_ahead', String(params.days_ahead));
+
+  const queryString = searchParams.toString();
+  const url = `/progress-dashboard/${queryString ? `?${queryString}` : ''}`;
+
+  return apiClient<ProgressDashboardResponse>(url);
+}

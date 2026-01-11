@@ -206,6 +206,8 @@ class PurchaseOrder(models.Model):
     """
     STATUS_CHOICES = [
         ('draft', 'Draft'),
+        ('pending_review', 'Pending Review'),  # 待審核
+        ('ready', 'Ready to Send'),  # 審核完成可發送
         ('sent', 'Sent'),
         ('confirmed', 'Confirmed'),
         ('partial_received', 'Partial Received'),
@@ -283,6 +285,24 @@ class PurchaseOrder(models.Model):
     def __str__(self):
         return f"{self.po_number} - {self.supplier.name}"
 
+    @property
+    def all_lines_confirmed(self) -> bool:
+        """Check if all lines are confirmed (ready for PDF/send)"""
+        lines = self.lines.all()
+        if not lines.exists():
+            return False
+        return all(line.is_confirmed for line in lines)
+
+    @property
+    def confirmed_lines_count(self) -> int:
+        """Count of confirmed lines"""
+        return self.lines.filter(is_confirmed=True).count()
+
+    @property
+    def total_lines_count(self) -> int:
+        """Total number of lines"""
+        return self.lines.count()
+
 
 class POLine(models.Model):
     """
@@ -322,12 +342,47 @@ class POLine(models.Model):
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     line_total = models.DecimalField(max_digits=12, decimal_places=2)
 
-    # Delivery
+    # Delivery tracking (per line)
     quantity_received = models.DecimalField(
         max_digits=12,
         decimal_places=4,
         default=0
     )
+    required_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='物料需求日期（生產需要的最晚時間）'
+    )
+    expected_delivery = models.DateField(
+        null=True,
+        blank=True,
+        help_text='供應商預計交期'
+    )
+    actual_delivery = models.DateField(
+        null=True,
+        blank=True,
+        help_text='實際交貨日期'
+    )
+    delivery_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),      # 尚未出貨
+            ('shipped', 'Shipped'),      # 已出貨
+            ('partial', 'Partial'),      # 部分收貨
+            ('received', 'Received'),    # 已收貨
+            ('delayed', 'Delayed'),      # 延遲
+        ],
+        default='pending'
+    )
+    delivery_notes = models.TextField(blank=True, help_text='交期追蹤備註')
+
+    # Review status
+    is_confirmed = models.BooleanField(
+        default=False,
+        help_text='Whether this line has been reviewed and confirmed'
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, help_text='Line item notes')
 
     class Meta:
         db_table = 'po_lines'
@@ -336,3 +391,46 @@ class POLine(models.Model):
 
     def __str__(self):
         return f"{self.purchase_order.po_number} - {self.material_name}"
+
+    def sync_material_requirements(self):
+        """
+        P18: 同步關聯的 MaterialRequirement 狀態
+
+        狀態映射：
+        - POLine 創建/連結 → MaterialRequirement.status = 'ordered'
+        - POLine.quantity_received >= total_requirement → MaterialRequirement.status = 'received'
+        """
+        from apps.orders.models import MaterialRequirement
+
+        # 獲取所有關聯的 MaterialRequirement
+        linked_requirements = MaterialRequirement.objects.filter(purchase_order_line=self)
+
+        for req in linked_requirements:
+            old_status = req.status
+
+            # 判斷新狀態
+            if self.quantity_received >= req.total_requirement:
+                new_status = 'received'
+            else:
+                new_status = 'ordered'
+
+            # 如果狀態變化，更新
+            if new_status != old_status:
+                req.status = new_status
+                req.save(update_fields=['status', 'updated_at'])
+
+
+# ========================================
+# Signals for POLine → MaterialRequirement sync
+# ========================================
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+@receiver(post_save, sender=POLine)
+def sync_material_requirement_on_po_line_save(sender, instance, **kwargs):
+    """
+    P18: 當 POLine 保存時，同步關聯的 MaterialRequirement 狀態
+    """
+    instance.sync_material_requirements()

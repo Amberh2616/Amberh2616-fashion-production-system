@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-10
-**Version:** 4.11.0
-**Status:** P0-P11 + P14-P17 完成 ✅ | P18-P20 規劃中 (大貨報價加強/庫存/採購優化)
+**Last Updated:** 2026-01-11
+**Version:** 4.24.0
+**Status:** P0-P11 + P14-P18 完成 ✅ | 流程連結 + 進度追蹤 + 批量上傳完成 | PDF 預覽修復 ✅ | P19 庫存管理 📋 計劃中
 
 ---
 
@@ -108,7 +108,7 @@ CostSheet (Bulk Costing)
 └── 輸出：報價單 PDF → 發給客戶
 
 
-【Phase 4: 大貨階段】 ✅ P17 完成 (2026-01-10)
+【Phase 4: 大貨階段】 ✅ P17+ 完成 (2026-01-11)
 ───────────────────────────────────────────────────────────────────────────────
 ProductionOrder (大貨訂單) ✅
 ├── 客戶確認報價 → 下單
@@ -120,11 +120,16 @@ MaterialRequirement (物料需求計算 MRP) ✅
 ├── 每個 BOM 項目：訂單數量 × consumption × (1 + 損耗%)
 └── 輸出：物料需求清單（自動計算）
          │
+         ↓ ⭐ 每筆物料單獨審核（2026-01-11 新增）
+         │
+├── 審核：確認數量、單價、需求日期、預計交期
+├── 下採購單：每筆物料生成獨立 PO（方便追蹤）
+└── 交期追蹤：pending → shipped → received
+         │
          ↓
-PurchaseOrder (採購單自動生成) ✅
-├── 按供應商分組
-├── 自動生成 Production PO
-└── 發送給供應商 → 追蹤收貨
+PurchaseOrder (每筆物料獨立採購單) ✅
+├── 下載 PDF → 發送給供應商
+└── 追蹤交期 + 收貨狀態
 ```
 
 ### 樣衣類型對照表
@@ -214,6 +219,155 @@ BOMItem.consumption (原始用量 - Tech Pack 標註)
 | **P15** | **物料主檔管理系統** | **2026-01-10** | 見下方 |
 | **P16** | **採購單工作流程** | **2026-01-10** | 見下方 |
 | **P17** | **大貨訂單系統 + MRP + 採購生成** | **2026-01-10** | 見下方 |
+| **P18** | **流程連結 + 進度追蹤儀表板** | **2026-01-11** | 見下方 |
+| **DA-1** | **批量上傳 Tech Pack（ZIP）** | **2026-01-11** | 見下方 |
+
+#### DA-1: 批量上傳 Tech Pack（2026-01-11）
+
+**功能：** ZIP 批量上傳多款 Tech Pack，按款號自動分組處理
+
+**後端服務（`backend/apps/parsing/services/batch_upload_service.py`）：**
+```python
+class BatchUploadService:
+    # ZIP 解析、款號識別、文件分組
+    def extract_style_number(filename)  # 從文件名提取款號
+    def detect_file_type(filename)       # 檢測文件類型
+    def parse_zip_contents(zip_file)     # 解析 ZIP 內容
+    def group_files_by_style(files)      # 按款式分組
+    def process_style_group(group)       # 處理單個款式
+
+class BatchProcessingService:
+    # 批量 AI 處理（分類 + 提取）
+    def process_documents(document_ids)  # 批量處理文檔
+```
+
+**API 端點：**
+- `POST /api/v2/uploaded-documents/batch-upload/` - 上傳 ZIP 文件
+- `POST /api/v2/uploaded-documents/batch-process/` - 批量 AI 處理
+
+**前端（整合到 Upload 頁面）：**
+- `frontend/app/dashboard/upload/page.tsx` - Tab 切換（Single / Batch）
+- `frontend/lib/api/batch-upload.ts` - API 客戶端
+
+**支援的文件命名：**
+```
+LW1FLWS.pdf              → 款號 LW1FLWS（combined，單一 PDF 含所有內容）
+LW1FLWS_techpack.pdf     → 款號 LW1FLWS（tech pack）
+LW1FLWS_bom.pdf          → 款號 LW1FLWS（bom）
+LW1FLWS_spec.pdf         → 款號 LW1FLWS（measurement）
+```
+
+**頁面路徑：** `/dashboard/upload` → Batch Upload (ZIP) Tab
+
+---
+
+#### Bugfix: Tech Pack 翻譯審校 PDF 預覽修復（2026-01-11）
+
+**問題：**
+1. react-pdf 在 Next.js 16 出現 SSR 錯誤（DOMMatrix is not defined）
+2. 頁面有雙滾動條問題
+3. overlayMode 切換按鈕引用未定義變數
+
+**解決方案：**
+- 移除 react-pdf，改用原生 iframe 顯示 PDF（瀏覽器內建 PDF 閱讀器）
+- 添加 `overflow-hidden` 到主容器和右側面板
+- 移除未使用的 overlayMode 切換按鈕
+
+**修改文件：**
+- `frontend/app/dashboard/revisions/[id]/review/page.tsx`
+  - 移除 react-pdf 相關 imports 和組件
+  - 使用 `<iframe src={revision.file_url}>` 顯示 PDF
+  - 主容器添加 `overflow-hidden` 防止雙滾動條
+  - 移除 overlayMode 切換按鈕（第 235-259 行）
+
+**修復後佈局：**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Main Container (h-screen overflow-hidden)                   │
+├──────────────────────────┬──────────────────────────────────┤
+│ Left (60%)               │ Right (40%)                      │
+│ ┌──────────────────────┐ │ ┌────────────────────────────┐   │
+│ │ Header (fixed)       │ │ │ Coverage Panel (fixed)    │   │
+│ ├──────────────────────┤ │ ├────────────────────────────┤   │
+│ │ PDF iframe           │ │ │ Sidebar Header (fixed)    │   │
+│ │ (瀏覽器內建 PDF 閱讀器)│ │ ├────────────────────────────┤   │
+│ │                      │ │ │ Block List (overflow-auto) │   │
+│ │                      │ │ │ ← 唯一滾動區域              │   │
+│ │                      │ │ ├────────────────────────────┤   │
+│ │                      │ │ │ Footer (Approve/Request)  │   │
+│ └──────────────────────┘ │ └────────────────────────────┘   │
+└──────────────────────────┴──────────────────────────────────┘
+```
+
+**頁面路徑：** `/dashboard/revisions/{id}/review`
+
+---
+
+#### Bugfix: Sample Request 創建流程修復（2026-01-11）
+
+**問題：**
+1. API 字段名稱錯誤（`revision_id` → `revision`）
+2. 狀態檢查遺漏（只檢查 'approved'，未檢查 'completed'）
+3. tech_pack_revision_id 未返回（提取後無法跳轉）
+
+**解決方案：**
+- 前端 API 調用改用正確字段名 `revision`
+- 狀態檢查改為 `revision.status === 'approved' || revision.status === 'completed'`
+- 後端 `UploadedDocumentSerializer` 添加 `tech_pack_revision_id` 字段
+
+**修改文件：**
+- `frontend/app/dashboard/revisions/[id]/review/page.tsx` - API 字段名 + 狀態檢查
+- `backend/apps/parsing/serializers.py` - 添加 `tech_pack_revision_id` SerializerMethodField
+
+**完整流程現在可正常運作：**
+```
+上傳 → AI 分類 → AI 提取 → 自動跳轉翻譯審校 → Approve → 下 Sample Request → Kanban
+```
+
+---
+
+#### P18: 流程連結 + 進度追蹤儀表板（2026-01-11）
+
+**功能：** 統一進度追蹤、流程資料連結
+
+**後端新增：**
+- `backend/apps/samples/models.py` - SampleRun 添加 related_names
+- `backend/apps/orders/models.py` - ProductionOrder 添加 `approved_sample_run` FK
+- `backend/apps/costing/views_phase23.py` - 添加 `reject` + `create-production-order` actions
+- `backend/apps/procurement/models.py` - POLine 添加 `sync_material_requirements()` + Signal
+- `backend/apps/samples/views.py` - 新增 `progress_dashboard()` API
+
+**API 端點：**
+- `GET /api/v2/progress-dashboard/` - 統一進度儀表板
+- `POST /api/v2/cost-sheets/{id}/reject/` - 拒絕報價
+- `POST /api/v2/cost-sheets/{id}/create-production-order/` - 從報價創建大貨訂單
+
+**前端新增：**
+- `frontend/app/dashboard/progress/page.tsx` - 進度儀表板頁面
+- `frontend/components/ui/skeleton.tsx` - Skeleton 組件
+- `frontend/components/ui/progress.tsx` - Progress 組件
+
+**進度儀表板內容：**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Summary Cards: Samples | Quotations | POs | Prod Orders    │
+├─────────────────────────────────────────────────────────────┤
+│  Alerts: Overdue | Due Soon | Stale items                   │
+├─────────────────────────────────────────────────────────────┤
+│  Progress Cards:                                            │
+│  ├── Sample Progress (by status)                            │
+│  ├── Quotation Progress (by type + status)                  │
+│  ├── Procurement Progress (by status)                       │
+│  ├── Production Progress (by status)                        │
+│  └── Material Requirements (by status)                      │
+├─────────────────────────────────────────────────────────────┤
+│  Quick Stats: Overdue | Due Soon | On Track                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**頁面路徑：** `/dashboard/progress`
+
+---
 
 #### P17: 大貨訂單系統 + MRP + 採購生成（2026-01-10）
 
@@ -264,10 +418,29 @@ class MaterialRequirement:
 - `POST /api/v2/production-orders/` - 創建
 - `GET /api/v2/production-orders/{id}/` - 詳情（含 material_requirements）
 - `POST /api/v2/production-orders/{id}/confirm/` - 確認訂單
-- `POST /api/v2/production-orders/{id}/calculate-mrp/` - 計算 MRP
-- `POST /api/v2/production-orders/{id}/generate-po/` - 生成採購單
+- `POST /api/v2/production-orders/{id}/calculate_mrp/` - 計算 MRP
+- `POST /api/v2/production-orders/{id}/generate_po/` - 生成採購單
+- `POST /api/v2/production-orders/import_excel/` - **⭐ Excel 批量匯入**
 - `GET /api/v2/production-orders/stats/` - 統計儀表板
 - `GET /api/v2/material-requirements/` - 物料需求列表
+
+**Excel 批量匯入（2026-01-11 新增）：**
+```
+POST /api/v2/production-orders/import_excel/
+Content-Type: multipart/form-data
+Body: file=<excel_file>
+```
+
+Excel 格式：
+| PO Number | Customer | Style Number | Color | Total Qty | XS | S | M | L | XL | XXL | Unit Price | Currency | Order Date | Delivery Date | Notes |
+
+模板位置：`docs/production_order_template.xlsx`
+
+測試結果（2026-01-11）：
+- ✅ Excel 匯入：1 筆訂單成功（PO-2601-001, Nike USA, LW1FLWS, 10,000 件）
+- ✅ 確認訂單：狀態 draft → confirmed
+- ✅ MRP 計算：18 項物料需求
+- ✅ 採購單生成：10 張 PO（按供應商分組），總金額 $924,719.74
 
 **頁面路徑：** `/dashboard/production-orders`
 
@@ -279,7 +452,7 @@ total_requirement = gross_requirement + wastage_quantity
 order_quantity_needed = max(0, total_requirement - current_stock)
 ```
 
-**採購單生成流程：**
+**採購單生成流程（舊版 - 按供應商分組）：**
 ```
 ProductionOrder (confirmed)
      │
@@ -295,6 +468,146 @@ PurchaseOrder[] (draft) + POLine[]
 MaterialRequirement.status = 'ordered'
 ProductionOrder.status = 'materials_ordered'
 ```
+
+#### P17+: 物料單獨審核 + 獨立採購單流程（2026-01-11）
+
+**問題：** 原設計按供應商分組生成採購單，但實際業務需要每筆物料單獨審核、單獨下採購單，方便追蹤交期。
+
+**新流程：**
+```
+ProductionOrder (confirmed)
+     │
+     ↓ POST /calculate-mrp/
+MaterialRequirement[] (calculated)
+     │
+     │  每筆物料單獨處理：
+     │  ┌─────────────────────────────────────┐
+     │  │ 1. 點「審核」→ 開啟 Sheet          │
+     │  │ 2. 確認數量、單價、需求日期、交期   │
+     │  │ 3. 點「確認審核」                   │
+     │  │ 4. 點「下採購單」→ 生成獨立 PO     │
+     │  │ 5. 進入 PO 詳情 → 下載 PDF → 發送  │
+     │  └─────────────────────────────────────┘
+     │
+PurchaseOrder (每筆物料一張獨立採購單)
+```
+
+**新增欄位 - MaterialRequirement:**
+```python
+# 審核狀態
+is_reviewed = BooleanField(default=False)
+reviewed_at = DateTimeField(null=True)
+review_notes = TextField(blank=True)
+reviewed_quantity = DecimalField(null=True)  # 調整後數量
+reviewed_unit_price = DecimalField(null=True)  # 確認單價
+
+# 交期追蹤
+required_date = DateField(null=True)  # 物料需求日期
+expected_delivery = DateField(null=True)  # 預計交期
+```
+
+**新增欄位 - POLine:**
+```python
+# 交期追蹤
+required_date = DateField(null=True)  # 物料需求日期
+expected_delivery = DateField(null=True)  # 供應商預計交期
+actual_delivery = DateField(null=True)  # 實際交貨日期
+delivery_status = CharField(choices=[
+    'pending',   # 尚未出貨
+    'shipped',   # 已出貨
+    'partial',   # 部分收貨
+    'received',  # 已收貨
+    'delayed',   # 延遲
+])
+delivery_notes = TextField(blank=True)
+```
+
+**新增 API:**
+```
+POST /api/v2/material-requirements/{id}/review/
+  Body: { quantity, unit_price, notes, required_date, expected_delivery }
+  → 審核物料需求
+
+POST /api/v2/material-requirements/{id}/unreview/
+  → 取消審核（可重新編輯）
+
+POST /api/v2/material-requirements/{id}/generate-po/
+  → 生成獨立採購單（1個MR = 1個PO with 1 POLine）
+```
+
+**前端 UI 更新:**
+- `ProductionOrder 詳情頁` 新增：
+  - 審核進度條（已審核 X/Y | 已下單 Z/Y）
+  - 每行顯示狀態標籤（待審核/已審核/已下單）
+  - 「審核」按鈕開啟 Sheet 抽屜
+  - Sheet 顯示 MRP 計算明細 + 可編輯欄位
+  - 審核後顯示「下採購單」按鈕
+  - 已下單顯示 PO 連結
+
+**Migration 文件:**
+- `backend/apps/orders/migrations/0004_add_mr_review_and_delivery.py`
+- `backend/apps/procurement/migrations/0007_add_poline_delivery_tracking.py`
+
+#### P18: 統一報價架構 Sample → Bulk（2026-01-11）
+
+**目標：** 統一 Sample 報價和 Bulk 報價架構，建立完整連貫的報價流程
+
+**架構設計（三層分離）：**
+```
+UsageScenario (用量場景)
+├── purpose: 'sample_quote' | 'bulk_quote'
+├── version_no
+└── UsageLine[] (物料用量)
+         │
+         ↓
+CostSheetVersion (報價版本)
+├── costing_type: 'sample' | 'bulk'
+├── status: draft → submitted → accepted/rejected
+├── cloned_from FK (版本追溯) ⭐ 核心連結
+└── CostLineV2[] (成本明細)
+```
+
+**報價流程：**
+```
+1. Sample Request 創建時自動生成 Sample CostSheetVersion (draft)
+2. 編輯物料用量、人工/製費/利潤
+3. 提交報價 (draft → submitted)
+4. 接受/拒絕報價 (submitted → accepted/rejected)
+5. 從 Sample 創建 Bulk 報價 (cloned_from = Sample)
+6. Bulk 報價確認後連結到 ProductionOrder
+```
+
+**新增/增強 API:**
+```
+POST /api/v2/cost-sheet-versions/{id}/create-bulk-quote/
+  Body: { expected_quantity, copy_labor_overhead, change_reason }
+  → 從 Sample 創建 Bulk 報價 (cloned_from 連結)
+
+POST /api/v2/cost-sheet-versions/{id}/accept/
+  → 接受報價 (submitted → accepted)
+
+POST /api/v2/cost-sheet-versions/{id}/reject/
+  Body: { reject_reason }
+  → 拒絕報價 (submitted → rejected)
+```
+
+**前端文件（已存在，已增強）：**
+- `frontend/lib/api/costing-phase23.ts` - 新增 reject API
+- `frontend/lib/hooks/useCostingPhase23.ts` - 新增 useRejectCostSheetVersion
+- `frontend/components/costing/CostingDetailDrawer.tsx` - 新增 Reject 按鈕
+- `frontend/components/costing/CostingVersionsTimeline.tsx` - Sample/Bulk tabs
+- `frontend/components/costing/CostingDialogs.tsx` - CreateBulkQuoteDialog
+
+**頁面路徑：** `/dashboard/revisions/[id]/costing-phase23`
+
+**UI 功能：**
+- Sample/Bulk 分頁切換
+- 版本卡片顯示（狀態、價格、來源連結）
+- 詳情抽屜（可編輯用量、人工/製費）
+- 提交報價（需 BOM 90% 驗證通過）
+- 接受/拒絕報價按鈕
+- 從 Sample 創建 Bulk 報價按鈕
+- 價格演進歷史顯示（Bulk → Sample 追溯）
 
 #### P16: 採購單工作流程（2026-01-10）
 
@@ -597,33 +910,286 @@ URL: /dashboard/samples/kanban
 | **P15** | **物料主檔管理系統** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P16** | **採購單工作流程** | **0.5 天** | **✅ 完成 (2026-01-10)** |
 | **P17** | **大貨訂單系統 + MRP + 採購生成** | **1 天** | **✅ 完成 (2026-01-10)** |
-| **P18** | **大貨報價加強 (Bulk Costing UI)** | **1 天** | **🔴 下一步** |
+| **P18** | **流程連結 + 進度追蹤儀表板** | **0.5 天** | **✅ 完成 (2026-01-11)** |
+| **DA-1** | **批量上傳 Tech Pack（ZIP）** | **0.5 天** | **✅ 完成 (2026-01-11)** |
 | **P19** | **庫存管理 (Inventory)** | **1 天** | **📋 規劃中** |
 | **P20** | **採購優化 (Procurement Enhancement)** | **1 天** | **📋 規劃中** |
+| DA-2 | Celery 異步處理（批量上傳/匯出） | 0.5 天 | 📋 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | - | 📋 計劃中 |
-| P13 | Celery 異步批量匯出 | - | 📋 計劃中 |
 | Phase B | 多人協作 + RBAC | - | 📋 計劃中 |
 | Phase B | Supplier Portal（品牌端查看）| - | 📋 計劃中 |
 
 ---
 
-## P18-P20 後續規劃（2026-01-10 更新）
+## P18-P20 後續規劃（2026-01-11 更新）
 
-> **P17 已完成**：大貨訂單系統 + MRP + 採購自動生成（原 P18-P20 功能已合併實作）
+> **P17 已完成**：大貨訂單系統 + MRP + 採購自動生成
 
-### P18: 大貨報價加強 (Bulk Costing UI) 🔴 下一步
+### P18: 統一報價架構 (Sample → Bulk Costing) ✅ 完成 (2026-01-11)
 
-**目標：** 完善 CostSheet (bulk) 報價界面
+**目標：** 統一 Sample 報價和 Bulk 報價架構，建立完整連貫的報價流程
 
-**功能：**
-- Bulk Costing 創建/編輯 UI
-- 用量選擇：confirmed_value 或 locked_value
-- 成本計算：物料 + 人工 + 製造費用 + 利潤
-- 報價單 PDF 匯出
-- 報價歷史版本管理
-- 與 ProductionOrder 關聯
+#### 現狀問題分析
 
-**現有模型：** `CostSheet` ✅ 已存在
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      現有兩套報價系統（不連通）                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│  【Sample Estimate】                 【Bulk CostSheet】                  │
+│  SampleCostEstimate                  CostSheetVersion                   │
+│  ├── breakdown_snapshot_json ❌      ├── UsageScenario                  │
+│  │   (扁平 JSON，無結構)             │   └── UsageLine[] (詳細用量)      │
+│  ├── estimated_total (僅物料)        ├── CostLineV2[] (明細項目)         │
+│  └── 無：人工/製費/運費/利潤         └── labor + overhead + margin      │
+│                                                                         │
+│  ❌ 兩者之間沒有連結                                                    │
+│  ❌ Sample 估價無法「升級」成 Bulk 報價                                 │
+│  ❌ 價格演進歷史斷裂                                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 統一報價流程設計
+
+```
+【Phase 1: 樣衣報價】Run 1-3
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SampleRun (Proto/Fit/Size Set)
+       │
+       ├──→ UsageScenario (purpose='sample_quote')
+       │         └──→ UsageLine[] (consumption = pre_estimate_value)
+       │
+       └──→ CostSheetVersion (costing_type='sample')
+                 ├── material_cost (從 CostLineV2 計算)
+                 ├── labor_cost (手工輸入或預設)
+                 ├── overhead_cost
+                 └── unit_price (含利潤)
+
+                   ════════════════════════════════════════
+                   📍 Size Set 完成後，用量鎖定
+                   📍 confirmed_value → locked_value
+                   ════════════════════════════════════════
+
+【Phase 2: 大貨報價】客戶詢價
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ⭐ CostSheetVersion (costing_type='bulk')
+       │
+       ├──→ cloned_from = 最後一版 Sample CostSheet ⬅️ 關鍵連結！
+       │
+       ├──→ UsageScenario (purpose='bulk_quote')
+       │         └──→ UsageLine[] (consumption = locked_value)
+       │
+       ├── material_cost (從鎖定用量重新計算)
+       ├── labor_cost (可能因量大調整)
+       ├── quantity_based_discount (量大折扣)
+       └── unit_price (大貨價)
+
+                   ════════════════════════════════════════
+                   📍 客戶確認報價 → status = 'accepted'
+                   ════════════════════════════════════════
+
+【Phase 3: 生產訂單】客戶下單
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ProductionOrder
+       ├──→ bulk_costing FK = CostSheetVersion (accepted)
+       ├── unit_price (成交價，從報價帶入)
+       └──→ MaterialRequirement[] (MRP 計算)
+```
+
+#### 觸發點設計 (Trigger Points)
+
+| 觸發點 | 按鈕文字 | 位置 | 顯示條件 | API |
+|--------|----------|------|----------|-----|
+| T1 | Create Sample Request | Revision 詳情頁 | Revision approved | `POST /sample-requests/` |
+| T2 | Edit Costing | Kanban Run 卡片 | Run 存在 | - |
+| T3 | Submit Quote | Costing 編輯頁 | status='draft' | `POST /cost-sheets/{id}/submit/` |
+| T4 | Accept Quote | Kanban 狀態按鈕 | status='quoted' | `POST /sample-runs/{id}/accept/` |
+| T5 | Sample Done | Kanban 狀態按鈕 | Size Set Run | `POST /sample-runs/{id}/complete/` |
+| **T6** | **Create Bulk Quote** ⭐ | Request 詳情頁 | **Size Set completed** | `POST /cost-sheets/{id}/create-bulk-quote/` |
+| T7 | Submit Bulk Quote | Bulk Costing 頁 | status='draft' | `POST /cost-sheets/{id}/submit/` |
+| **T8** | **Create Production Order** ⭐ | Bulk CostSheet 頁 | **Bulk accepted** | `POST /production-orders/` |
+| T9 | Confirm Order | PO 詳情頁 | status='draft' | `POST /production-orders/{id}/confirm/` |
+| T10 | Generate PO | PO 詳情頁 | status='confirmed' | `POST /production-orders/{id}/generate-po/` |
+
+#### 需要新增的 API
+
+```python
+# T6: 創建大貨報價（核心連結 API）⭐ 最重要
+POST /api/v2/cost-sheets/{sample_cost_sheet_id}/create-bulk-quote/
+
+# Request Body:
+{
+    "expected_quantity": 10000,  # 預估大貨數量（影響量大折扣）
+    "copy_labor_overhead": true  # 是否複製人工/製費
+}
+
+# Response:
+{
+    "id": "uuid-bulk-costsheet",
+    "costing_type": "bulk",
+    "version_no": 1,
+    "cloned_from": "uuid-sample-costsheet-v3",  # ← 連結
+    "usage_scenario": "uuid-bulk-usage",
+    "material_cost": 12500.00,
+    "unit_price": 18.50
+}
+```
+
+#### 實作步驟
+
+| 步驟 | 內容 | 狀態 |
+|------|------|------|
+| 1 | 修改 `auto_generation.py`：創建 Run 時自動生成 UsageScenario + CostSheetVersion | ✅ 完成 |
+| 2 | 新增 `create-bulk-quote` API（T6 核心連結） | ✅ 完成 |
+| 3 | Sample Costing UI（替換現有 Estimate 頁面） | ✅ 完成 |
+| 4 | Bulk Costing UI（編輯/檢視頁面） | ✅ 完成 |
+| 5 | 價格演進歷史視圖（Sample → Bulk 比較） | ✅ 完成 |
+
+#### P18 後端完成（2026-01-11）
+
+**修改文件：**
+- `backend/apps/samples/services/auto_generation.py` - 新增 `create_sample_quote_from_run()` 函數
+- `backend/apps/costing/serializers.py` - 新增 P18 序列化器
+- `backend/apps/costing/views.py` - 新增舊版 API（已棄用）
+- `backend/apps/costing/views_phase23.py` - 新增 `create_bulk_quote` 和 `accept` actions
+
+**新增 API 端點：**
+- `POST /api/v2/cost-sheet-versions/{id}/create-bulk-quote/` - T6 核心：從樣衣報價創建大貨報價
+- `POST /api/v2/cost-sheet-versions/{id}/accept/` - 確認報價
+
+#### P18 前端完成（2026-01-11）
+
+**新增/修改文件：**
+- `frontend/lib/api/costing-phase23.ts` - 新增 `createBulkQuote()` 和 `acceptCostSheetVersion()` API 函數
+- `frontend/lib/hooks/useCostingPhase23.ts` - 新增 `useCreateBulkQuote()` 和 `useAcceptCostSheetVersion()` hooks
+- `frontend/components/costing/CostingDialogs.tsx` - 新增 `CreateBulkQuoteDialog` 組件
+- `frontend/components/costing/CostingDetailDrawer.tsx` - 新增 Accept 按鈕、Create Bulk Quote 按鈕、價格演進卡片
+- `frontend/components/costing/CostingVersionsTimeline.tsx` - 新增 Bulk quote 來源標記
+
+**UI 功能：**
+- Accept Quote 按鈕：Submitted → Accepted 狀態轉換
+- Create Bulk Quote 按鈕：從 Sample 報價創建大貨報價（含對話框）
+- 價格演進卡片：Bulk 報價顯示來源 Sample 報價資訊
+- 狀態指示器：Accepted 狀態顯示提示訊息
+
+**自動生成邏輯改動：**
+- 創建 SampleRun 時自動生成：
+  1. `UsageScenario` (purpose='sample_quote')
+  2. `UsageLine[]` (從 RunBOMLine 複製)
+  3. `CostSheetGroup` (按 Style)
+  4. `CostSheetVersion` (costing_type='sample')
+  5. `CostLineV2[]` (從 UsageLine 快照)
+- 保留 `SampleCostEstimate` 創建（向後兼容）
+
+**核心連結：**
+```
+Sample CostSheetVersion (v1/v2/v3)
+         │
+         ↓ POST /create-bulk-quote/ (cloned_from)
+         │
+Bulk CostSheetVersion (v1)
+         │
+         ↓ ProductionOrder.bulk_costing_id (P17)
+         │
+MaterialRequirement (MRP)
+```
+
+#### 連貫性設計要點
+
+| 項目 | 設計 |
+|------|------|
+| **用量演進** | `pre_estimate_value` → `confirmed_value` → `locked_value` |
+| **報價版本** | Sample v1 → v2 → Bulk v1 (cloned_from = Sample v2) |
+| **價格追溯** | Bulk 報價可追溯到原始 Sample 報價 |
+| **差異分析** | 比較 Sample vs Bulk 價格差異原因 |
+| **狀態連動** | Sample accepted → 觸發 Bulk quote 創建按鈕顯示 |
+
+**現有模型：** `CostSheetVersion` + `UsageScenario` + `CostLineV2` ✅ 已存在
+
+#### P18 測試結果（2026-01-11）
+
+**測試款式：** LW1FLWS (20 BOM items)
+
+**後端 API 測試：**
+| API | 功能 | 結果 |
+|-----|------|------|
+| `POST /submit/` | Draft → Submitted | ✅ 通過 |
+| `POST /accept/` | Submitted → Accepted | ✅ 通過 |
+| `POST /create-bulk-quote/` | Sample → Bulk Clone | ✅ 通過 |
+
+**資料流驗證：**
+```
+BOMItem (20) → RunBOMLine (20) → MWO.bom_snapshot (20) ✅ 一致
+BOMItem (20) → UsageLine (19) → CostLineV2 (19) ✅ 串通
+三層共同 BOM IDs: 19 個 ✅
+```
+
+**前端 UI 測試：**
+- ✅ Sample Costing Tab 顯示 v1 (ACCEPTED)
+- ✅ Bulk Costing Tab 顯示 v1, v2
+- ✅ Create Bulk Quote Dialog 正常彈出
+- ✅ Price Evolution 卡片顯示 cloned_from 資訊
+- ✅ 點擊卡片 Drawer 正常開啟
+
+**測試頁面：** `/dashboard/revisions/{id}/costing-phase23`
+
+#### P18 流程連結加強（2026-01-11）
+
+**目標：** 打通所有流程連結，建立完整進度追蹤體系
+
+**後端改動：**
+
+| 文件 | 改動 |
+|------|------|
+| `backend/apps/samples/models.py` | SampleRun FK 添加 related_name（guidance_usage, actual_usage, costing_version）|
+| `backend/apps/orders/models.py` | ProductionOrder 添加 `approved_sample_run` FK |
+| `backend/apps/costing/views_phase23.py` | 添加 `reject` 和 `create-production-order` actions |
+| `backend/apps/procurement/models.py` | POLine 添加 `sync_material_requirements()` 方法 + Signal |
+
+**新增 API 端點：**
+- `POST /api/v2/cost-sheet-versions/{id}/reject/` - 拒絕報價
+- `POST /api/v2/cost-sheet-versions/{id}/create-production-order/` - T8 核心：從 Accepted Bulk Quote 創建 ProductionOrder
+- `GET /api/v2/progress-dashboard/` - 統一進度追蹤儀表板
+
+**前端改動：**
+- `frontend/lib/api/costing-phase23.ts` - 添加 `rejectCostSheetVersion()` 和 `createProductionOrderFromQuote()` API
+- `frontend/lib/hooks/useCostingPhase23.ts` - 添加 `useRejectCostSheetVersion()` 和 `useCreateProductionOrder()` hooks
+- `frontend/lib/api/samples.ts` - 添加 `fetchProgressDashboard()` API
+- `frontend/components/costing/CostingDetailDrawer.tsx` - 添加 Reject Quote 按鈕
+- `frontend/app/dashboard/progress/page.tsx` - **新頁面**：統一進度儀表板
+- `frontend/components/layout/Sidebar.tsx` - 添加 Progress 導航連結
+- `frontend/components/ui/skeleton.tsx` - **新組件**
+
+**流程連結完整性：**
+```
+SampleRun (Size Set, accepted)
+     │
+     ├──→ costing_version FK → CostSheetVersion (sample)
+     │                              │
+     │                              ↓ POST /create-bulk-quote/
+     │                         CostSheetVersion (bulk, accepted)
+     │                              │
+     │                              ↓ POST /create-production-order/
+     │                         ProductionOrder
+     │                              ├──→ bulk_costing FK
+     │                              ├──→ approved_sample_run FK ← 反向連結！
+     │                              │
+     │                              ↓ POST /generate-po/
+     │                         PurchaseOrder + POLine
+     │                              │
+     │                              ↓ Signal: post_save
+     │                         MaterialRequirement.status = 'ordered'/'received'
+```
+
+**進度儀表板功能：**
+- 樣衣進度（SampleRun by status, overdue/due soon）
+- 報價進度（CostSheetVersion by status/type）
+- 採購進度（PurchaseOrder by status, delivery alerts）
+- 生產進度（ProductionOrder by status）
+- 物料需求進度（MaterialRequirement by status）
+- 告警區塊（overdue items, due soon items）
+- 摘要統計（total/active counts）
+
+**頁面路徑：** `/dashboard/progress`
 
 ### P19: 庫存管理 (Inventory)
 
@@ -900,26 +1466,52 @@ cd backend && python manage.py makemigrations && python manage.py migrate
 | 後端 API | http://localhost:8000/api/v2/ |
 | Admin | http://localhost:8000/admin/ |
 
+### 導航結構（2026-01-11 更新）
+
+```
+Dashboard
+├── Progress              # 進度追蹤儀表板
+├── Upload                # 單筆 + 批量上傳（Tab 切換）
+├── Styles                # 款式列表
+├── BOM                   # 物料表
+├── Samples               # 樣衣列表
+├── Kanban                # 看板視圖
+├── Scheduler             # 甘特圖
+├── Production            # 大貨訂單
+├── Purchase Orders       # 採購單
+├── Suppliers             # 供應商
+└── Materials             # 物料主檔
+```
+
 ### 主要頁面與 API
 
 | 類型 | 路徑 |
 |------|------|
 | **前端頁面** |  |
-| 上傳文件 | `/dashboard/upload` |
+| 進度儀表板 ⭐ | `/dashboard/progress` |
+| 上傳文件（單筆+批量）| `/dashboard/upload` |
 | AI 處理頁面 | `/dashboard/documents/{id}/processing` |
 | 分類審查 | `/dashboard/documents/{id}/review` |
 | **P0 審校界面** ⭐ | `/dashboard/revisions/{id}/review` |
 | Kanban 看板 | `/dashboard/samples/kanban` |
+| 甘特圖 | `/dashboard/scheduler` |
 | BOM 編輯 | `/dashboard/revisions/{id}/bom` |
 | Costing | `/dashboard/revisions/{id}/costing-phase23` |
+| 大貨訂單 | `/dashboard/production-orders` |
+| 採購單 | `/dashboard/purchase-orders` |
+| 供應商 | `/dashboard/suppliers` |
+| 物料主檔 | `/dashboard/materials` |
 | **後端 API** |  |
 | **上傳文件** | `POST /api/v2/uploaded-documents/` |
+| **批量上傳 ZIP** ⭐ | `POST /api/v2/uploaded-documents/batch-upload/` |
+| **批量處理** ⭐ | `POST /api/v2/uploaded-documents/batch-process/` |
 | **AI 分類** | `POST /api/v2/uploaded-documents/{id}/classify/` |
 | **AI 提取** ⭐ | `POST /api/v2/uploaded-documents/{id}/extract/` |
 | **獲取狀態** | `GET /api/v2/uploaded-documents/{id}/status/` |
 | **編輯 Block** | `PATCH /api/v2/draft-blocks/{id}/` |
 | **批准 Revision** | `POST /api/v2/revisions/{id}/approve/` |
 | **創建 Sample Request** ⭐ | `POST /api/v2/sample-requests/` |
+| **進度儀表板** ⭐ | `GET /api/v2/progress-dashboard/` |
 | Kanban 列表 | `GET /api/v2/kanban/runs/` |
 | 狀態轉換 | `POST /api/v2/sample-runs/{id}/{action}/` |
 | Excel 匯出 | `GET /api/v2/sample-runs/{id}/export-{type}/` |

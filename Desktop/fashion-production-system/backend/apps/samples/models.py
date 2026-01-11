@@ -475,7 +475,7 @@ class SampleRun(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='+',
+        related_name='sample_runs_guidance',  # P19: 追蹤進度用
         help_text="Guidance usage scenario for materials planning"
     )
     actual_usage = models.ForeignKey(
@@ -483,7 +483,7 @@ class SampleRun(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='+',
+        related_name='sample_runs_actual',  # P19: 追蹤進度用
         help_text="Actual usage recorded after sample done"
     )
 
@@ -493,7 +493,7 @@ class SampleRun(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='+',
+        related_name='sample_runs',  # P19: 追蹤進度用 - 可從報價追溯樣衣
         help_text="Generated costing version from actuals"
     )
 

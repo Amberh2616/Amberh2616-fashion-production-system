@@ -310,7 +310,9 @@ class CostingService:
         # Change status
         cost_sheet.status = 'submitted'
         cost_sheet.submitted_at = timezone.now()
-        cost_sheet.submitted_by = user
+        # Handle AnonymousUser case
+        if user and hasattr(user, 'is_authenticated') and user.is_authenticated:
+            cost_sheet.submitted_by = user
 
         # R1: Update usage_scenario lock audit (第一次鎖定)
         usage_scenario = cost_sheet.usage_scenario

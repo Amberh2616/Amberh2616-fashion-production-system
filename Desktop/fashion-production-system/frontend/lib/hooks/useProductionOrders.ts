@@ -17,14 +17,20 @@ import {
   getMaterialRequirements,
   getMaterialRequirement,
   updateMaterialRequirementStock,
+  importProductionOrdersExcel,
+  reviewMaterialRequirement,
+  unreviewMaterialRequirement,
+  generatePOFromMaterialRequirement,
   type ProductionOrderListParams,
   type MaterialRequirementListParams,
+  type ImportExcelResponse,
 } from "../api/production-orders";
 import type {
   CreateProductionOrderPayload,
   UpdateProductionOrderPayload,
   CalculateMRPPayload,
   GeneratePOPayload,
+  ReviewMaterialRequirementPayload,
 } from "../types/production-order";
 
 // ============================================================================
@@ -227,6 +233,98 @@ export function useUpdateMaterialRequirementStock() {
       queryClient.invalidateQueries({
         queryKey: materialRequirementKeys.lists(),
       });
+    },
+  });
+}
+
+// ============================================================================
+// Excel Import
+// ============================================================================
+
+export function useImportProductionOrdersExcel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => importProductionOrdersExcel(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productionOrderKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: productionOrderKeys.stats() });
+    },
+  });
+}
+
+// ============================================================================
+// Material Requirement Review Mutations
+// ============================================================================
+
+/**
+ * Review and confirm a single material requirement
+ */
+export function useReviewMaterialRequirement(productionOrderId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: ReviewMaterialRequirementPayload;
+    }) => reviewMaterialRequirement(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: materialRequirementKeys.lists(),
+      });
+      if (productionOrderId) {
+        queryClient.invalidateQueries({
+          queryKey: productionOrderKeys.detail(productionOrderId),
+        });
+      }
+    },
+  });
+}
+
+/**
+ * Unreview a material requirement for re-editing
+ */
+export function useUnreviewMaterialRequirement(productionOrderId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => unreviewMaterialRequirement(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: materialRequirementKeys.lists(),
+      });
+      if (productionOrderId) {
+        queryClient.invalidateQueries({
+          queryKey: productionOrderKeys.detail(productionOrderId),
+        });
+      }
+    },
+  });
+}
+
+/**
+ * Generate a single PurchaseOrder from a reviewed material requirement
+ */
+export function useGeneratePOFromMaterialRequirement(productionOrderId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => generatePOFromMaterialRequirement(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: materialRequirementKeys.lists(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["purchase-orders"],
+      });
+      if (productionOrderId) {
+        queryClient.invalidateQueries({
+          queryKey: productionOrderKeys.detail(productionOrderId),
+        });
+      }
     },
   });
 }
