@@ -28,6 +28,22 @@ bom_translate = views.BOMItemViewSet.as_view({
 bom_translate_batch = views.BOMItemViewSet.as_view({
     'post': 'translate_batch'
 })
+# 用量三階段管理
+bom_set_pre_estimate = views.BOMItemViewSet.as_view({
+    'post': 'set_pre_estimate'
+})
+bom_confirm_consumption = views.BOMItemViewSet.as_view({
+    'post': 'confirm_consumption'
+})
+bom_lock_consumption = views.BOMItemViewSet.as_view({
+    'post': 'lock_consumption'
+})
+bom_batch_confirm = views.BOMItemViewSet.as_view({
+    'post': 'batch_confirm'
+})
+bom_batch_lock = views.BOMItemViewSet.as_view({
+    'post': 'batch_lock'
+})
 
 # Manually create nested Measurement URLs
 measurement_list = views.MeasurementViewSet.as_view({
@@ -54,6 +70,12 @@ urlpatterns = [
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/', bom_detail, name='revision-bom-detail'),
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/translate/', bom_translate, name='revision-bom-translate'),
     path('style-revisions/<uuid:revision_pk>/bom/translate-batch/', bom_translate_batch, name='revision-bom-translate-batch'),
+    # 用量三階段管理路由
+    path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/set-pre-estimate/', bom_set_pre_estimate, name='revision-bom-set-pre-estimate'),
+    path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/confirm-consumption/', bom_confirm_consumption, name='revision-bom-confirm-consumption'),
+    path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/lock-consumption/', bom_lock_consumption, name='revision-bom-lock-consumption'),
+    path('style-revisions/<uuid:revision_pk>/bom/batch-confirm/', bom_batch_confirm, name='revision-bom-batch-confirm'),
+    path('style-revisions/<uuid:revision_pk>/bom/batch-lock/', bom_batch_lock, name='revision-bom-batch-lock'),
     # Nested Measurement routes under revisions
     path('style-revisions/<uuid:revision_pk>/measurements/', measurement_list, name='revision-measurement-list'),
     path('style-revisions/<uuid:revision_pk>/measurements/<uuid:pk>/', measurement_detail, name='revision-measurement-detail'),

@@ -3,7 +3,19 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchBOMItems, fetchBOMItem, updateBOMItem, deleteBOMItem, translateBOMItem, translateBOMBatch } from '../api/bom';
+import {
+  fetchBOMItems,
+  fetchBOMItem,
+  updateBOMItem,
+  deleteBOMItem,
+  translateBOMItem,
+  translateBOMBatch,
+  setPreEstimate,
+  confirmConsumption,
+  lockConsumption,
+  batchConfirmConsumption,
+  batchLockConsumption,
+} from '../api/bom';
 import type { UpdateBOMItemPayload } from '../types/bom';
 
 /**
@@ -110,6 +122,81 @@ export function useTranslateBOMBatch(revisionId: string) {
 
   return useMutation({
     mutationFn: (force: boolean = false) => translateBOMBatch(revisionId, force),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+// ====== 用量三階段管理 Hooks ======
+
+/**
+ * 設置預估用量
+ */
+export function useSetPreEstimate(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ itemId, value }: { itemId: string; value: string }) =>
+      setPreEstimate(revisionId, itemId, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * 確認用量
+ */
+export function useConfirmConsumption(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ itemId, value, source }: { itemId: string; value: string; source?: string }) =>
+      confirmConsumption(revisionId, itemId, value, source),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * 鎖定用量
+ */
+export function useLockConsumption(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (itemId: string) => lockConsumption(revisionId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * 批量確認用量
+ */
+export function useBatchConfirmConsumption(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ items, source }: { items: Array<{ id: string; value: string }>; source?: string }) =>
+      batchConfirmConsumption(revisionId, items, source),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * 批量鎖定用量
+ */
+export function useBatchLockConsumption(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => batchLockConsumption(revisionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
     },

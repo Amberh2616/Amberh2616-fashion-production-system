@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -20,7 +21,27 @@ import { BOMEditDrawer } from "@/components/bom/BOMEditDrawer";
 import { BOMTranslationDrawer } from "@/components/bom/BOMTranslationDrawer";
 import { EditableConsumptionCell } from "@/components/bom/EditableConsumptionCell";
 import type { BOMItem } from "@/lib/types/bom";
-import { ArrowUpDown, Languages, Sparkles } from "lucide-react";
+import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+
+const API_BASE = "http://localhost:8000";
+
+// 取得 Style 資訊（透過 revision → style）
+async function fetchStyleInfo(revisionId: string) {
+  // 先取得 revision
+  const revResponse = await fetch(`${API_BASE}/api/v2/style-revisions/${revisionId}/`);
+  if (!revResponse.ok) throw new Error("Failed to fetch revision");
+  const revData = await revResponse.json();
+  const styleId = revData.data?.style || revData.style;
+
+  if (!styleId) return null;
+
+  // 再取得 style
+  const styleResponse = await fetch(`${API_BASE}/api/v2/styles/${styleId}/`);
+  if (!styleResponse.ok) throw new Error("Failed to fetch style");
+  const styleData = await styleResponse.json();
+  return styleData.data || styleData;
+}
 
 const columnHelper = createColumnHelper<BOMItem>();
 
@@ -35,6 +56,16 @@ export default function BOMPage() {
 
   const { data: bomData, isLoading, error } = useBOMItems(revisionId);
   const translateBatchMutation = useTranslateBOMBatch(revisionId);
+
+  // 取得款式資訊
+  const { data: styleData } = useQuery({
+    queryKey: ["style-info", revisionId],
+    queryFn: () => fetchStyleInfo(revisionId),
+    enabled: !!revisionId,
+  });
+
+  const styleNumber = styleData?.style_number || "";
+  const styleName = styleData?.style_name || "";
 
   const columns = useMemo(
     () => [
@@ -260,10 +291,26 @@ export default function BOMPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">BOM 物料清單</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            管理物料清單、供應商編號、用量與交期
-          </p>
+          <div className="flex items-center gap-3 mb-2">
+            <Link href="/dashboard/bom">
+              <Button variant="ghost" size="sm" className="gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                返回
+              </Button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-3">
+            <Package className="h-6 w-6 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold">
+                {styleNumber || "載入中..."}
+                {styleName && <span className="text-muted-foreground font-normal ml-2">- {styleName}</span>}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                BOM 物料清單 - 管理物料、用量與交期
+              </p>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button

@@ -11,9 +11,11 @@ from .models import Style, StyleRevision, BOMItem, Measurement, ConstructionStep
 class BOMItemSerializer(serializers.ModelSerializer):
     """Verified BOM Item (from DB)"""
     category_display = serializers.CharField(source='get_category_display', read_only=True)
-    consumption_maturity_display = serializers.CharField(
-        source='get_consumption_maturity_display', read_only=True
+    consumption_maturity_display = serializers.SerializerMethodField()
+    current_consumption = serializers.DecimalField(
+        max_digits=10, decimal_places=4, read_only=True
     )
+    can_edit_consumption = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BOMItem
@@ -22,12 +24,28 @@ class BOMItemSerializer(serializers.ModelSerializer):
             'material_name', 'supplier', 'supplier_article_no', 'color', 'color_code',
             'material_status',
             'consumption', 'consumption_maturity', 'consumption_maturity_display',
+            # 用量三階段
+            'pre_estimate_value', 'confirmed_value', 'locked_value',
+            'current_consumption', 'can_edit_consumption',
+            'consumption_confirmed_at', 'consumption_locked_at',
+            'consumption_history',
+            # 其他欄位
             'unit', 'placement', 'wastage_rate', 'unit_price', 'leadtime_days',
             'ai_confidence', 'is_verified',
             # Translation fields
             'material_name_zh', 'description_zh', 'translation_status',
             'translated_at', 'translated_by',
         ]
+
+    def get_consumption_maturity_display(self, obj):
+        """用量成熟度顯示名稱"""
+        displays = {
+            'unknown': '待填寫',
+            'pre_estimate': '預估',
+            'confirmed': '已確認',
+            'locked': '已鎖定',
+        }
+        return displays.get(obj.consumption_maturity, obj.consumption_maturity)
 
 
 class MeasurementSerializer(serializers.ModelSerializer):

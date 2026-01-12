@@ -252,6 +252,45 @@ class BOMItem(models.Model):
         choices=CONSUMPTION_MATURITY_CHOICES,
         default='unknown'
     )
+
+    # 用量三階段演進
+    pre_estimate_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="預估用量（工廠經驗值，用於 RFQ）"
+    )
+    confirmed_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="確認用量（Marker Report / 樣衣實際）"
+    )
+    locked_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="鎖定用量（大貨確認後不可改）"
+    )
+    consumption_history = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="用量變更歷史記錄"
+    )
+    consumption_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="用量確認時間"
+    )
+    consumption_locked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="用量鎖定時間"
+    )
+
     unit = models.CharField(max_length=20, help_text="e.g., yards, meters, pcs")
 
     # Placement (JSONField for SQLite compatibility)
@@ -335,6 +374,98 @@ class BOMItem(models.Model):
 
     def __str__(self):
         return f"{self.revision} - {self.item_number}. {self.material_name}"
+
+    @property
+    def current_consumption(self):
+        """
+        返回當前最佳用量值（按成熟度優先級）
+        locked > confirmed > pre_estimate > consumption
+        """
+        if self.locked_value is not None:
+            return self.locked_value
+        if self.confirmed_value is not None:
+            return self.confirmed_value
+        if self.pre_estimate_value is not None:
+            return self.pre_estimate_value
+        return self.consumption
+
+    @property
+    def consumption_maturity_display(self):
+        """用量成熟度顯示名稱"""
+        displays = {
+            'unknown': '待填寫',
+            'pre_estimate': '預估',
+            'confirmed': '已確認',
+            'locked': '已鎖定',
+        }
+        return displays.get(self.consumption_maturity, self.consumption_maturity)
+
+    def set_pre_estimate(self, value, user=None):
+        """設置預估用量"""
+        from django.utils import timezone
+        old_value = self.pre_estimate_value
+        self.pre_estimate_value = value
+        self.consumption_maturity = 'pre_estimate'
+        # 記錄歷史
+        history_entry = {
+            'action': 'set_pre_estimate',
+            'old_value': str(old_value) if old_value else None,
+            'new_value': str(value),
+            'timestamp': timezone.now().isoformat(),
+            'user': str(user) if user else None,
+        }
+        if not self.consumption_history:
+            self.consumption_history = []
+        self.consumption_history.append(history_entry)
+        self.save()
+
+    def confirm_consumption(self, value, source='manual', user=None):
+        """確認用量（來自 Marker Report 或樣衣實際）"""
+        from django.utils import timezone
+        old_value = self.confirmed_value
+        self.confirmed_value = value
+        self.consumption_maturity = 'confirmed'
+        self.consumption_confirmed_at = timezone.now()
+        # 記錄歷史
+        history_entry = {
+            'action': 'confirm',
+            'source': source,
+            'old_value': str(old_value) if old_value else None,
+            'new_value': str(value),
+            'timestamp': timezone.now().isoformat(),
+            'user': str(user) if user else None,
+        }
+        if not self.consumption_history:
+            self.consumption_history = []
+        self.consumption_history.append(history_entry)
+        self.save()
+
+    def lock_consumption(self, user=None):
+        """鎖定用量（大貨報價確認後調用）"""
+        from django.utils import timezone
+        if self.consumption_maturity == 'locked':
+            raise ValueError("用量已經鎖定，無法再次鎖定")
+        if self.confirmed_value is None:
+            raise ValueError("必須先確認用量才能鎖定")
+
+        self.locked_value = self.confirmed_value
+        self.consumption_maturity = 'locked'
+        self.consumption_locked_at = timezone.now()
+        # 記錄歷史
+        history_entry = {
+            'action': 'lock',
+            'locked_value': str(self.locked_value),
+            'timestamp': timezone.now().isoformat(),
+            'user': str(user) if user else None,
+        }
+        if not self.consumption_history:
+            self.consumption_history = []
+        self.consumption_history.append(history_entry)
+        self.save()
+
+    def can_edit_consumption(self):
+        """檢查是否可以編輯用量"""
+        return self.consumption_maturity != 'locked'
 
 
 class Measurement(models.Model):

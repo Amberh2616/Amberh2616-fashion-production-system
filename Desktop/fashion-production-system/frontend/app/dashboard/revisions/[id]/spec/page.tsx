@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,7 +19,27 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MeasurementTranslationDrawer } from "@/components/measurement/MeasurementTranslationDrawer";
 import type { MeasurementItem } from "@/lib/types/measurement";
-import { ArrowUpDown, Languages, Sparkles } from "lucide-react";
+import { ArrowUpDown, Languages, Sparkles, Ruler, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+
+const API_BASE = "http://localhost:8000";
+
+// 取得 Style 資訊（透過 revision → style）
+async function fetchStyleInfo(revisionId: string) {
+  // 先取得 revision
+  const revResponse = await fetch(`${API_BASE}/api/v2/style-revisions/${revisionId}/`);
+  if (!revResponse.ok) throw new Error("Failed to fetch revision");
+  const revData = await revResponse.json();
+  const styleId = revData.data?.style || revData.style;
+
+  if (!styleId) return null;
+
+  // 再取得 style
+  const styleResponse = await fetch(`${API_BASE}/api/v2/styles/${styleId}/`);
+  if (!styleResponse.ok) throw new Error("Failed to fetch style");
+  const styleData = await styleResponse.json();
+  return styleData.data || styleData;
+}
 
 const columnHelper = createColumnHelper<MeasurementItem>();
 
@@ -32,6 +53,16 @@ export default function SpecPage() {
 
   const { data: measurementData, isLoading, error } = useMeasurements(revisionId);
   const translateBatchMutation = useTranslateMeasurementBatch(revisionId);
+
+  // 取得款式資訊
+  const { data: styleData } = useQuery({
+    queryKey: ["style-info", revisionId],
+    queryFn: () => fetchStyleInfo(revisionId),
+    enabled: !!revisionId,
+  });
+
+  const styleNumber = styleData?.style_number || "";
+  const styleName = styleData?.style_name || "";
 
   // Get unique size keys from all measurements
   const sizeKeys = useMemo(() => {
@@ -202,10 +233,26 @@ export default function SpecPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Spec 尺寸表</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            管理尺寸規格與中文翻譯
-          </p>
+          <div className="flex items-center gap-3 mb-2">
+            <Link href="/dashboard/bom">
+              <Button variant="ghost" size="sm" className="gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                返回
+              </Button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-3">
+            <Ruler className="h-6 w-6 text-purple-600" />
+            <div>
+              <h1 className="text-2xl font-bold">
+                {styleNumber || "載入中..."}
+                {styleName && <span className="text-muted-foreground font-normal ml-2">- {styleName}</span>}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Spec 尺寸表 - 管理尺寸規格與中文翻譯
+              </p>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button

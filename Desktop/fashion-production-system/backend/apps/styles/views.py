@@ -98,6 +98,212 @@ class BOMItemViewSet(viewsets.ModelViewSet):
         result = translate_bom_items(revision_id=revision_pk, force=force)
         return Response(result)
 
+    # ====== 用量三階段管理 API ======
+
+    @action(detail=True, methods=['post'], url_path='set-pre-estimate')
+    def set_pre_estimate(self, request, revision_pk=None, pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/{id}/set-pre-estimate/
+        設置預估用量（工廠經驗值）
+        Body: { "value": "0.82" }
+        """
+        from decimal import Decimal, InvalidOperation
+
+        item = self.get_object()
+
+        if not item.can_edit_consumption():
+            return Response(
+                {'error': '用量已鎖定，無法修改'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        value = request.data.get('value')
+        if value is None:
+            return Response(
+                {'error': '必須提供 value 參數'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decimal_value = Decimal(str(value))
+        except InvalidOperation:
+            return Response(
+                {'error': '無效的數值格式'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item.set_pre_estimate(decimal_value, user=request.user)
+        self._sync_usage_lines(item)
+
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='confirm-consumption')
+    def confirm_consumption(self, request, revision_pk=None, pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/{id}/confirm-consumption/
+        確認用量（來自 Marker Report 或樣衣實際）
+        Body: { "value": "0.78", "source": "marker_report" }
+        """
+        from decimal import Decimal, InvalidOperation
+
+        item = self.get_object()
+
+        if not item.can_edit_consumption():
+            return Response(
+                {'error': '用量已鎖定，無法修改'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        value = request.data.get('value')
+        source = request.data.get('source', 'manual')
+
+        if value is None:
+            return Response(
+                {'error': '必須提供 value 參數'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decimal_value = Decimal(str(value))
+        except InvalidOperation:
+            return Response(
+                {'error': '無效的數值格式'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item.confirm_consumption(decimal_value, source=source, user=request.user)
+        self._sync_usage_lines(item)
+
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='lock-consumption')
+    def lock_consumption(self, request, revision_pk=None, pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/{id}/lock-consumption/
+        鎖定用量（大貨報價確認後調用）
+        """
+        item = self.get_object()
+
+        if item.consumption_maturity == 'locked':
+            return Response(
+                {'error': '用量已經鎖定'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if item.confirmed_value is None:
+            return Response(
+                {'error': '必須先確認用量才能鎖定'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            item.lock_consumption(user=request.user)
+            self._sync_usage_lines(item)
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='batch-confirm')
+    def batch_confirm(self, request, revision_pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/batch-confirm/
+        批量確認用量
+        Body: { "items": [{"id": "uuid", "value": "0.78"}], "source": "marker_report" }
+        """
+        from decimal import Decimal, InvalidOperation
+
+        items_data = request.data.get('items', [])
+        source = request.data.get('source', 'manual')
+        results = []
+        errors = []
+
+        for item_data in items_data:
+            item_id = item_data.get('id')
+            value = item_data.get('value')
+
+            try:
+                item = BOMItem.objects.get(pk=item_id, revision_id=revision_pk)
+                if not item.can_edit_consumption():
+                    errors.append({'id': item_id, 'error': '用量已鎖定'})
+                    continue
+
+                decimal_value = Decimal(str(value))
+                item.confirm_consumption(decimal_value, source=source, user=request.user)
+                self._sync_usage_lines(item)
+                results.append({'id': item_id, 'success': True})
+            except BOMItem.DoesNotExist:
+                errors.append({'id': item_id, 'error': '物料不存在'})
+            except InvalidOperation:
+                errors.append({'id': item_id, 'error': '無效的數值格式'})
+            except Exception as e:
+                errors.append({'id': item_id, 'error': str(e)})
+
+        return Response({
+            'confirmed': len(results),
+            'errors': errors,
+            'results': results
+        })
+
+    @action(detail=False, methods=['post'], url_path='batch-lock')
+    def batch_lock(self, request, revision_pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/batch-lock/
+        批量鎖定用量（所有已確認的物料）
+        """
+        items = BOMItem.objects.filter(
+            revision_id=revision_pk,
+            consumption_maturity='confirmed'
+        )
+
+        locked_count = 0
+        errors = []
+
+        for item in items:
+            try:
+                item.lock_consumption(user=request.user)
+                self._sync_usage_lines(item)
+                locked_count += 1
+            except ValueError as e:
+                errors.append({'id': str(item.id), 'error': str(e)})
+
+        return Response({
+            'locked': locked_count,
+            'errors': errors
+        })
+
+    def _sync_usage_lines(self, bom_item):
+        """同步 BOMItem 用量到關聯的 UsageLine"""
+        try:
+            from apps.costing.models import UsageLine
+
+            # 取得當前最佳用量
+            consumption = bom_item.current_consumption
+            if consumption is None:
+                return
+
+            # 更新所有關聯的 UsageLine
+            usage_lines = UsageLine.objects.filter(bom_item=bom_item)
+            updated_count = usage_lines.update(consumption=consumption)
+
+            # 如果是 locked，同步到 MaterialRequirement
+            if bom_item.consumption_maturity == 'locked':
+                from apps.orders.models import MaterialRequirement
+                MaterialRequirement.objects.filter(bom_item=bom_item).update(
+                    consumption_per_piece=consumption
+                )
+
+        except Exception as e:
+            # Log error but don't fail the main operation
+            import logging
+            logging.error(f"Failed to sync usage lines for BOMItem {bom_item.id}: {e}")
+
 
 class MeasurementViewSet(viewsets.ModelViewSet):
     """

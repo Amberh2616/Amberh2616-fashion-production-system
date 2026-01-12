@@ -72,3 +72,80 @@ export async function translateBOMBatch(
     body: JSON.stringify({ force }),
   });
 }
+
+// ====== 用量三階段管理 API ======
+
+/**
+ * 設置預估用量
+ */
+export async function setPreEstimate(
+  revisionId: string,
+  itemId: string,
+  value: string
+): Promise<BOMItem> {
+  return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/set-pre-estimate/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ value }),
+  });
+}
+
+/**
+ * 確認用量
+ */
+export async function confirmConsumption(
+  revisionId: string,
+  itemId: string,
+  value: string,
+  source: string = 'manual'
+): Promise<BOMItem> {
+  return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/confirm-consumption/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ value, source }),
+  });
+}
+
+/**
+ * 鎖定用量
+ */
+export async function lockConsumption(
+  revisionId: string,
+  itemId: string
+): Promise<BOMItem> {
+  return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/lock-consumption/`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * 批量確認用量
+ */
+export async function batchConfirmConsumption(
+  revisionId: string,
+  items: Array<{ id: string; value: string }>,
+  source: string = 'manual'
+): Promise<{ confirmed: number; errors: Array<{ id: string; error: string }> }> {
+  return apiClient(`/style-revisions/${revisionId}/bom/batch-confirm/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ items, source }),
+  });
+}
+
+/**
+ * 批量鎖定用量
+ */
+export async function batchLockConsumption(
+  revisionId: string
+): Promise<{ locked: number; errors: Array<{ id: string; error: string }> }> {
+  return apiClient(`/style-revisions/${revisionId}/bom/batch-lock/`, {
+    method: 'POST',
+  });
+}
