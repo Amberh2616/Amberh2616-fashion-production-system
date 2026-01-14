@@ -31,7 +31,7 @@ export interface Revision {
   id: string;
   filename: string;
   page_count: number;
-  status: 'pending' | 'processing' | 'draft' | 'approved';
+  status: 'pending' | 'processing' | 'draft' | 'approved' | 'completed';
   file_url: string;
   pages: RevisionPage[];
 }

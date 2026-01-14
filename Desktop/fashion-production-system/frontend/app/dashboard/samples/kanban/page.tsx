@@ -116,6 +116,9 @@ export default function KanbanPage() {
   // P1: Alerts panel visibility
   const [showAlerts, setShowAlerts] = useState(true);
 
+  // Complete MWO export loading state
+  const [exportingMwoRunId, setExportingMwoRunId] = useState<string | null>(null);
+
   // Build filters
   const filters: KanbanFilters = useMemo(() => {
     const presetFilters = VIEW_PRESETS.find((p) => p.key === activePreset)?.filters || {};
@@ -522,6 +525,8 @@ export default function KanbanPage() {
             isTransitioning={transitionMutation.isPending}
             selectedRuns={selectedRuns}
             onToggleSelect={toggleRunSelection}
+            exportingMwoRunId={exportingMwoRunId}
+            setExportingMwoRunId={setExportingMwoRunId}
           />
         ))}
       </div>
@@ -539,6 +544,8 @@ function KanbanLaneComponent({
   isTransitioning,
   selectedRuns,
   onToggleSelect,
+  exportingMwoRunId,
+  setExportingMwoRunId,
 }: {
   lane: KanbanLane;
   runs: KanbanRunItem[];
@@ -548,6 +555,8 @@ function KanbanLaneComponent({
   isTransitioning: boolean;
   selectedRuns: Set<string>;
   onToggleSelect: (runId: string) => void;
+  exportingMwoRunId: string | null;
+  setExportingMwoRunId: (id: string | null) => void;
 }) {
   return (
     <div
@@ -613,6 +622,8 @@ function KanbanLaneComponent({
                 isTransitioning={isTransitioning}
                 isSelected={selectedRuns.has(run.id)}
                 onToggleSelect={() => onToggleSelect(run.id)}
+                exportingMwoRunId={exportingMwoRunId}
+                setExportingMwoRunId={setExportingMwoRunId}
               />
             ))
           )}
@@ -629,12 +640,16 @@ function KanbanCard({
   isTransitioning,
   isSelected,
   onToggleSelect,
+  exportingMwoRunId,
+  setExportingMwoRunId,
 }: {
   run: KanbanRunItem;
   onNextAction: (run: KanbanRunItem) => void;
   isTransitioning: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
+  exportingMwoRunId: string | null;
+  setExportingMwoRunId: (id: string | null) => void;
 }) {
   const runTypeBadge = RUN_TYPE_BADGES[run.run_type] || RUN_TYPE_BADGES.other;
   const priorityColor = PRIORITY_COLORS[run.sample_request.priority] || PRIORITY_COLORS.normal;
@@ -841,19 +856,41 @@ function KanbanCard({
         <button
           onClick={async (e) => {
             e.stopPropagation();
+            if (exportingMwoRunId === run.id) return; // Prevent double-click
+            setExportingMwoRunId(run.id);
             try {
               const blob = await exportMWOCompletePDF(run.id);
               downloadBlob(blob, `MWO_Complete_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
             } catch (error) {
               console.error('Export Complete MWO failed:', error);
               alert('Failed to export Complete MWO. Please try again.');
+            } finally {
+              setExportingMwoRunId(null);
             }
           }}
-          className="w-full flex items-center justify-center gap-1 py-1.5 text-xs bg-indigo-100 hover:bg-indigo-200 rounded transition-colors font-medium"
+          disabled={exportingMwoRunId === run.id}
+          className={cn(
+            "w-full flex items-center justify-center gap-1 py-1.5 text-xs rounded transition-colors font-medium",
+            exportingMwoRunId === run.id
+              ? "bg-indigo-300 cursor-wait"
+              : "bg-indigo-100 hover:bg-indigo-200"
+          )}
           title="Download Complete MWO (Tech Pack + BOM + Spec with translations)"
         >
-          <Package className="h-3 w-3" />
-          <span>Complete MWO</span>
+          {exportingMwoRunId === run.id ? (
+            <>
+              <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Generating...</span>
+            </>
+          ) : (
+            <>
+              <Package className="h-3 w-3" />
+              <span>Complete MWO</span>
+            </>
+          )}
         </button>
       </div>
     </div>

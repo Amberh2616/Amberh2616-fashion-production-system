@@ -133,14 +133,9 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """
-        P0-1: Create SampleRequest with auto-generation
+        方案 B：創建 SampleRequest（只存基本資料）
 
-        When a request is created, automatically generates:
-        - SampleRun #1
-        - RunBOMLine snapshots
-        - RunOperation snapshots
-        - MWO (draft)
-        - Estimate (draft)
+        不自動生成 Run/MWO/Costing，等用戶按「確認樣衣」才觸發。
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -153,26 +148,70 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Build payload for auto-generation service
+        # 只創建基本的 SampleRequest，不自動生成文件
+        sample_request = SampleRequest.objects.create(
+            revision=revision,
+            request_type=serializer.validated_data.get('request_type', 'proto'),
+            request_type_custom=serializer.validated_data.get('request_type_custom', ''),
+            quantity_requested=serializer.validated_data.get('quantity_requested', 1),
+            priority=serializer.validated_data.get('priority', 'normal'),
+            due_date=serializer.validated_data.get('due_date'),
+            brand_name=serializer.validated_data.get('brand_name', ''),
+            need_quote_first=serializer.validated_data.get('need_quote_first', False),
+            notes_internal=serializer.validated_data.get('notes_internal', ''),
+            notes_customer=serializer.validated_data.get('notes_customer', ''),
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+
+        # Serialize the created request
+        response_serializer = self.get_serializer(sample_request)
+
+        return Response({
+            "data": response_serializer.data,
+            "message": "樣衣請求已創建，請按「確認樣衣」生成 MWO 與報價單。",
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='confirm')
+    def confirm_sample(self, request, pk=None):
+        """
+        方案 B：確認樣衣 - 觸發 BOM/Spec 整合並生成文件
+
+        當用戶按「確認樣衣」時：
+        1. 創建 SampleRun #1
+        2. 快照 BOM 資料
+        3. 快照 Spec 資料
+        4. 生成 MWO (draft)
+        5. 生成報價單 (draft)
+        """
+        sample_request = self.get_object()
+
+        # 檢查是否已經有 Run（避免重複確認）
+        if sample_request.runs.exists():
+            return Response({
+                "detail": "此請求已確認過，已有 Sample Run 存在。",
+                "runs": [{"id": str(r.id), "run_no": r.run_no} for r in sample_request.runs.all()]
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 準備 payload
         payload = {
-            'request_type': serializer.validated_data.get('request_type', 'proto'),
-            'request_type_custom': serializer.validated_data.get('request_type_custom', ''),
-            'quantity_requested': serializer.validated_data.get('quantity_requested', 1),
-            'priority': serializer.validated_data.get('priority', 'normal'),
-            'due_date': serializer.validated_data.get('due_date'),
-            'brand_name': serializer.validated_data.get('brand_name', ''),
-            'need_quote_first': serializer.validated_data.get('need_quote_first', False),
-            'notes_internal': serializer.validated_data.get('notes_internal', ''),
-            'notes_customer': serializer.validated_data.get('notes_customer', ''),
+            'request_type': sample_request.request_type,
+            'request_type_custom': sample_request.request_type_custom,
+            'quantity_requested': sample_request.quantity_requested,
+            'priority': sample_request.priority,
+            'due_date': sample_request.due_date,
+            'brand_name': sample_request.brand_name,
+            'need_quote_first': sample_request.need_quote_first,
+            'notes_internal': sample_request.notes_internal,
+            'notes_customer': sample_request.notes_customer,
         }
 
         try:
-            # Use auto-generation service
-            sample_request, sample_run, documents = create_with_initial_run(
-                revision_id=str(revision.id),
+            # 使用 auto_generation 服務生成文件
+            from .services.auto_generation import generate_documents_for_request
+            sample_run, documents = generate_documents_for_request(
+                sample_request=sample_request,
                 payload=payload,
                 user=request.user if request.user.is_authenticated else None,
-                skip_validation=True,  # Skip BOM verification for now (development)
             )
         except DjangoValidationError as e:
             return Response(
@@ -180,20 +219,15 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Serialize the created request
-        response_serializer = self.get_serializer(sample_request)
-
         return Response({
-            "data": response_serializer.data,
-            "initial_run": {
+            "message": "樣衣已確認！BOM/Spec 已整合，MWO 與報價單已生成。",
+            "sample_run": {
                 "id": str(sample_run.id),
                 "run_no": sample_run.run_no,
                 "status": sample_run.status,
-                "source_revision_label": sample_run.source_revision_label,
-                "source_hash": sample_run.source_hash,
             },
             "documents": documents,
-        }, status=status.HTTP_201_CREATED)
+        }, status=status.HTTP_200_OK)
 
     def _handle_transition(self, request, pk, action_name):
         """

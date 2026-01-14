@@ -66,10 +66,23 @@ export default function ReviewPage() {
         // Mark as completed
         setIsCompleted(true)
 
-        // ⚡ Auto-navigate to P0 review interface if tech_pack_revision_id exists
+        // ⚡ Auto-navigate based on file type
         if (data.tech_pack_revision_id) {
+          const fileType = data.classification_result?.file_type || 'tech_pack'
+          const hasBOM = data.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
+          const hasSpec = data.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
+
           setTimeout(() => {
-            router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/review`)
+            if (fileType === 'bom' || hasBOM) {
+              // BOM file → go to BOM edit page
+              router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/bom`)
+            } else if (fileType === 'measurement' || hasSpec) {
+              // Measurement file → go to Spec edit page
+              router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/spec`)
+            } else {
+              // Tech Pack → go to translation review page
+              router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/review`)
+            }
           }, 2000)  // Wait 2 seconds to show completion message
         }
       }
@@ -109,10 +122,23 @@ export default function ReviewPage() {
           setIsCompleted(true)
           setStatus(statusData)
 
-          // ⚡ Auto-navigate to P0 review interface for Tech Pack translation editing
+          // ⚡ Auto-navigate based on file type
           if (statusData.tech_pack_revision_id) {
+            const fileType = statusData.classification_result?.file_type || 'tech_pack'
+            const hasBOM = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
+            const hasSpec = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
+
             setTimeout(() => {
-              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/review`)
+              if (fileType === 'bom' || hasBOM) {
+                // BOM file → go to BOM edit page
+                router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/bom`)
+              } else if (fileType === 'measurement' || hasSpec) {
+                // Measurement file → go to Spec edit page
+                router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/spec`)
+              } else {
+                // Tech Pack → go to translation review page
+                router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/review`)
+              }
             }, 2000)  // Wait 2 seconds to show success message
           }
         } else if (statusData.status === 'failed') {

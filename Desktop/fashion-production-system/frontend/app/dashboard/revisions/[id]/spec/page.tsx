@@ -17,9 +17,9 @@ import { useMeasurements, useTranslateMeasurementBatch } from "@/lib/hooks/useMe
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { MeasurementTranslationDrawer } from "@/components/measurement/MeasurementTranslationDrawer";
+import { MeasurementEditDrawer } from "@/components/measurement/MeasurementEditDrawer";
 import type { MeasurementItem } from "@/lib/types/measurement";
-import { ArrowUpDown, Languages, Sparkles, Ruler, ArrowLeft } from "lucide-react";
+import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 const API_BASE = "http://localhost:8000";
@@ -46,7 +46,7 @@ const columnHelper = createColumnHelper<MeasurementItem>();
 export default function SpecPage() {
   const params = useParams();
   const revisionId = params.id as string;
-  const [translatingItem, setTranslatingItem] = useState<MeasurementItem | null>(null);
+  const [editingItem, setEditingItem] = useState<MeasurementItem | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -175,10 +175,10 @@ export default function SpecPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setTranslatingItem(row.original)}
-            title="翻譯"
+            onClick={() => setEditingItem(row.original)}
+            title="編輯"
           >
-            <Languages className="h-4 w-4" />
+            <Pencil className="h-4 w-4" />
           </Button>
         ),
         size: 60,
@@ -234,10 +234,10 @@ export default function SpecPage() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <Link href="/dashboard/bom">
+            <Link href="/dashboard/spec">
               <Button variant="ghost" size="sm" className="gap-1">
                 <ArrowLeft className="h-4 w-4" />
-                返回
+                返回列表
               </Button>
             </Link>
           </div>
@@ -339,13 +339,13 @@ export default function SpecPage() {
         </div>
       </div>
 
-      {/* Translation Drawer */}
-      {translatingItem && (
-        <MeasurementTranslationDrawer
-          item={translatingItem}
+      {/* Edit Drawer */}
+      {editingItem && (
+        <MeasurementEditDrawer
+          item={editingItem}
           revisionId={revisionId}
-          open={!!translatingItem}
-          onClose={() => setTranslatingItem(null)}
+          open={!!editingItem}
+          onClose={() => setEditingItem(null)}
         />
       )}
     </div>

@@ -23,6 +23,8 @@ import {
   Building2,
   Boxes,
   Activity,
+  Calculator,
+  Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -33,6 +35,8 @@ const navigation = [
   { name: "Upload", href: "/dashboard/upload", icon: Upload },
   { name: "Styles", href: "/dashboard/styles", icon: FolderKanban },
   { name: "BOM", href: "/dashboard/bom", icon: Package },
+  { name: "Spec", href: "/dashboard/spec", icon: Ruler },
+  { name: "Costing", href: "/dashboard/costing", icon: Calculator },
   { name: "Samples", href: "/dashboard/samples", icon: Shirt },
   { name: "Kanban", href: "/dashboard/samples/kanban", icon: Columns3 },
   { name: "Scheduler", href: "/dashboard/scheduler", icon: GanttChart },

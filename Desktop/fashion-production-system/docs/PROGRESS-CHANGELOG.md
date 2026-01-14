@@ -1,6 +1,6 @@
 # Fashion Production System - Progress Changelog
 
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-01-14
 
 此文檔記錄所有功能開發的詳細進度和技術實現細節。
 
@@ -47,6 +47,7 @@
 | **P18** | 流程連結 + 進度追蹤儀表板 | 2026-01-11 |
 | **DA-1** | 批量上傳 Tech Pack（ZIP）| 2026-01-11 |
 | **P19** | BOM 用量三階段管理 | 2026-01-13 |
+| **P20-A** | Sample Request 兩步確認流程 | 2026-01-14 |
 
 ---
 
@@ -54,9 +55,16 @@
 
 ### P0-1: Request 自動生成（2026-01-01）
 
+> ⚠️ **已由 P20-A 取代**：改為兩步確認流程，創建時不自動生成。
+
 ```
+（舊流程 - 已棄用）
 POST /api/v2/sample-requests/ → 自動生成：
 SampleRun #1 + RunBOMLine + RunOperation + MWO draft + Estimate draft
+
+（新流程 - P20-A）
+POST /api/v2/sample-requests/ → 只創建基本 Request
+POST /api/v2/sample-requests/{id}/confirm/ → 觸發生成文件
 ```
 
 **關鍵文件：** `apps/samples/services/auto_generation.py`
@@ -694,6 +702,34 @@ interface ConsumptionHistoryEntry {
 └─────────────────────────────────────────────────┘
 ```
 
+### P19 性能測試（2026-01-13）
+
+**測試目標：** 驗證系統能處理 100 款完整流程
+
+**測試結果：**
+```
+100 Styles (每款 6-8 BOM items)
+→ 300 Sample Runs (Proto/SMS/PP)
+→ 300 Cost Estimates
+→ 100 Production Orders
+→ 600 Material Requirements
+→ 100 Purchase Orders
+
+總執行時間：50.22 秒
+平均每款：0.5 秒
+```
+
+**結論：** 系統可穩定處理 100+ 款的完整業務流程。
+
+**測試後清理：**
+- 刪除測試組織 "Test Factory 100" 及其所有相關數據
+- 刪除測試腳本：`test_100_styles.py`, `test_real_query_perf.py`, `test_100_styles_e2e.py`
+- 最終數據：6 Styles, 14 SampleRuns, 5 ProductionOrders, 21 PurchaseOrders
+
+**確認的 UI 頁面：**
+- 報價列表頁：`/dashboard/costing`
+- Sample/Bulk Costing 詳情頁：`/dashboard/revisions/{id}/costing-phase23` ✅ 正確版本
+
 **數據同步：**
 - BOMItem 用量變更自動同步到 UsageLine（報價用）
 - locked_value 同步到 MaterialRequirement（採購用）
@@ -846,6 +882,127 @@ BOMItem (20) → UsageLine (19) → CostLineV2 (19) ✅ 串通
 三層共同 BOM IDs: 19 個 ✅
 ```
 
+### P19 性能測試結果（2026-01-13）
+
+**測試環境：** SQLite (開發環境)，Opus 4.5 模型
+
+| 項目 | 數量 | 說明 |
+|------|------|------|
+| Styles | 100 | 每款 6-8 BOM items |
+| Sample Runs | 300 | 每款 3 階段 (Proto/SMS/PP) |
+| Cost Estimates | 300 | 每 Run 一份 |
+| Production Orders | 100 | 每款一份大貨訂單 |
+| Material Requirements | 600+ | MRP 計算結果 |
+| Purchase Orders | 100 | 按供應商分組 |
+
+**執行時間：** 50.22 秒（100 款完整流程）
+
+**報價-BOM 連動驗證：**
+- `CostingService.create_cost_sheet()` 從 UsageScenario 快照 BOM 用量 ✅
+- `CostLineV2.consumption_snapshot` 記錄原始值 ✅
+- `CostLineV2.consumption_adjusted` 支持編輯 ✅
+- 修改用量自動重算 `line_cost` ✅
+
+### P20-A: Sample Request 兩步確認流程（2026-01-14）
+
+**功能：** 將 Sample Request 創建改為兩步流程（方案 B）
+
+**改動原因：**
+- 原方案 A：創建 Request → 自動生成 Run/MWO/Costing（一步到位）
+- 問題：用戶創建後直接看到一堆生成的文件，容易困惑
+- 新方案 B：創建 Request（只存基本資料）→ 用戶確認 BOM/Spec → 點擊「確認樣衣」→ 生成文件
+
+**新流程：**
+```
+1. 創建 Sample Request（只存基本資料，無 Run）
+2. 進入詳情頁，查看關聯的 Tech Pack/BOM/Spec
+3. 點擊綠色「確認樣衣」按鈕
+4. 系統生成：SampleRun #1 + MWO + Costing
+```
+
+**後端改動：**
+
+1. **`backend/apps/samples/views.py`**
+   - `SampleRequestViewSet.create()` - 只創建基本 Request，不調用 `create_with_initial_run()`
+   - 新增 `confirm_sample` action (`POST /api/v2/sample-requests/{id}/confirm/`)
+
+2. **`backend/apps/samples/services/auto_generation.py`**
+   - 新增 `generate_documents_for_request()` 函數（供 confirm 調用）
+
+**前端改動：**
+
+1. **`frontend/lib/api/samples.ts`**
+   - 新增 `confirmSampleRequest(id)` API 函數
+   - 修復 Bug：`fetchSampleRuns()` 參數名 `sample_request_id` → `sample_request`
+
+2. **`frontend/lib/hooks/useSamples.ts`**
+   - 新增 `useConfirmSampleRequest()` mutation hook
+
+3. **`frontend/app/dashboard/samples/[requestId]/page.tsx`**
+   - 新增綠色「確認樣衣」按鈕卡片
+   - 新增狀態指示：未確認 / 已確認
+   - 按鈕條件：`!isConfirmed && revisionInfo` 時顯示
+
+**API 端點：**
+```
+POST /api/v2/sample-requests/{id}/confirm/
+
+Response:
+{
+  "message": "樣衣已確認！BOM/Spec 已整合，MWO 與報價單已生成。",
+  "sample_run": { "id": "...", "run_no": 1, "status": "draft" },
+  "documents": { ... }
+}
+```
+
+**UI 變化：**
+```
+┌─────────────────────────────────────────────────────┐
+│ 關聯款式資料                                         │
+│ [Tech Pack ✓] [BOM 物料表 →] [Spec 尺寸表 →]         │
+│ 💡 請確認上述資料正確後，按「確認樣衣」按鈕          │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ 準備好了嗎？                    [🟢 確認樣衣]        │
+│ 確認後系統將整合 BOM/Spec，生成 MWO 與報價單          │
+└─────────────────────────────────────────────────────┘
+```
+
+**Bugfix：**
+- `fetchSampleRuns()` API 參數名錯誤
+  - 問題：前端發送 `sample_request_id`，後端期望 `sample_request`
+  - 結果：API 返回所有 runs（16 個）而非過濾後的結果
+  - 修復：`searchParams.set('sample_request', params.sample_request_id)`
+
+**頁面路徑：** `/dashboard/samples/[requestId]`
+
+### P20-A 相關改動（2026-01-14）
+
+**1. SampleRunCard 組件優化**
+- 路徑：`frontend/components/samples/SampleRunCard.tsx`
+- 新增「已生成文件」狀態區塊（MWO/報價單）
+- 動作按鈕中文化：Submit → 確認樣衣、Start Execution → 開始執行
+- 新增 Costing 連結（查看報價詳情）
+
+**2. Spec 頁面優化**
+- 路徑：`frontend/app/dashboard/revisions/[id]/spec/page.tsx`
+- 組件更名：MeasurementTranslationDrawer → MeasurementEditDrawer
+- 圖標更新：Languages → Pencil（編輯）
+- 返回按鈕文字：返回 → 返回列表
+
+**3. Kanban 看板優化**
+- 路徑：`frontend/app/dashboard/samples/kanban/page.tsx`
+- 新增 MWO 匯出 loading 狀態（防止重複點擊）
+- 傳遞 `exportingMwoRunId` 到 KanbanCard
+
+**4. Review 頁面修復**
+- 路徑：`frontend/app/dashboard/documents/[id]/review/page.tsx`
+- 狀態檢查增強
+
+**5. 類型定義更新**
+- 路徑：`frontend/lib/types/revision.ts`
+
 ---
 
 ## 待做清單
@@ -853,6 +1010,7 @@ BOMItem (20) → UsageLine (19) → CostLineV2 (19) ✅ 串通
 | 編號 | 功能 | 狀態 |
 |------|------|------|
 | **P19** | BOM 用量三階段管理 | ✅ 完成 (2026-01-13) |
+| **P20-A** | Sample Request 兩步確認流程 | ✅ 完成 (2026-01-14) |
 | **P20** | 庫存管理 (Inventory) | 規劃中 |
 | **P21** | 採購優化 (Procurement Enhancement) | 規劃中 |
 | DA-2 | Celery 異步處理（批量上傳/匯出）| 規劃中 |

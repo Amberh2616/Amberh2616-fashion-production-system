@@ -102,6 +102,25 @@ export async function deleteSampleRequest(id: string): Promise<void> {
 }
 
 /**
+ * 方案 B：確認樣衣 - 觸發 BOM/Spec 整合並生成文件
+ * POST /sample-requests/{id}/confirm/
+ */
+export async function confirmSampleRequest(id: string): Promise<{
+  message: string;
+  sample_run: {
+    id: string;
+    run_no: number;
+    status: string;
+  };
+  documents: Record<string, any>;
+}> {
+  return apiClient(`/sample-requests/${id}/confirm/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/**
  * Get allowed actions for a SampleRequest
  * GET /sample-requests/{id}/allowed-actions/
  */
@@ -115,7 +134,7 @@ export async function fetchAllowedActions(id: string): Promise<{ actions: string
 
 /**
  * List all SampleRuns (filterable by request)
- * GET /sample-runs/?sample_request_id=uuid
+ * GET /sample-runs/?sample_request=uuid
  */
 export async function fetchSampleRuns(params?: {
   sample_request_id?: string;
@@ -123,7 +142,7 @@ export async function fetchSampleRuns(params?: {
   const searchParams = new URLSearchParams();
 
   if (params?.sample_request_id) {
-    searchParams.set('sample_request_id', params.sample_request_id);
+    searchParams.set('sample_request', params.sample_request_id);
   }
 
   const queryString = searchParams.toString();

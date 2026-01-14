@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-13
-**Version:** 4.25.0
-**Status:** P0-P11 + P14-P19 完成 ✅ | BOM 用量三階段管理 | P20 庫存管理 規劃中
+**Last Updated:** 2026-01-14
+**Version:** 4.27.0
+**Status:** P0-P19 + P20-A 完成 ✅ | Sample Request 兩步確認流程
 
 ---
 
@@ -212,6 +212,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | P14-P17 | 主檔管理 + 採購 + 大貨訂單 + MRP | 2026-01-10 |
 | P18 | 流程連結 + 進度追蹤儀表板 | 2026-01-11 |
 | DA-1 | 批量上傳 Tech Pack（ZIP）| 2026-01-11 |
+| P19 | BOM 用量三階段管理 + 100款性能測試 | 2026-01-13 |
+| P20-A | Sample Request 兩步確認流程 | 2026-01-14 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -221,8 +223,10 @@ draft → confirmed → materials_ordered → in_production → completed
 
 | 編號 | 功能 | 狀態 |
 |------|------|------|
-| **P19** | 庫存管理 (Inventory) | 規劃中 |
-| **P20** | 採購優化 (Procurement Enhancement) | 規劃中 |
+| **P19** | BOM 用量三階段管理 | ✅ 完成 (2026-01-13) |
+| **P20-A** | Sample Request 兩步確認流程 | ✅ 完成 (2026-01-14) |
+| **P20** | 庫存管理 (Inventory) | 規劃中 |
+| **P21** | 採購優化 (Procurement Enhancement) | 規劃中 |
 | DA-2 | Celery 異步處理 | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | Phase B | 多人協作 + RBAC | 計劃中 |

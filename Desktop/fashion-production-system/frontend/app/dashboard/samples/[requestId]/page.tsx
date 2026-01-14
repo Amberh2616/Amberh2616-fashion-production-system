@@ -10,7 +10,7 @@
  * - Actions (create new run, update request status)
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   useSampleRequest,
@@ -21,6 +21,7 @@ import {
   useStartExecutionSampleRun,
   useCompleteSampleRun,
   useCancelSampleRun,
+  useConfirmSampleRequest,
 } from '@/lib/hooks/useSamples';
 import type { CreateSampleRunPayload, UpdateSampleRequestPayload } from '@/types/samples';
 import {
@@ -47,9 +48,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, ArrowLeft, Plus, Calendar, Package, AlertCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, Calendar, Package, AlertCircle, FileText, Ruler, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { apiClient } from '@/lib/api/client';
+
+// 取得 StyleRevision 詳細資訊
+interface StyleRevisionInfo {
+  id: string;
+  revision_label: string;
+  style_number: string | null;
+  style_name: string | null;
+  style_id: string | null;
+  bom_count: number;
+  measurement_count: number;
+}
+
+async function fetchRevisionInfo(revisionId: string): Promise<StyleRevisionInfo | null> {
+  try {
+    const response = await fetch(`http://localhost:8000/api/v2/style-revisions/${revisionId}/`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    const revData = data.data || data;
+    return {
+      id: revData.id,
+      revision_label: revData.revision_label || 'v1',
+      style_number: revData.style_number || revData.style?.style_number || null,
+      style_name: revData.style_name || revData.style?.style_name || null,
+      style_id: revData.style || revData.style_id || null,
+      bom_count: revData.bom_count || 0,
+      measurement_count: revData.measurement_count || 0,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export default function SampleRequestDetailPage() {
   const params = useParams();
@@ -59,10 +92,18 @@ export default function SampleRequestDetailPage() {
   const [isCreateRunDialogOpen, setIsCreateRunDialogOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [isRunSheetOpen, setIsRunSheetOpen] = useState(false);
+  const [revisionInfo, setRevisionInfo] = useState<StyleRevisionInfo | null>(null);
 
   // Fetch request and runs
   const { data: request, isLoading: isLoadingRequest, error: requestError } = useSampleRequest(requestId);
   const { data: runs = [], isLoading: isLoadingRuns } = useSampleRuns({ sample_request_id: requestId });
+
+  // 載入關聯的 StyleRevision 資訊
+  useEffect(() => {
+    if (request?.revision) {
+      fetchRevisionInfo(request.revision).then(setRevisionInfo);
+    }
+  }, [request?.revision]);
 
   // Mutations
   const createRunMutation = useCreateSampleRun(requestId);
@@ -71,6 +112,19 @@ export default function SampleRequestDetailPage() {
   const startExecutionMutation = useStartExecutionSampleRun(requestId);
   const completeRunMutation = useCompleteSampleRun(requestId);
   const cancelRunMutation = useCancelSampleRun(requestId);
+  const confirmMutation = useConfirmSampleRequest();
+
+  // 確認樣衣 handler
+  const handleConfirmSample = async () => {
+    try {
+      await confirmMutation.mutateAsync(requestId);
+    } catch (err) {
+      console.error('Failed to confirm sample:', err);
+    }
+  };
+
+  // 檢查是否已確認（有 runs）
+  const isConfirmed = runs.length > 0;
 
   // Loading state
   if (isLoadingRequest) {
@@ -194,10 +248,115 @@ export default function SampleRequestDetailPage() {
         </Button>
       </div>
 
+      {/* 關聯款式資訊 - Tech Pack/BOM/Spec 來源 */}
+      {revisionInfo && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              關聯款式資料
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* 款式資訊 */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div>
+                <div className="text-xs text-muted-foreground">款號</div>
+                <div className="text-lg font-bold text-blue-700">
+                  {revisionInfo.style_number || 'N/A'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">款式名稱</div>
+                <div className="text-sm">{revisionInfo.style_name || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">版本</div>
+                <Badge variant="outline">{revisionInfo.revision_label}</Badge>
+              </div>
+            </div>
+
+            {/* 資料來源狀態 */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg p-3 bg-white border">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-sm font-medium">Tech Pack</span>
+                </div>
+                <p className="text-xs text-muted-foreground">已關聯</p>
+              </div>
+              <Link href={`/dashboard/revisions/${revisionInfo.id}/bom`}>
+                <div className="rounded-lg p-3 bg-white border hover:border-blue-400 cursor-pointer transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium">BOM 物料表</span>
+                  </div>
+                  <p className="text-xs text-blue-600">點擊查看 →</p>
+                </div>
+              </Link>
+              <Link href={`/dashboard/revisions/${revisionInfo.id}/spec`}>
+                <div className="rounded-lg p-3 bg-white border hover:border-blue-400 cursor-pointer transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Ruler className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium">Spec 尺寸表</span>
+                  </div>
+                  <p className="text-xs text-blue-600">點擊查看 →</p>
+                </div>
+              </Link>
+            </div>
+
+            {!isConfirmed && (
+              <div className="text-xs text-muted-foreground bg-white/60 p-2 rounded">
+                💡 請確認上述 Tech Pack、BOM、Spec 資料正確後，按下「確認樣衣」按鈕生成 MWO 與報價單。
+              </div>
+            )}
+            {isConfirmed && (
+              <div className="text-xs text-green-700 bg-green-50 p-2 rounded border border-green-200">
+                ✓ 已確認！BOM/Spec 資料已整合，MWO 與報價單已生成。
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 確認樣衣按鈕區塊 - 只在未確認時顯示 */}
+      {!isConfirmed && revisionInfo && (
+        <Card className="border-green-200 bg-green-50/50">
+          <CardContent className="py-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-green-800">準備好了嗎？</h3>
+                <p className="text-sm text-green-700 mt-1">
+                  確認後系統將整合 BOM/Spec 資料，生成 MWO 製造工單與報價單
+                </p>
+              </div>
+              <Button
+                size="lg"
+                className="bg-green-600 hover:bg-green-700 text-white px-8"
+                onClick={handleConfirmSample}
+                disabled={confirmMutation.isPending}
+              >
+                {confirmMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    處理中...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="mr-2 h-5 w-5" />
+                    確認樣衣
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Request Overview */}
       <Card>
         <CardHeader>
-          <CardTitle>Request Information</CardTitle>
+          <CardTitle>請求資訊</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Status and Priority */}

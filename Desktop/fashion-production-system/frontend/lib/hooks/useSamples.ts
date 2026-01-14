@@ -10,6 +10,7 @@ import {
   createSampleRequest,
   updateSampleRequest,
   deleteSampleRequest,
+  confirmSampleRequest,
   fetchAllowedActions,
   fetchSampleRuns,
   fetchSampleRun,
@@ -127,6 +128,25 @@ export function useDeleteSampleRequest() {
     onSuccess: (_, id) => {
       // Remove from cache
       queryClient.removeQueries({ queryKey: ['sample-request', id] });
+      // Invalidate list
+      queryClient.invalidateQueries({ queryKey: ['sample-requests'] });
+    },
+  });
+}
+
+/**
+ * 方案 B：確認樣衣 - 觸發 BOM/Spec 整合並生成文件
+ */
+export function useConfirmSampleRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => confirmSampleRequest(id),
+    onSuccess: (data, id) => {
+      // Invalidate request detail to show new run
+      queryClient.invalidateQueries({ queryKey: ['sample-request', id] });
+      // Invalidate runs list
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
       // Invalidate list
       queryClient.invalidateQueries({ queryKey: ['sample-requests'] });
     },

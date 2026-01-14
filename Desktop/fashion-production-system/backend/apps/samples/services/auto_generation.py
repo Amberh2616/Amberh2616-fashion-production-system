@@ -664,3 +664,189 @@ def create_sample_quote_from_run(
         'usage_scenario_id': usage_scenario.id,
         'cost_sheet_version_id': cost_sheet_version.id,
     }
+
+
+# ==================== 方案 B: 確認樣衣服務 ====================
+
+@transaction.atomic
+def generate_documents_for_request(
+    sample_request: SampleRequest,
+    payload: Dict[str, Any],
+    user=None,
+) -> Tuple[SampleRun, Dict[str, Any]]:
+    """
+    方案 B：為已存在的 SampleRequest 生成文件
+
+    當用戶按「確認樣衣」時調用此函數：
+    1. 創建 SampleRun #1
+    2. 快照 BOM 資料到 RunBOMLine
+    3. 快照 Spec 資料到 RunOperation
+    4. 生成 MWO (draft)
+    5. 生成報價單 (draft)
+
+    Args:
+        sample_request: 已創建的 SampleRequest instance
+        payload: Request data
+        user: Optional User instance
+
+    Returns:
+        Tuple of (SampleRun, documents_info)
+
+    Raises:
+        ValidationError: If revision has no verified BOM
+    """
+    revision = sample_request.revision
+
+    # 1. Generate source hash
+    source_hash = generate_source_hash(revision)
+
+    # 2. Map request_type to run_type
+    request_type = sample_request.request_type
+    run_type_map = {
+        SampleRequestType.PROTO: SampleRunType.PROTO,
+        SampleRequestType.FIT: SampleRunType.FIT,
+        SampleRequestType.SALES: SampleRunType.SALES,
+        SampleRequestType.PHOTO: SampleRunType.PHOTO,
+    }
+    run_type = run_type_map.get(request_type, SampleRunType.OTHER)
+
+    # 3. Create SampleRun #1
+    run = SampleRun.objects.create(
+        sample_request=sample_request,
+        run_no=1,
+        run_type=run_type,
+        status=SampleRunStatus.DRAFT,
+        quantity=sample_request.quantity_requested,
+        target_due_date=sample_request.due_date,
+        source_revision_id=revision.id,
+        source_revision_label=revision.revision_label,
+        source_hash=source_hash,
+        snapshotted_at=timezone.now(),
+        created_by=user,
+    )
+
+    documents = {
+        'run_created': True,
+        'mwo_id': None,
+        'mwo_no': None,
+        'estimate_id': None,
+        'estimate_no': None,
+        'bom_line_count': 0,
+        'operation_count': 0,
+    }
+
+    # 4. Snapshot BOM to RunBOMLine
+    documents['bom_line_count'] = snapshot_bom_to_run(revision, run)
+
+    # 5. Snapshot Operations to RunOperation
+    documents['operation_count'] = snapshot_operations_to_run(revision, run)
+
+    # 6. Build MWO snapshots
+    bom_snapshot = [{
+        'line_no': line.line_no,
+        'material_code': line.material_code or '',
+        'material_name': line.material_name,
+        'material_name_zh': line.material_name_zh or '',
+        'category': line.category,
+        'color': line.color or '',
+        'supplier_name': line.supplier_name,
+        'consumption': str(line.consumption),
+        'total_consumption': str(line.consumption * run.quantity),
+        'uom': line.uom,
+        'unit_price': str(line.unit_price or 0),
+        'leadtime_days': line.leadtime_days or 0,
+    } for line in run.bom_lines.all()]
+
+    construction_snapshot = [{
+        'step_no': op.step_no,
+        'description': op.description,
+        'description_zh': getattr(op, 'description_zh', '') or '',
+        'machine_type': op.machine_type,
+        'machine_type_zh': getattr(op, 'machine_type_zh', '') or '',
+        'std_minutes': op.std_minutes or 0,
+        'special_requirements': op.special_requirements or '',
+    } for op in run.operations.all()]
+
+    qc_snapshot = {
+        'labels': [
+            {'type': 'logo', 'position': 'TBD', 'method': 'Heat transfer / Sewn-in'},
+            {'type': 'care_label', 'position': 'TBD', 'method': 'Sewn-in'}
+        ],
+        'packaging': {
+            'polybag': 'Standard polybag (size TBD)',
+            'carton': 'Standard carton box',
+            'special_requirements': []
+        },
+        'inspections': {
+            'measurement_tolerance': 'Per spec sheet',
+            'visual_inspection': 'Per AQL standard',
+            'functional_tests': []
+        }
+    }
+
+    # 7. Create MWO (draft)
+    mwo = SampleMWO.objects.create(
+        sample_run=run,
+        version_no=1,
+        is_latest=True,
+        mwo_no=generate_mwo_no(),
+        factory_name='TBD',
+        status='draft',
+        source_revision_id=revision.id,
+        snapshot_hash=source_hash,
+        bom_snapshot_json=bom_snapshot,
+        construction_snapshot_json=construction_snapshot,
+        qc_snapshot_json=qc_snapshot,
+    )
+    documents['mwo_id'] = str(mwo.id)
+    documents['mwo_no'] = mwo.mwo_no
+
+    # 8. Create Estimate (draft)
+    material_cost = Decimal('0.00')
+    for bom_line in run.bom_lines.all():
+        if bom_line.unit_price and bom_line.consumption:
+            line_cost = (bom_line.consumption * bom_line.unit_price).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+            material_cost += line_cost
+
+    estimate = SampleCostEstimate.objects.create(
+        sample_request=sample_request,
+        estimate_version=1,
+        status='draft',
+        currency='USD',
+        estimated_total=material_cost,
+        breakdown_snapshot_json={
+            'materials': [
+                {
+                    'material_name': line.material_name,
+                    'consumption': str(line.consumption),
+                    'unit_price': str(line.unit_price or 0),
+                    'line_cost': str(
+                        (line.consumption * (line.unit_price or Decimal('0'))).quantize(
+                            Decimal('0.01'), rounding=ROUND_HALF_UP
+                        )
+                    ),
+                }
+                for line in run.bom_lines.all()
+            ],
+            'labor': [],
+            'overhead': [],
+        },
+        source='manual',
+        source_revision_id=revision.id,
+        created_by=user,
+    )
+    documents['estimate_id'] = str(estimate.id)
+    documents['estimate_no'] = generate_estimate_no()
+
+    # 9. Create Sample Quote (UsageScenario + CostSheetVersion)
+    sample_quote_result = create_sample_quote_from_run(
+        run=run,
+        revision=revision,
+        user=user,
+    )
+    documents['sample_quote_usage_id'] = str(sample_quote_result['usage_scenario_id'])
+    documents['sample_quote_cost_sheet_id'] = str(sample_quote_result['cost_sheet_version_id'])
+
+    return run, documents
