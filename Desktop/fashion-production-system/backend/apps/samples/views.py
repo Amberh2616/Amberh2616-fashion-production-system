@@ -425,6 +425,11 @@ class SampleRunViewSet(viewsets.ModelViewSet):
             "data": serializer.data,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["post"], url_path="submit")
+    def submit(self, request, pk=None):
+        """Submit run / start materials planning (draft → materials_planning)"""
+        return self._handle_transition(request, pk, "start_materials_planning")
+
     @action(detail=True, methods=["post"], url_path="start-materials-planning")
     def start_materials_planning(self, request, pk=None):
         """Start materials planning (draft → materials_planning)"""
