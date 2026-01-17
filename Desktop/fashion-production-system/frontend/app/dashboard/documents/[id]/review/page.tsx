@@ -109,7 +109,31 @@ export default function ReviewPage() {
         throw new Error(errorData.error || 'Extraction failed')
       }
 
-      // Poll for extraction completion
+      // ⚡ Check extract response directly for immediate redirect
+      const extractData = await response.json()
+
+      if (extractData.tech_pack_revision_id) {
+        // Extraction completed - redirect immediately
+        setIsExtracting(false)
+        setIsCompleted(true)
+
+        const fileType = extractData.classification_result?.file_type || status?.classification_result?.file_type || 'tech_pack'
+        const hasBOM = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'bom_table')
+        const hasSpec = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'measurement_table')
+
+        alert('Extraction completed! Redirecting...')
+
+        if (fileType === 'bom' || hasBOM) {
+          router.push(`/dashboard/revisions/${extractData.tech_pack_revision_id}/bom`)
+        } else if (fileType === 'measurement' || hasSpec) {
+          router.push(`/dashboard/revisions/${extractData.tech_pack_revision_id}/spec`)
+        } else {
+          router.push(`/dashboard/revisions/${extractData.tech_pack_revision_id}/review`)
+        }
+        return
+      }
+
+      // Fallback: Poll for extraction completion if not in response
       const pollInterval = setInterval(async () => {
         const statusResponse = await fetch(
           `http://localhost:8000/api/v2/uploaded-documents/${documentId}/status/`
@@ -122,24 +146,20 @@ export default function ReviewPage() {
           setIsCompleted(true)
           setStatus(statusData)
 
-          // ⚡ Auto-navigate based on file type
           if (statusData.tech_pack_revision_id) {
             const fileType = statusData.classification_result?.file_type || 'tech_pack'
             const hasBOM = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
             const hasSpec = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
 
-            setTimeout(() => {
-              if (fileType === 'bom' || hasBOM) {
-                // BOM file → go to BOM edit page
-                router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/bom`)
-              } else if (fileType === 'measurement' || hasSpec) {
-                // Measurement file → go to Spec edit page
-                router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/spec`)
-              } else {
-                // Tech Pack → go to translation review page
-                router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/review`)
-              }
-            }, 2000)  // Wait 2 seconds to show success message
+            alert('Extraction completed! Redirecting...')
+
+            if (fileType === 'bom' || hasBOM) {
+              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/bom`)
+            } else if (fileType === 'measurement' || hasSpec) {
+              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/spec`)
+            } else {
+              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/review`)
+            }
           }
         } else if (statusData.status === 'failed') {
           clearInterval(pollInterval)
