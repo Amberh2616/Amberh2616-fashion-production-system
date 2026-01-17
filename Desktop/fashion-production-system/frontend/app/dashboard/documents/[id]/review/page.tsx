@@ -97,12 +97,19 @@ export default function ReviewPage() {
     setError(null)
 
     try {
+      // Use AbortController for timeout (3 minutes for large PDFs)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 180000)
+
       const response = await fetch(
         `http://localhost:8000/api/v2/uploaded-documents/${documentId}/extract/`,
         {
           method: 'POST',
+          signal: controller.signal,
         }
       )
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -111,6 +118,7 @@ export default function ReviewPage() {
 
       // ⚡ Check extract response directly for immediate redirect
       const extractData = await response.json()
+      console.log('Extract response:', extractData)
 
       if (extractData.tech_pack_revision_id) {
         // Extraction completed - redirect immediately
@@ -121,15 +129,15 @@ export default function ReviewPage() {
         const hasBOM = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'bom_table')
         const hasSpec = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'measurement_table')
 
-        alert('Extraction completed! Redirecting...')
+        // Redirect based on file type
+        const targetUrl = (fileType === 'bom' || hasBOM)
+          ? `/dashboard/revisions/${extractData.tech_pack_revision_id}/bom`
+          : (fileType === 'measurement' || hasSpec)
+          ? `/dashboard/revisions/${extractData.tech_pack_revision_id}/spec`
+          : `/dashboard/revisions/${extractData.tech_pack_revision_id}/review`
 
-        if (fileType === 'bom' || hasBOM) {
-          router.push(`/dashboard/revisions/${extractData.tech_pack_revision_id}/bom`)
-        } else if (fileType === 'measurement' || hasSpec) {
-          router.push(`/dashboard/revisions/${extractData.tech_pack_revision_id}/spec`)
-        } else {
-          router.push(`/dashboard/revisions/${extractData.tech_pack_revision_id}/review`)
-        }
+        console.log('Redirecting to:', targetUrl)
+        router.push(targetUrl)
         return
       }
 
