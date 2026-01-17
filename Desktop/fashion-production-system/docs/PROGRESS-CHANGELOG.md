@@ -1,6 +1,6 @@
 # Fashion Production System - Progress Changelog
 
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-01-17
 
 此文檔記錄所有功能開發的詳細進度和技術實現細節。
 
@@ -46,8 +46,206 @@
 | **P17** | 大貨訂單系統 + MRP + 採購生成 | 2026-01-10 |
 | **P18** | 流程連結 + 進度追蹤儀表板 | 2026-01-11 |
 | **DA-1** | 批量上傳 Tech Pack（ZIP）| 2026-01-11 |
-| **P19** | BOM 用量三階段管理 | 2026-01-13 |
+| **P19** | BOM 用量四階段管理 | 2026-01-13 → 01-17 |
 | **P20-A** | Sample Request 兩步確認流程 | 2026-01-14 |
+| **QA-1** | 系統驗收報告 + 觸發點交叉比對 | 2026-01-16 |
+| **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| 2026-01-17 |
+
+---
+
+## P21: Tech Pack 翻譯框完整功能（2026-01-17）
+
+### 功能概述
+
+翻譯審校頁面升級：在 PDF 上疊加可拖曳的中文翻譯框，支持縮放、位置調整、編輯和隱藏/恢復功能。
+
+### 核心功能
+
+1. **預設 Canvas 模式**
+   - 一進頁面即顯示 PDF + 中文翻譯框
+   - 使用 Fabric.js 實現可拖曳功能
+   - 拖曳結束自動儲存位置到後端
+
+2. **縮放控制**
+   - `−` / `+` 按鈕調整縮放（50% ~ 200%）
+   - 縮放後可滾動查看
+
+3. **翻頁控制**
+   - Prev / Next 按鈕切換頁面
+
+4. **可收合右側面板**
+   - 點擊 `>>` 收起右側詳情面板
+   - 收起後左側 PDF 視圖佔滿全寬
+   - Header 顯示 `Details <<` 按鈕可展開
+   - 收起時底部顯示工具列（AI Translate、Approve 等）
+
+5. **雙擊編輯彈窗**
+   - 雙擊翻譯框彈出 EditPopup 編輯視窗
+   - 顯示原文（Source English）和可編輯翻譯（Translation Chinese）
+   - 支援換行（多行輸入）
+   - Ctrl+Enter 快捷儲存
+
+6. **翻譯框隱藏/恢復**
+   - 選中翻譯框時顯示 ✕ 刪除按鈕
+   - 點擊 ✕ 隱藏該翻譯框（設定 `overlay_visible=false`）
+   - 右側面板 "Hidden" 區塊顯示已隱藏的翻譯框
+   - 點擊 "Restore" 恢復顯示
+
+7. **英文介面**
+   - 所有 UI 文字使用英文（Details、Edit、Hidden、Restore 等）
+
+### 修改文件
+
+**前端：**
+- `frontend/app/dashboard/revisions/[id]/review/page.tsx`
+  - 添加 `zoomLevel` 狀態（0.5 ~ 2.0）
+  - 添加 `sidebarCollapsed` 狀態控制右側面板
+  - 添加 `editPopupOpen` / `editingBlock` 狀態控制編輯彈窗
+  - 添加 "Hidden" 區塊顯示已隱藏翻譯框
+  - 添加 `handleBlockRestore` 恢復隱藏的翻譯框
+  - 傳遞 `onBlockDoubleClick` / `onBlockDelete` 給 TechPackCanvas
+
+- `frontend/components/review/TechPackCanvas.tsx`
+  - 接收 `zoomLevel` prop
+  - 添加 `onBlockDoubleClick` / `onBlockDelete` props
+  - 使用 Fabric.js 渲染可拖曳翻譯框
+  - 選中時顯示 ✕ 刪除按鈕（絕對定位在框右上角）
+  - 雙擊觸發編輯彈窗
+  - 拖曳結束觸發 `onPositionChange` 回調
+
+- `frontend/components/review/EditPopup.tsx` ✨ 新增
+  - 翻譯編輯彈窗組件
+  - 顯示原文 + 可編輯翻譯（支援換行）
+  - Delete / Cancel / Save 按鈕
+  - Esc 關閉、Ctrl+Enter 儲存
+
+- `frontend/lib/hooks/useDraftBlockPosition.ts`
+  - `useUpdateBlockPosition`: PATCH `/api/v2/draft-blocks/{id}/position/`
+  - `useDebouncedPositionSave`: 防抖 + 即時儲存
+  - 移除 `onSuccess` invalidation 避免位置重置
+
+**後端：**
+- `backend/apps/parsing/models.py`
+  - DraftBlock 添加 `overlay_x`, `overlay_y`, `overlay_visible` 欄位
+
+- `backend/apps/parsing/views.py`
+  - `page_image` action: PDF 頁面轉 PNG 圖片
+  - `position` action: PATCH 更新位置
+  - `toggle_visibility` action: PATCH 更新 `overlay_visible`
+
+### API 端點
+
+| 方法 | URL | 說明 |
+|------|-----|------|
+| GET | `/api/v2/revisions/{id}/page-image/{page}/` | PDF 頁面轉圖片 |
+| PATCH | `/api/v2/draft-blocks/{id}/position/` | 更新翻譯框位置 |
+| PATCH | `/api/v2/draft-blocks/{id}/toggle-visibility/` | 切換翻譯框顯示/隱藏 |
+
+### 技術架構
+
+```
+Review Page
+├── Header
+│   ├── Zoom Controls (−, %, +)
+│   ├── Page Navigation (Prev, 1/N, Next)
+│   ├── Mode Toggle (View Original PDF)
+│   └── [Collapsed] Details << (展開按鈕)
+├── Left Panel (Canvas)
+│   └── TechPackCanvas (Fabric.js)
+│       ├── PDF 背景圖片
+│       ├── 可拖曳翻譯框 (fabric.Group)
+│       └── ✕ 刪除按鈕 (選中時顯示)
+├── Right Panel (Collapsible)
+│   ├── Coverage Progress Bar
+│   ├── Translation Blocks List
+│   │   ├── Edit Button (編輯翻譯)
+│   │   └── Edited Badge (已編輯標記)
+│   └── Hidden Section (已隱藏翻譯框 + Restore)
+└── EditPopup (Modal)
+    ├── Source Text (原文)
+    ├── Translation Textarea (翻譯編輯)
+    └── Delete / Cancel / Save
+```
+
+### 數據流
+
+```
+拖曳翻譯框                      雙擊翻譯框                    點擊 ✕ 按鈕
+  ↓                               ↓                            ↓
+object:modified 事件           mouse:dblclick 事件          handleDelete()
+  ↓                               ↓                            ↓
+onPositionChange()            onBlockDoubleClick()          onBlockDelete()
+  ↓                               ↓                            ↓
+PATCH .../position/           打開 EditPopup               PATCH .../toggle-visibility/
+  ↓                               ↓                            ↓
+更新 overlay_x, overlay_y     編輯 → onSave()              設定 overlay_visible=false
+                                  ↓
+                              PATCH .../edited-text/
+```
+
+### 操作說明
+
+| 操作 | 效果 |
+|------|------|
+| 單擊翻譯框 | 選中，顯示 ✕ 刪除按鈕 |
+| 雙擊翻譯框 | 彈出編輯視窗 |
+| 拖曳翻譯框 | 移動位置，自動儲存 |
+| 點擊 ✕ | 隱藏翻譯框 |
+| 點擊 Restore | 恢復已隱藏的翻譯框 |
+| 點擊 >> | 收起右側面板 |
+| 點擊 Details << | 展開右側面板 |
+
+---
+
+## QA-1: 系統驗收報告（2026-01-16）
+
+### 完成內容
+
+1. **觸發點交叉比對 (T1-T10)**
+   - 驗證所有觸發點的前端按鈕和後端 API
+   - 確認 T1-T10 流程連通性
+   - 文檔：T1+ Confirm Sample 自動生成內容
+
+2. **BOM → Cost 數據連動驗收**
+   - 繪製完整數據流向圖：BOMItem → UsageLine → CostLineV2 → CostSheetVersion
+   - 發現連動問題：UsageLine 讀取錯誤欄位、無 Refresh API
+   - 說明單向快照設計原理
+
+3. **待修復問題清單（16 項）**
+   - P0（7 項）：BOM/Spec 新增刪除、冪等性、null 檢查、UsageLine 修正
+   - P1（4 項）：Tech Pack 批量翻譯、MWO 中文、BOM 門檻、Refresh API
+   - P2（3 項）：MRP 庫存、Lead Time、版本衝突
+   - P3（2 項）：Vision Bbox、翻譯進度
+
+### 產出文檔
+
+```
+docs/SYSTEM-ACCEPTANCE-REPORT.md
+├── 一、驗收摘要（完成度表 + P0 快覽）
+├── 二、觸發流程驗收 (T1-T10)
+├── 2.5 BOM → Cost 數據連動驗收
+├── 三、功能模組驗收
+├── 四、待修復問題清單（16 項）
+├── 五、修復計劃（32-34 小時）
+└── 附錄：API 端點索引
+```
+
+### 發現的關鍵問題
+
+| # | 問題 | 位置 | 優先級 |
+|---|------|------|--------|
+| 7 | UsageLine 讀取 `consumption` 而非 `current_consumption` | `usage_scenario_service.py:70` | P0 |
+| 11 | 無 CostSheet Refresh Snapshot API | 缺失 | P1 |
+
+### 工時估算
+
+| 優先級 | 項目數 | 工時 |
+|--------|--------|------|
+| P0 | 7 | 8-9h |
+| P1 | 4 | 8-9h |
+| P2 | 3 | 6h |
+| P3 | 2 | 10+h |
+| **總計** | **16** | **32-34h** |
 
 ---
 
@@ -570,67 +768,84 @@ delivery_notes = TextField(blank=True)
 
 **頁面路徑：** `/dashboard/progress`
 
-### P19: BOM 用量三階段管理（2026-01-13）
+### P19: BOM 用量四階段管理（2026-01-13 → 01-17）
 
 **功能：** BOM 用量從 Tech Pack 到大貨的完整追蹤
 
-**三階段成熟度：**
+**四階段成熟度：**
 ```
 consumption (原始用量 - Tech Pack)
      │
-     ├──→ pre_estimate_value (預估用量)
+     ├──① pre_estimate_value (預估用量)
      │    ├─ 來源：工廠經驗估算
      │    └─ 用途：RFQ 詢價單
      │
-     ├──→ confirmed_value (確認用量)
-     │    ├─ 來源：Marker Report / 樣衣實際
+     ├──② sample_value (樣衣用量) ← 2026-01-17 新增
+     │    ├─ 來源：打樣實際消耗
+     │    └─ 用途：樣衣成本計算
+     │
+     ├──③ confirmed_value (確認用量)
+     │    ├─ 來源：Marker Report 調整
      │    └─ 用途：RFQ / 大貨報價 / 生產採購
      │
-     └──→ locked_value (鎖定用量)
-          ├─ 來源：大貨確認鎖定（不可再改）
+     └──④ locked_value (鎖定用量)
+          ├─ 來源：大貨確認鎖定（可自訂值）
           └─ 用途：最終生產採購 / MRP 計算 / 成本結算
 ```
+
+**current_consumption 優先級：** locked > confirmed > sample > pre_estimate > consumption
 
 **後端模型改動（`backend/apps/styles/models.py`）：**
 ```python
 class BOMItem:
-    # 用量三階段演進
+    # 用量四階段演進
     pre_estimate_value = DecimalField(max_digits=10, decimal_places=4, null=True)
+    sample_value = DecimalField(max_digits=10, decimal_places=4, null=True)  # 2026-01-17 新增
     confirmed_value = DecimalField(max_digits=10, decimal_places=4, null=True)
     locked_value = DecimalField(max_digits=10, decimal_places=4, null=True)
     consumption_history = JSONField(default=list)  # 變更歷史
+    sample_confirmed_at = DateTimeField(null=True)  # 2026-01-17 新增
     consumption_confirmed_at = DateTimeField(null=True)
     consumption_locked_at = DateTimeField(null=True)
 
     # 輔助方法
     @property
-    def consumption_maturity(self):  # unknown/pre_estimate/confirmed/locked
+    def consumption_maturity(self):  # unknown/pre_estimate/sample/confirmed/locked
     @property
     def current_consumption(self):   # 返回最成熟的用量值
     def set_pre_estimate(value, user)
+    def set_sample(value, user)      # 2026-01-17 新增
     def confirm_consumption(value, source, user)
-    def lock_consumption(user)
+    def lock_consumption(value=None, user=None)  # 2026-01-17 修改：支援自訂值
     def can_edit_consumption(self)
 ```
 
-**Migration：** `backend/apps/styles/migrations/0012_add_consumption_stages.py`
+**Migration：**
+- `0012_add_consumption_stages.py` - 初始三階段
+- `0014_add_sample_value.py` - 新增 sample_value（2026-01-17）
 
 **後端 API 端點（`backend/apps/styles/views.py`）：**
 - `POST /api/v2/style-revisions/{id}/bom/{pk}/set-pre-estimate/` - 設定預估用量
+- `POST /api/v2/style-revisions/{id}/bom/{pk}/set-sample/` - 設定樣衣用量 ← 2026-01-17 新增
 - `POST /api/v2/style-revisions/{id}/bom/{pk}/confirm-consumption/` - 確認用量
-- `POST /api/v2/style-revisions/{id}/bom/{pk}/lock-consumption/` - 鎖定用量
+- `POST /api/v2/style-revisions/{id}/bom/{pk}/lock-consumption/` - 鎖定用量（支援 `{ "value": "0.85" }`）
 - `POST /api/v2/style-revisions/{id}/bom/batch-confirm/` - 批量確認
 - `POST /api/v2/style-revisions/{id}/bom/batch-lock/` - 批量鎖定
 
 **前端類型（`frontend/lib/types/bom.ts`）：**
 ```typescript
+type ConsumptionMaturity = 'unknown' | 'pre_estimate' | 'sample' | 'confirmed' | 'locked';
+
 interface BOMItem {
   // ... existing fields ...
+  consumption_maturity: ConsumptionMaturity;
   pre_estimate_value: string | null;
+  sample_value: string | null;       // 2026-01-17 新增
   confirmed_value: string | null;
   locked_value: string | null;
   current_consumption: string | null;
   can_edit_consumption: boolean;
+  sample_confirmed_at: string | null; // 2026-01-17 新增
   consumption_confirmed_at: string | null;
   consumption_locked_at: string | null;
   consumption_history: ConsumptionHistoryEntry[];
@@ -648,15 +863,17 @@ interface ConsumptionHistoryEntry {
 
 **前端 API 函數（`frontend/lib/api/bom.ts`）：**
 - `setPreEstimate(revisionId, itemId, value)`
+- `setSample(revisionId, itemId, value)` ← 2026-01-17 新增
 - `confirmConsumption(revisionId, itemId, value, source)`
-- `lockConsumption(revisionId, itemId)`
+- `lockConsumption(revisionId, itemId, value?)` ← 2026-01-17 修改：支援自訂值
 - `batchConfirmConsumption(revisionId)`
 - `batchLockConsumption(revisionId)`
 
 **前端 Hooks（`frontend/lib/hooks/useBom.ts`）：**
 - `useSetPreEstimate(revisionId)`
+- `useSetSample(revisionId)` ← 2026-01-17 新增
 - `useConfirmConsumption(revisionId)`
-- `useLockConsumption(revisionId)`
+- `useLockConsumption(revisionId)` ← 2026-01-17 修改：接受 `{ itemId, value? }`
 - `useBatchConfirmConsumption(revisionId)`
 - `useBatchLockConsumption(revisionId)`
 
@@ -664,25 +881,33 @@ interface ConsumptionHistoryEntry {
 - `frontend/components/ui/popover.tsx` - 新增 Radix Popover 組件
 - `frontend/components/bom/EditableConsumptionCell.tsx` - 重寫，使用 Popover 顯示四種用量
 
-**EditableConsumptionCell 功能：**
+**EditableConsumptionCell 功能（2026-01-17 更新）：**
 ```
 ┌─────────────────────────────────────┐
-│ 用量管理                             │
+│ 用量設定                    [單位]   │
+│ [████████████░░░░] 進度條 (1-4 段)   │
 ├─────────────────────────────────────┤
-│ 原始用量（Tech Pack）                │
-│ [0.8200] yd                         │ ← 只讀
+│ Tech Pack 原始                       │
+│ [0.8200]                            │ ← 只讀
 ├─────────────────────────────────────┤
-│ 預估用量（工廠經驗值）               │
-│ [0.8500] yd         [編輯]          │ ← 可編輯
+│ ① 預估用量                    ✓     │
+│ [0.8500]            [編輯]          │ ← 可編輯
 ├─────────────────────────────────────┤
-│ 確認用量（Marker Report）            │
-│ [0.8350] yd         [編輯]          │ ← 可編輯
+│ ② 樣衣用量                    ✓     │ ← 2026-01-17 新增
+│ [0.8400]            [編輯]          │ ← 可編輯
 ├─────────────────────────────────────┤
-│ 鎖定用量（大貨確認後）               │
-│ [-]                 [鎖定]          │ ← 需確認後才能鎖定
+│ ③ 確認用量                    ✓     │
+│ [0.8350]            [編輯]          │ ← 可編輯
 ├─────────────────────────────────────┤
-│ 當前狀態：已確認    [歷史 (2)]       │
+│ ④ 鎖定用量                    🔒     │
+│ [0.8350]            [編輯] [鎖定]   │ ← 可編輯後鎖定
 └─────────────────────────────────────┘
+
+UI 設計特點：
+- 統一 slate 灰色配色（無多色干擾）
+- 4 段進度條顯示當前階段
+- 每階段完成後顯示 ✓
+- 鎖定後顯示 🔒 並變成唯讀
 ```
 
 **BOM/Spec 頁面標題修復：**
@@ -1009,7 +1234,7 @@ Response:
 
 | 編號 | 功能 | 狀態 |
 |------|------|------|
-| **P19** | BOM 用量三階段管理 | ✅ 完成 (2026-01-13) |
+| **P19** | BOM 用量四階段管理 | ✅ 完成 (2026-01-13 → 01-17) |
 | **P20-A** | Sample Request 兩步確認流程 | ✅ 完成 (2026-01-14) |
 | **P20** | 庫存管理 (Inventory) | 規劃中 |
 | **P21** | 採購優化 (Procurement Enhancement) | 規劃中 |

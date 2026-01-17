@@ -24,6 +24,14 @@ class BOMNotReadyError(PermissionError):
         self.bom_data = bom_data
 
 
+# Custom Exception for missing unit_price
+class MissingUnitPriceError(ValueError):
+    """Raised when BOM items are missing unit_price"""
+    def __init__(self, message, missing_items):
+        super().__init__(message)
+        self.missing_items = missing_items
+
+
 class CostingService:
     """
     Service layer for CostSheetVersion operations
@@ -94,13 +102,31 @@ class CostingService:
         )
 
         # Snapshot UsageLines → CostLineV2
+        # First pass: check for missing unit_price
+        missing_price_items = []
+        for usage_line in usage_scenario.usage_lines.all():
+            bom_item = usage_line.bom_item
+            if bom_item.unit_price is None or bom_item.unit_price == 0:
+                missing_price_items.append({
+                    'item_number': bom_item.item_number,
+                    'material_name': bom_item.material_name,
+                    'supplier': bom_item.supplier or '-',
+                })
+
+        if missing_price_items:
+            raise MissingUnitPriceError(
+                f"無法建立報價：{len(missing_price_items)} 個物料缺少單價",
+                missing_price_items
+            )
+
+        # Second pass: create cost lines
         cost_lines = []
         for usage_line in usage_scenario.usage_lines.all():
             bom_item = usage_line.bom_item
 
             # Calculate line_cost (adjusted_consumption × unit_price)
             adjusted_consumption = usage_line.adjusted_consumption
-            unit_price = bom_item.unit_price if bom_item.unit_price else Decimal('0.00')
+            unit_price = bom_item.unit_price  # Already validated above
             line_cost = CostLineV2.calculate_line_cost(adjusted_consumption, unit_price)
 
             cost_line = CostLineV2(
@@ -258,6 +284,99 @@ class CostingService:
         cloned_sheet.save()
 
         return cloned_sheet
+
+    @staticmethod
+    @transaction.atomic
+    def refresh_snapshot(cost_sheet_id, user=None):
+        """
+        Refresh CostSheetVersion snapshot from current BOM data.
+        Only allowed for draft status.
+
+        This re-reads consumption and unit_price from BOMItem,
+        preserving any manual adjustments already made.
+
+        Args:
+            cost_sheet_id: UUID of CostSheetVersion
+            user: User instance
+
+        Returns:
+            CostSheetVersion instance (updated)
+
+        Raises:
+            ValueError: if not in draft status
+            MissingUnitPriceError: if any BOM items missing unit_price
+        """
+        from apps.styles.models import BOMItem
+
+        cost_sheet = CostSheetVersion.objects.prefetch_related(
+            'cost_lines'
+        ).select_related(
+            'usage_scenario'
+        ).get(id=cost_sheet_id)
+
+        # Validate state
+        if cost_sheet.status != 'draft':
+            raise ValueError(f"Cannot refresh: CostSheetVersion is not in draft status (current: {cost_sheet.status})")
+
+        # Check for missing unit prices
+        missing_price_items = []
+        for cost_line in cost_sheet.cost_lines.all():
+            if cost_line.source_bom_item_id:
+                try:
+                    bom_item = BOMItem.objects.get(id=cost_line.source_bom_item_id)
+                    if bom_item.unit_price is None or bom_item.unit_price == 0:
+                        missing_price_items.append({
+                            'item_number': bom_item.item_number,
+                            'material_name': bom_item.material_name,
+                            'supplier': bom_item.supplier or '-',
+                        })
+                except BOMItem.DoesNotExist:
+                    pass
+
+        if missing_price_items:
+            raise MissingUnitPriceError(
+                f"無法刷新報價：{len(missing_price_items)} 個物料缺少單價",
+                missing_price_items
+            )
+
+        # Refresh each cost line from BOM
+        refreshed_count = 0
+        for cost_line in cost_sheet.cost_lines.all():
+            if cost_line.source_bom_item_id:
+                try:
+                    bom_item = BOMItem.objects.get(id=cost_line.source_bom_item_id)
+
+                    # Update snapshot values from BOM
+                    new_consumption = bom_item.current_consumption or cost_line.consumption_snapshot
+                    new_unit_price = bom_item.unit_price or cost_line.unit_price_snapshot
+
+                    # Only update if not manually adjusted
+                    if not cost_line.is_consumption_adjusted:
+                        cost_line.consumption_snapshot = new_consumption
+                        cost_line.consumption_adjusted = new_consumption
+
+                    if not cost_line.is_price_adjusted:
+                        cost_line.unit_price_snapshot = new_unit_price
+                        cost_line.unit_price_adjusted = new_unit_price
+
+                    # Recalculate line_cost
+                    cost_line.line_cost = CostLineV2.calculate_line_cost(
+                        cost_line.consumption_adjusted,
+                        cost_line.unit_price_adjusted
+                    )
+                    cost_line.save()
+                    refreshed_count += 1
+
+                except BOMItem.DoesNotExist:
+                    # BOM item was deleted, keep old values
+                    pass
+
+        # Recalculate totals
+        cost_sheet.change_reason = f'Refreshed from BOM ({refreshed_count} lines updated)'
+        cost_sheet.calculate_totals()
+        cost_sheet.save()
+
+        return cost_sheet
 
     @staticmethod
     @transaction.atomic

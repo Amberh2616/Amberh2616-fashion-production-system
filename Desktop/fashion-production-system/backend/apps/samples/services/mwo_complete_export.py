@@ -214,10 +214,32 @@ class MWOCompletePDFExporter:
         return img_bytes.getvalue()
 
     def _create_techpack_pages(self) -> List[bytes]:
-        """創建 Tech Pack 雙語頁面"""
+        """創建 Tech Pack 雙語頁面
+
+        優先使用 Run 的快照資料 (RunTechPackPage/Block)：
+        1. 先檢查 Run 是否有 Tech Pack 快照
+        2. 如果有快照，使用快照數據渲染
+        3. 如果沒有快照，fallback 到原始 TechPackRevision
+        """
         pages = []
 
         try:
+            # ⭐ 優先使用 Run 的 Tech Pack 快照
+            from apps.samples.models import RunTechPackPage, RunTechPackBlock
+
+            run_pages = RunTechPackPage.objects.filter(
+                run=self.sample_run
+            ).prefetch_related('blocks').order_by('page_number')
+
+            if run_pages.exists():
+                # 使用快照數據渲染
+                logger.info(f"Using Run Tech Pack snapshot: {run_pages.count()} pages")
+                pages = self._render_techpack_from_snapshot(run_pages)
+                return pages
+
+            # Fallback: 使用原始 TechPackRevision
+            logger.info("No Run snapshot found, falling back to TechPackRevision")
+
             from apps.parsing.models import UploadedDocument
 
             if not self.style_revision:
@@ -231,7 +253,6 @@ class MWOCompletePDFExporter:
 
             if not uploaded_doc or not uploaded_doc.tech_pack_revision:
                 logger.warning(f"No TechPackRevision linked to StyleRevision: {self.style_revision.id}")
-                # 創建提示頁
                 pages.append(self._create_no_techpack_page())
                 return pages
 
@@ -259,6 +280,56 @@ class MWOCompletePDFExporter:
             pages.append(self._create_no_techpack_page())
 
         return pages
+
+    def _render_techpack_from_snapshot(self, run_pages) -> List[bytes]:
+        """使用 Run 的快照數據渲染 Tech Pack 頁面
+
+        Args:
+            run_pages: RunTechPackPage QuerySet
+
+        Returns:
+            List of page image bytes
+        """
+        from apps.parsing.services.techpack_pdf_export import export_techpack_from_run_snapshot
+
+        try:
+            # 獲取原始 PDF 路徑
+            from apps.parsing.models import UploadedDocument
+
+            uploaded_doc = UploadedDocument.objects.filter(
+                style_revision=self.style_revision,
+                tech_pack_revision__isnull=False
+            ).first()
+
+            if not uploaded_doc or not uploaded_doc.tech_pack_revision:
+                logger.warning("Cannot find original PDF for snapshot rendering")
+                return [self._create_no_techpack_page()]
+
+            tech_pack_revision = uploaded_doc.tech_pack_revision
+
+            # 使用快照數據渲染
+            pdf_bytes = export_techpack_from_run_snapshot(
+                tech_pack_revision=tech_pack_revision,
+                run_pages=run_pages
+            )
+
+            # 將 PDF 轉換為圖片頁面
+            pages = []
+            pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page_num in range(pdf_doc.page_count):
+                page = pdf_doc.load_page(page_num)
+                mat = fitz.Matrix(1.5, 1.5)
+                pix = page.get_pixmap(matrix=mat)
+                img_bytes = pix.tobytes("png")
+                pages.append(img_bytes)
+            pdf_doc.close()
+
+            logger.info(f"Tech Pack rendered from snapshot: {len(pages)} pages")
+            return pages
+
+        except Exception as e:
+            logger.error(f"Error rendering Tech Pack from snapshot: {e}", exc_info=True)
+            return [self._create_no_techpack_page()]
 
     def _create_no_techpack_page(self) -> bytes:
         """創建「無 Tech Pack」提示頁"""

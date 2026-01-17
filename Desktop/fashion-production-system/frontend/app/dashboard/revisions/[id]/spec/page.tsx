@@ -13,13 +13,23 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useMeasurements, useTranslateMeasurementBatch } from "@/lib/hooks/useMeasurement";
+import { useMeasurements, useTranslateMeasurementBatch, useDeleteMeasurement, useCreateMeasurement } from "@/lib/hooks/useMeasurement";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { MeasurementEditDrawer } from "@/components/measurement/MeasurementEditDrawer";
-import type { MeasurementItem } from "@/lib/types/measurement";
-import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft } from "lucide-react";
+import type { MeasurementItem, CreateMeasurementPayload } from "@/lib/types/measurement";
+import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft, Trash2, Plus } from "lucide-react";
 import Link from "next/link";
 
 const API_BASE = "http://localhost:8000";
@@ -53,6 +63,40 @@ export default function SpecPage() {
 
   const { data: measurementData, isLoading, error } = useMeasurements(revisionId);
   const translateBatchMutation = useTranslateMeasurementBatch(revisionId);
+  const deleteMutation = useDeleteMeasurement(revisionId);
+  const createMutation = useCreateMeasurement(revisionId);
+
+  // 新增尺寸點對話框狀態
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newMeasurement, setNewMeasurement] = useState<CreateMeasurementPayload>({
+    point_name: "",
+    point_code: "",
+    tolerance_plus: "0.5",
+    tolerance_minus: "0.5",
+    unit: "cm",
+    values: {},
+  });
+
+  const handleCreateMeasurement = async () => {
+    if (!newMeasurement.point_name.trim()) {
+      alert("請輸入尺寸點名稱");
+      return;
+    }
+    try {
+      await createMutation.mutateAsync(newMeasurement);
+      setIsCreateDialogOpen(false);
+      setNewMeasurement({
+        point_name: "",
+        point_code: "",
+        tolerance_plus: "0.5",
+        tolerance_minus: "0.5",
+        unit: "cm",
+        values: {},
+      });
+    } catch (err) {
+      alert("新增失敗：" + (err as Error).message);
+    }
+  };
 
   // 取得款式資訊
   const { data: styleData } = useQuery({
@@ -172,19 +216,35 @@ export default function SpecPage() {
         id: "actions",
         header: "操作",
         cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setEditingItem(row.original)}
-            title="編輯"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditingItem(row.original)}
+              title="編輯"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm(`確定要刪除 "${row.original.point_name}" 嗎？`)) {
+                  deleteMutation.mutate(row.original.id);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              title="刪除"
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         ),
-        size: 60,
+        size: 100,
       }),
     ],
-    [sizeKeys]
+    [sizeKeys, deleteMutation]
   );
 
   const table = useReactTable({
@@ -255,6 +315,94 @@ export default function SpecPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                新增尺寸點
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>新增尺寸點</DialogTitle>
+                <DialogDescription>
+                  填寫尺寸點資訊，建立後可在表格中編輯詳細數值
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="point_name" className="text-right">
+                    尺寸點名稱 *
+                  </Label>
+                  <Input
+                    id="point_name"
+                    value={newMeasurement.point_name}
+                    onChange={(e) => setNewMeasurement({ ...newMeasurement, point_name: e.target.value })}
+                    className="col-span-3"
+                    placeholder="例如: CHEST"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="point_code" className="text-right">
+                    編碼
+                  </Label>
+                  <Input
+                    id="point_code"
+                    value={newMeasurement.point_code || ""}
+                    onChange={(e) => setNewMeasurement({ ...newMeasurement, point_code: e.target.value })}
+                    className="col-span-3"
+                    placeholder="例如: A"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="tolerance_plus" className="text-right">
+                    公差 +
+                  </Label>
+                  <Input
+                    id="tolerance_plus"
+                    type="number"
+                    step="0.1"
+                    value={newMeasurement.tolerance_plus || "0.5"}
+                    onChange={(e) => setNewMeasurement({ ...newMeasurement, tolerance_plus: e.target.value })}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="tolerance_minus" className="text-right">
+                    公差 -
+                  </Label>
+                  <Input
+                    id="tolerance_minus"
+                    type="number"
+                    step="0.1"
+                    value={newMeasurement.tolerance_minus || "0.5"}
+                    onChange={(e) => setNewMeasurement({ ...newMeasurement, tolerance_minus: e.target.value })}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="unit" className="text-right">
+                    單位
+                  </Label>
+                  <Input
+                    id="unit"
+                    value={newMeasurement.unit || "cm"}
+                    onChange={(e) => setNewMeasurement({ ...newMeasurement, unit: e.target.value })}
+                    className="col-span-3"
+                    placeholder="cm / inch"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  取消
+                </Button>
+                <Button onClick={handleCreateMeasurement} disabled={createMutation.isPending}>
+                  {createMutation.isPending ? "新增中..." : "新增"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Button
             variant="outline"
             onClick={() => translateBatchMutation.mutate(false)}

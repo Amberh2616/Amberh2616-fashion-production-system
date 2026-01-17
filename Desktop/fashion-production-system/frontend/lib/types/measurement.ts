@@ -51,3 +51,12 @@ export interface TranslateBatchResponse {
   errors: string[];
   translation_map?: Record<string, string>;
 }
+
+export interface CreateMeasurementPayload {
+  point_name: string;
+  point_code?: string;
+  values?: MeasurementValues;
+  tolerance_plus?: string;
+  tolerance_minus?: string;
+  unit?: string;
+}

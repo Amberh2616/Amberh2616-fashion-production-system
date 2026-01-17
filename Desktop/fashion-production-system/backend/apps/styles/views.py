@@ -10,6 +10,7 @@ from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 
+from django.db import models
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
 from .models import Style, StyleRevision, BOMItem, Measurement
 from .serializers import (
@@ -53,7 +54,7 @@ class BOMItemViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        """Set revision when creating with tenant check"""
+        """Set revision and item_number when creating with tenant check"""
         revision_id = self.kwargs.get('revision_pk')
         org = self._get_organization(self.request)
 
@@ -63,7 +64,13 @@ class BOMItemViewSet(viewsets.ModelViewSet):
         else:
             revision = get_object_or_404(StyleRevision, pk=revision_id)
 
-        serializer.save(revision=revision)
+        # Auto-generate item_number
+        max_item = BOMItem.objects.filter(revision=revision).aggregate(
+            max_num=models.Max('item_number')
+        )['max_num']
+        next_item_number = (max_item or 0) + 1
+
+        serializer.save(revision=revision, item_number=next_item_number)
 
     @action(detail=True, methods=['post'])
     def translate(self, request, revision_pk=None, pk=None):
@@ -98,7 +105,7 @@ class BOMItemViewSet(viewsets.ModelViewSet):
         result = translate_bom_items(revision_id=revision_pk, force=force)
         return Response(result)
 
-    # ====== 用量三階段管理 API ======
+    # ====== 用量四階段管理 API ======
 
     @action(detail=True, methods=['post'], url_path='set-pre-estimate')
     def set_pre_estimate(self, request, revision_pk=None, pk=None):
@@ -138,11 +145,49 @@ class BOMItemViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(item)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], url_path='set-sample')
+    def set_sample(self, request, revision_pk=None, pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/{id}/set-sample/
+        設置樣衣用量（打樣實際消耗）
+        Body: { "value": "0.85" }
+        """
+        from decimal import Decimal, InvalidOperation
+
+        item = self.get_object()
+
+        if not item.can_edit_consumption():
+            return Response(
+                {'error': '用量已鎖定，無法修改'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        value = request.data.get('value')
+        if value is None:
+            return Response(
+                {'error': '必須提供 value 參數'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decimal_value = Decimal(str(value))
+        except InvalidOperation:
+            return Response(
+                {'error': '無效的數值格式'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item.set_sample(decimal_value, user=request.user)
+        self._sync_usage_lines(item)
+
+        serializer = self.get_serializer(item)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'], url_path='confirm-consumption')
     def confirm_consumption(self, request, revision_pk=None, pk=None):
         """
         POST /api/v2/style-revisions/{revision_pk}/bom/{id}/confirm-consumption/
-        確認用量（來自 Marker Report 或樣衣實際）
+        確認用量（Marker Report 調整後）
         Body: { "value": "0.78", "source": "marker_report" }
         """
         from decimal import Decimal, InvalidOperation
@@ -183,7 +228,10 @@ class BOMItemViewSet(viewsets.ModelViewSet):
         """
         POST /api/v2/style-revisions/{revision_pk}/bom/{id}/lock-consumption/
         鎖定用量（大貨報價確認後調用）
+        Body: { "value": "0.85" }  // 可選，若不提供則使用 confirmed_value
         """
+        from decimal import Decimal, InvalidOperation
+
         item = self.get_object()
 
         if item.consumption_maturity == 'locked':
@@ -192,14 +240,31 @@ class BOMItemViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if item.confirmed_value is None:
+        # 解析可選的 value 參數
+        value_str = request.data.get('value')
+        decimal_value = None
+
+        if value_str:
+            try:
+                decimal_value = Decimal(str(value_str))
+                if decimal_value < 0:
+                    return Response(
+                        {'error': '用量不能為負數'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (InvalidOperation, ValueError):
+                return Response(
+                    {'error': '無效的數值格式'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        elif item.confirmed_value is None:
             return Response(
-                {'error': '必須先確認用量才能鎖定'},
+                {'error': '必須提供鎖定值或先確認用量'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            item.lock_consumption(user=request.user)
+            item.lock_consumption(value=decimal_value, user=request.user)
             self._sync_usage_lines(item)
         except ValueError as e:
             return Response(

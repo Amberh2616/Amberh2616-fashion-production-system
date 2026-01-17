@@ -672,6 +672,146 @@ class SampleRunViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    # ==================== Tech Pack Snapshot APIs ====================
+
+    @action(detail=True, methods=["get"], url_path="techpack-snapshot")
+    def techpack_snapshot(self, request, pk=None):
+        """
+        獲取 Run 的 Tech Pack 翻譯快照
+
+        GET /api/v2/sample-runs/{id}/techpack-snapshot/
+
+        Response:
+        {
+            "run_id": "uuid",
+            "run_no": 1,
+            "pages": [...],
+            "total_blocks": 50
+        }
+        """
+        from .models import RunTechPackPage, RunTechPackBlock
+        from .serializers import RunTechPackPageSerializer
+
+        run = self.get_object()
+
+        # 獲取快照頁面
+        pages = RunTechPackPage.objects.filter(run=run).prefetch_related('blocks')
+
+        # 計算總 block 數
+        total_blocks = RunTechPackBlock.objects.filter(run_page__run=run).count()
+
+        return Response({
+            "run_id": str(run.id),
+            "run_no": run.run_no,
+            "pages": RunTechPackPageSerializer(pages, many=True).data,
+            "total_blocks": total_blocks,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["patch"], url_path="techpack-blocks/(?P<block_id>[^/.]+)")
+    def update_techpack_block(self, request, pk=None, block_id=None):
+        """
+        更新 Run 的單個翻譯 Block
+
+        PATCH /api/v2/sample-runs/{id}/techpack-blocks/{block_id}/
+
+        Request:
+        {
+            "translated_text": "更新後的翻譯",
+            "overlay_x": 100,
+            "overlay_y": 200,
+            "overlay_visible": true
+        }
+        """
+        from .models import RunTechPackBlock
+        from .serializers import RunTechPackBlockPatchSerializer, RunTechPackBlockSerializer
+
+        run = self.get_object()
+
+        # 獲取 block（確保屬於這個 run）
+        try:
+            block = RunTechPackBlock.objects.get(
+                id=block_id,
+                run_page__run=run
+            )
+        except RunTechPackBlock.DoesNotExist:
+            return Response(
+                {'detail': f'Block {block_id} not found in this run'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 更新 block
+        serializer = RunTechPackBlockPatchSerializer(block, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        # 返回更新後的完整 block
+        return Response(
+            RunTechPackBlockSerializer(block).data,
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=["patch"], url_path="techpack-blocks-batch")
+    def update_techpack_blocks_batch(self, request, pk=None):
+        """
+        批量更新 Run 的翻譯 Blocks 位置
+
+        PATCH /api/v2/sample-runs/{id}/techpack-blocks-batch/
+
+        Request:
+        {
+            "positions": [
+                {"id": "uuid1", "overlay_x": 100, "overlay_y": 200, "overlay_visible": true},
+                {"id": "uuid2", "overlay_x": 150, "overlay_y": 250}
+            ]
+        }
+
+        Response:
+        {
+            "updated": 2,
+            "errors": []
+        }
+        """
+        from .models import RunTechPackBlock
+
+        run = self.get_object()
+
+        positions = request.data.get('positions', [])
+        if not positions:
+            return Response(
+                {'detail': 'No positions provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 獲取這個 run 下的所有 block IDs
+        valid_block_ids = set(
+            str(b.id) for b in RunTechPackBlock.objects.filter(run_page__run=run)
+        )
+
+        updated = 0
+        errors = []
+
+        for pos in positions:
+            block_id = str(pos.get('id'))
+
+            if block_id not in valid_block_ids:
+                errors.append(f"Block {block_id} not found in this run")
+                continue
+
+            try:
+                RunTechPackBlock.objects.filter(id=block_id).update(
+                    overlay_x=pos.get('overlay_x'),
+                    overlay_y=pos.get('overlay_y'),
+                    overlay_visible=pos.get('overlay_visible', True)
+                )
+                updated += 1
+            except Exception as e:
+                errors.append(f"Failed to update block {block_id}: {str(e)}")
+
+        return Response({
+            "updated": updated,
+            "errors": errors
+        }, status=status.HTTP_200_OK)
+
 
 class SampleActualsViewSet(viewsets.ModelViewSet):
     """

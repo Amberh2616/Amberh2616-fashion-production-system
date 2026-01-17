@@ -6,12 +6,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchMeasurements,
   fetchMeasurement,
+  createMeasurement,
   updateMeasurement,
   deleteMeasurement,
   translateMeasurement,
   translateMeasurementBatch,
 } from '../api/measurement';
-import type { UpdateMeasurementPayload } from '../types/measurement';
+import type { UpdateMeasurementPayload, CreateMeasurementPayload } from '../types/measurement';
 
 /**
  * Fetch Measurement items for a revision
@@ -32,6 +33,20 @@ export function useMeasurement(revisionId: string, itemId: string) {
     queryKey: ['measurements', revisionId, itemId],
     queryFn: () => fetchMeasurement(revisionId, itemId),
     enabled: !!revisionId && !!itemId,
+  });
+}
+
+/**
+ * Create Measurement item mutation
+ */
+export function useCreateMeasurement(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateMeasurementPayload) => createMeasurement(revisionId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['measurements', revisionId] });
+    },
   });
 }
 

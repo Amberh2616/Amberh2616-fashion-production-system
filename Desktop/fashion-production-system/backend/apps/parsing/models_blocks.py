@@ -136,6 +136,22 @@ class DraftBlock(models.Model):
         max_length=20, choices=STATUS_CHOICES, default="auto"
     )
 
+    # ⭐ 翻譯疊加位置（用戶可拖動調整）
+    overlay_x = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="翻譯文字框 X 位置（用戶調整後）"
+    )
+    overlay_y = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="翻譯文字框 Y 位置（用戶調整後）"
+    )
+    overlay_visible = models.BooleanField(
+        default=True,
+        help_text="是否在 MWO 中顯示此翻譯"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

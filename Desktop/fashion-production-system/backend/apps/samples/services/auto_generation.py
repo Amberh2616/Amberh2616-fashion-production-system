@@ -37,6 +37,8 @@ from ..models import (
     SampleRun,
     RunBOMLine,
     RunOperation,
+    RunTechPackPage,
+    RunTechPackBlock,
     SampleMWO,
     SampleCostEstimate,
     SampleRequestType,
@@ -147,26 +149,37 @@ def generate_estimate_no() -> str:
 
 # ==================== Validation ====================
 
-def validate_revision_for_request(revision: StyleRevision) -> None:
+def validate_revision_for_request(revision: StyleRevision, threshold: float = 0.8) -> None:
     """
-    Gating Rule (Option A - Strict):
-    Revision must have at least one verified BOM item before creating Request.
+    Gating Rule: BOM verified ratio must be >= threshold (default 80%)
+    before creating Sample Request.
 
     Args:
         revision: StyleRevision to validate
+        threshold: Minimum verified ratio (default 0.8 = 80%)
 
     Raises:
-        ValidationError: If no verified BOM items exist
+        ValidationError: If BOM verified ratio is below threshold
     """
+    total_count = BOMItem.objects.filter(revision=revision).count()
     verified_count = BOMItem.objects.filter(
         revision=revision,
         is_verified=True
     ).count()
 
-    if verified_count == 0:
+    if total_count == 0:
         raise ValidationError(
-            "Revision must have at least one verified BOM item. "
-            "Please verify BOM items in Phase 2 before creating a sample request."
+            "Revision has no BOM items. "
+            "Please add BOM items before creating a sample request."
+        )
+
+    verified_ratio = verified_count / total_count
+
+    if verified_ratio < threshold:
+        raise ValidationError(
+            f"BOM verified ratio ({verified_ratio:.0%}) is below required threshold ({threshold:.0%}). "
+            f"Currently {verified_count}/{total_count} items verified. "
+            "Please verify more BOM items before creating a sample request."
         )
 
 
@@ -247,6 +260,80 @@ def snapshot_operations_to_run(revision: StyleRevision, run: SampleRun) -> int:
         created += 1
 
     return created
+
+
+def snapshot_techpack_to_run(revision: StyleRevision, run: SampleRun) -> Dict[str, int]:
+    """
+    Snapshot Tech Pack translations to Run.
+
+    複製 TechPackRevision 的 DraftBlocks 到 RunTechPackPage/Block。
+    這樣每個 Run 有自己的翻譯快照，MWO 導出時使用。
+
+    Args:
+        revision: StyleRevision (用於找到對應的 TechPackRevision)
+        run: Target SampleRun
+
+    Returns:
+        Dict with pages_created, blocks_created counts
+    """
+    from apps.parsing.models_blocks import Revision as TechPackRevision, RevisionPage, DraftBlock
+    from apps.parsing.models import UploadedDocument
+
+    result = {
+        'pages_created': 0,
+        'blocks_created': 0,
+    }
+
+    # 1. 找到對應的 TechPackRevision
+    # 通過 UploadedDocument 關聯：style_revision → uploaded_document → tech_pack_revision
+    try:
+        uploaded_doc = UploadedDocument.objects.filter(
+            style_revision=revision
+        ).first()
+
+        if not uploaded_doc or not uploaded_doc.tech_pack_revision:
+            # 沒有 Tech Pack，跳過
+            return result
+
+        tech_pack_revision = uploaded_doc.tech_pack_revision
+    except Exception:
+        return result
+
+    # 2. 複製頁面和 Blocks
+    pages = RevisionPage.objects.filter(
+        revision=tech_pack_revision
+    ).prefetch_related('blocks').order_by('page_number')
+
+    for page in pages:
+        # 創建 RunTechPackPage
+        run_page = RunTechPackPage.objects.create(
+            run=run,
+            page_number=page.page_number,
+            width=page.width,
+            height=page.height,
+            source_page_id=page.id,
+        )
+        result['pages_created'] += 1
+
+        # 複製該頁的所有 Blocks
+        for block in page.blocks.all():
+            RunTechPackBlock.objects.create(
+                run_page=run_page,
+                block_type=block.block_type,
+                source_text=block.source_text,
+                translated_text=block.edited_text or block.translated_text or '',
+                bbox_x=block.bbox_x,
+                bbox_y=block.bbox_y,
+                bbox_width=block.bbox_width,
+                bbox_height=block.bbox_height,
+                overlay_x=block.overlay_x,
+                overlay_y=block.overlay_y,
+                overlay_visible=block.overlay_visible,
+                source_block_id=block.id,
+            )
+            result['blocks_created'] += 1
+
+    return result
 
 
 # ==================== Main Service Function ====================
@@ -357,6 +444,11 @@ def create_with_initial_run(
 
         # 8. Snapshot Operations to RunOperation
         documents['operation_count'] = snapshot_operations_to_run(revision, run)
+
+        # 8.5 Snapshot Tech Pack translations to Run
+        techpack_result = snapshot_techpack_to_run(revision, run)
+        documents['techpack_pages_count'] = techpack_result['pages_created']
+        documents['techpack_blocks_count'] = techpack_result['blocks_created']
 
         # 9. Build enhanced MWO snapshots from RunBOMLine and RunOperation
         # Enhanced BOM snapshot with material code, color, total consumption, Chinese translation
@@ -740,6 +832,11 @@ def generate_documents_for_request(
 
     # 5. Snapshot Operations to RunOperation
     documents['operation_count'] = snapshot_operations_to_run(revision, run)
+
+    # 5.5 Snapshot Tech Pack translations to Run
+    techpack_result = snapshot_techpack_to_run(revision, run)
+    documents['techpack_pages_count'] = techpack_result['pages_created']
+    documents['techpack_blocks_count'] = techpack_result['blocks_created']
 
     # 6. Build MWO snapshots
     bom_snapshot = [{

@@ -17,6 +17,8 @@ from .models import (
     SampleAttachment,
     SampleRequestStatus,
     SampleRunStatus,
+    RunTechPackPage,
+    RunTechPackBlock,
 )
 
 
@@ -243,3 +245,90 @@ class SampleRunSerializer(serializers.ModelSerializer):
         model = SampleRun
         fields = "__all__"
         read_only_fields = ("id", "created_at", "updated_at", "status_updated_at")
+
+
+# ==================== Tech Pack Snapshot Serializers ====================
+
+class RunTechPackBlockSerializer(serializers.ModelSerializer):
+    """
+    Run 的翻譯快照 Block
+
+    用途：
+    - GET /api/v2/sample-runs/{id}/techpack-snapshot/
+    - PATCH 更新翻譯位置
+    """
+    bbox = serializers.SerializerMethodField()
+    overlay = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RunTechPackBlock
+        fields = [
+            "id",
+            "block_type",
+            "source_text",
+            "translated_text",
+            "bbox",
+            "overlay",
+            "source_block_id",
+        ]
+        read_only_fields = ["id", "source_text", "source_block_id"]
+
+    def get_bbox(self, obj):
+        """原始位置"""
+        return {
+            "x": obj.bbox_x,
+            "y": obj.bbox_y,
+            "width": obj.bbox_width,
+            "height": obj.bbox_height,
+        }
+
+    def get_overlay(self, obj):
+        """翻譯疊加位置"""
+        return {
+            "x": obj.overlay_x if obj.overlay_x is not None else obj.bbox_x,
+            "y": obj.overlay_y if obj.overlay_y is not None else obj.bbox_y,
+            "visible": obj.overlay_visible,
+        }
+
+
+class RunTechPackBlockPatchSerializer(serializers.ModelSerializer):
+    """
+    PATCH 專用 - 更新翻譯和位置
+    """
+    class Meta:
+        model = RunTechPackBlock
+        fields = [
+            "translated_text",
+            "overlay_x",
+            "overlay_y",
+            "overlay_visible",
+        ]
+
+
+class RunTechPackPageSerializer(serializers.ModelSerializer):
+    """
+    Run 的 Tech Pack 頁面快照
+    """
+    blocks = RunTechPackBlockSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RunTechPackPage
+        fields = [
+            "id",
+            "page_number",
+            "width",
+            "height",
+            "blocks",
+            "source_page_id",
+        ]
+        read_only_fields = ["id", "source_page_id"]
+
+
+class RunTechPackSnapshotSerializer(serializers.Serializer):
+    """
+    完整的 Tech Pack 快照（用於 MWO 頁面）
+    """
+    run_id = serializers.UUIDField()
+    run_no = serializers.IntegerField()
+    pages = RunTechPackPageSerializer(many=True)
+    total_blocks = serializers.IntegerField()

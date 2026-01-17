@@ -13,7 +13,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useBOMItems, useTranslateBOMBatch } from "@/lib/hooks/useBom";
+import { useBOMItems, useTranslateBOMBatch, useDeleteBOMItem, useCreateBOMItem } from "@/lib/hooks/useBom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,22 @@ import { BOMEditDrawer } from "@/components/bom/BOMEditDrawer";
 import { BOMTranslationDrawer } from "@/components/bom/BOMTranslationDrawer";
 import { EditableConsumptionCell } from "@/components/bom/EditableConsumptionCell";
 import type { BOMItem } from "@/lib/types/bom";
-import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft } from "lucide-react";
+import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft, Trash2, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Link from "next/link";
 
 const API_BASE = "http://localhost:8000";
@@ -53,9 +68,48 @@ export default function BOMPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newItemData, setNewItemData] = useState({
+    material_name: "",
+    category: "fabric" as "fabric" | "trim" | "packaging" | "label",
+    supplier: "",
+    unit: "YD",
+    consumption: "",
+    unit_price: "",
+  });
 
   const { data: bomData, isLoading, error } = useBOMItems(revisionId);
   const translateBatchMutation = useTranslateBOMBatch(revisionId);
+  const deleteMutation = useDeleteBOMItem(revisionId);
+  const createMutation = useCreateBOMItem(revisionId);
+
+  const handleAddItem = async () => {
+    if (!newItemData.material_name.trim()) {
+      alert("請輸入物料名稱");
+      return;
+    }
+    try {
+      await createMutation.mutateAsync({
+        material_name: newItemData.material_name,
+        category: newItemData.category,
+        supplier: newItemData.supplier || undefined,
+        unit: newItemData.unit || "YD",
+        consumption: newItemData.consumption || undefined,
+        unit_price: newItemData.unit_price || undefined,
+      });
+      setIsAddDialogOpen(false);
+      setNewItemData({
+        material_name: "",
+        category: "fabric",
+        supplier: "",
+        unit: "YD",
+        consumption: "",
+        unit_price: "",
+      });
+    } catch (err) {
+      alert(`新增失敗：${(err as Error).message}`);
+    }
+  };
 
   // 取得款式資訊
   const { data: styleData } = useQuery({
@@ -242,12 +296,26 @@ export default function BOMPage() {
             >
               編輯
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm(`確定要刪除 "${row.original.material_name}" 嗎？`)) {
+                  deleteMutation.mutate(row.original.id);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              title="刪除"
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         ),
-        size: 120,
+        size: 150,
       }),
     ],
-    [revisionId]
+    [revisionId, deleteMutation]
   );
 
   const table = useReactTable({
@@ -313,6 +381,10 @@ export default function BOMPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button onClick={() => setIsAddDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            新增物料
+          </Button>
           <Button
             variant="outline"
             onClick={() => translateBatchMutation.mutate(false)}
@@ -416,6 +488,106 @@ export default function BOMPage() {
           onClose={() => setTranslatingItem(null)}
         />
       )}
+
+      {/* Add Item Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>新增物料</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="material_name">物料名稱 *</Label>
+              <Input
+                id="material_name"
+                value={newItemData.material_name}
+                onChange={(e) => setNewItemData({ ...newItemData, material_name: e.target.value })}
+                placeholder="例如：Main Body Fabric"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="category">類別</Label>
+                <Select
+                  value={newItemData.category}
+                  onValueChange={(value: "fabric" | "trim" | "packaging" | "label") =>
+                    setNewItemData({ ...newItemData, category: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fabric">Fabric 面料</SelectItem>
+                    <SelectItem value="trim">Trim 輔料</SelectItem>
+                    <SelectItem value="packaging">Packaging 包裝</SelectItem>
+                    <SelectItem value="label">Label 標籤</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="unit">單位</Label>
+                <Select
+                  value={newItemData.unit}
+                  onValueChange={(value) => setNewItemData({ ...newItemData, unit: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="YD">YD (碼)</SelectItem>
+                    <SelectItem value="M">M (米)</SelectItem>
+                    <SelectItem value="PCS">PCS (件)</SelectItem>
+                    <SelectItem value="SET">SET (套)</SelectItem>
+                    <SelectItem value="ROLL">ROLL (捲)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="supplier">供應商</Label>
+              <Input
+                id="supplier"
+                value={newItemData.supplier}
+                onChange={(e) => setNewItemData({ ...newItemData, supplier: e.target.value })}
+                placeholder="例如：ABC Textile Co."
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="consumption">用量</Label>
+                <Input
+                  id="consumption"
+                  type="number"
+                  step="0.01"
+                  value={newItemData.consumption}
+                  onChange={(e) => setNewItemData({ ...newItemData, consumption: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="unit_price">單價 (USD)</Label>
+                <Input
+                  id="unit_price"
+                  type="number"
+                  step="0.01"
+                  value={newItemData.unit_price}
+                  onChange={(e) => setNewItemData({ ...newItemData, unit_price: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleAddItem} disabled={createMutation.isPending}>
+              {createMutation.isPending ? "新增中..." : "新增"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

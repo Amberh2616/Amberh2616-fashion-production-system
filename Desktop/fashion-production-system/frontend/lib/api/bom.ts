@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from './client';
-import type { BOMListResponse, BOMItem, UpdateBOMItemPayload, TranslateBatchResponse } from '../types/bom';
+import type { BOMListResponse, BOMItem, UpdateBOMItemPayload, TranslateBatchResponse, CreateBOMItemPayload } from '../types/bom';
 
 /**
  * Fetch BOM items for a specific revision
@@ -17,6 +17,22 @@ export async function fetchBOMItems(revisionId: string): Promise<BOMListResponse
  */
 export async function fetchBOMItem(revisionId: string, itemId: string): Promise<BOMItem> {
   return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/`);
+}
+
+/**
+ * Create a new BOM item
+ */
+export async function createBOMItem(
+  revisionId: string,
+  data: CreateBOMItemPayload
+): Promise<BOMItem> {
+  return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
 }
 
 /**
@@ -73,7 +89,7 @@ export async function translateBOMBatch(
   });
 }
 
-// ====== 用量三階段管理 API ======
+// ====== 用量四階段管理 API ======
 
 /**
  * 設置預估用量
@@ -84,6 +100,23 @@ export async function setPreEstimate(
   value: string
 ): Promise<BOMItem> {
   return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/set-pre-estimate/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ value }),
+  });
+}
+
+/**
+ * 設置樣衣用量
+ */
+export async function setSample(
+  revisionId: string,
+  itemId: string,
+  value: string
+): Promise<BOMItem> {
+  return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/set-sample/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -112,13 +145,19 @@ export async function confirmConsumption(
 
 /**
  * 鎖定用量
+ * @param value 可選，指定鎖定值。若不提供則使用 confirmed_value
  */
 export async function lockConsumption(
   revisionId: string,
-  itemId: string
+  itemId: string,
+  value?: string
 ): Promise<BOMItem> {
   return apiClient<BOMItem>(`/style-revisions/${revisionId}/bom/${itemId}/lock-consumption/`, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(value ? { value } : {}),
   });
 }
 

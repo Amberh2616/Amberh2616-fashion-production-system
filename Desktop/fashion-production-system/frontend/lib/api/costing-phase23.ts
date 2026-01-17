@@ -171,6 +171,25 @@ export async function createBulkQuote(
 }
 
 /**
+ * P11: Refresh CostSheetVersion snapshot from current BOM data
+ * POST /cost-sheet-versions/{id}/refresh-snapshot/
+ *
+ * Only allowed for draft status.
+ * Re-reads consumption and unit_price from BOMItem.
+ */
+export async function refreshCostSheetSnapshot(
+  costSheetId: string
+): Promise<CostSheetVersionDetail> {
+  return apiClient<CostSheetVersionDetail>(
+    `/cost-sheet-versions/${costSheetId}/refresh-snapshot/`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+/**
  * P18: Accept CostSheetVersion (Submitted → Accepted)
  * POST /cost-sheet-versions/{id}/accept/
  *

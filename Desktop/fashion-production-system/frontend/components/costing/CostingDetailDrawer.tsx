@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, AlertCircle, AlertTriangle, Copy, Edit } from 'lucide-react';
+import { Loader2, AlertCircle, AlertTriangle, Copy, Edit, RefreshCw } from 'lucide-react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -41,6 +41,7 @@ import {
   useUpdateCostLine,
   useAcceptCostSheetVersion,
   useRejectCostSheetVersion,
+  useRefreshCostSheetSnapshot,
 } from '@/lib/hooks/useCostingPhase23';
 import type { CostLineV2 } from '@/types/costing-phase23';
 import { cn } from '@/lib/utils';
@@ -71,6 +72,19 @@ export function CostingDetailDrawer({
   const updateLineMutation = useUpdateCostLine(costSheetId || '', styleId);
   const acceptMutation = useAcceptCostSheetVersion(styleId);
   const rejectMutation = useRejectCostSheetVersion(styleId);
+  const refreshSnapshotMutation = useRefreshCostSheetSnapshot(styleId);
+
+  // Handle refresh snapshot
+  const handleRefreshSnapshot = async () => {
+    if (!costSheetId) return;
+    if (!window.confirm('確定要從 BOM 重新載入用量和單價嗎？這將覆蓋當前的調整值。')) return;
+    try {
+      await refreshSnapshotMutation.mutateAsync(costSheetId);
+    } catch (err) {
+      console.error('Refresh snapshot failed:', err);
+      alert('刷新快照失敗：' + (err as Error).message);
+    }
+  };
 
   // Handle accept action
   const handleAccept = async () => {
@@ -395,6 +409,22 @@ export function CostingDetailDrawer({
                       // Don't close drawer, let user see the new status
                     }}
                   />
+                )}
+
+                {/* Refresh Snapshot button (Draft only) */}
+                {costSheetId && costSheet?.status === 'draft' && (
+                  <Button
+                    variant="outline"
+                    onClick={handleRefreshSnapshot}
+                    disabled={refreshSnapshotMutation.isPending}
+                  >
+                    {refreshSnapshotMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    刷新快照
+                  </Button>
                 )}
 
                 {/* Accept button (Submitted only) */}

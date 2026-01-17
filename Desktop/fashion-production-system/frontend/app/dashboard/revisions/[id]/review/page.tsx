@@ -4,31 +4,49 @@
  * Block-Based Draft Review Page
  * Route: /dashboard/revisions/[id]/review
  *
- * Layout:
- * - Left (60%): PDF viewer (iframe)
- * - Right (40%): Coverage Panel + Block editor sidebar
+ * Features:
+ * - Left: PDF + Draggable/Editable Translation Boxes
+ * - Right: Collapsible sidebar with Coverage + Block details
+ * - Double-click to edit, ✕ to delete
  */
 
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useDraft, useUpdateDraftBlock } from '@/lib/hooks/useDraft';
+import { useDebouncedPositionSave, useToggleBlockVisibility } from '@/lib/hooks/useDraftBlockPosition';
 import type { DraftBlock as DraftBlockType } from '@/lib/types/revision';
 import { approveRevision } from '@/lib/api/approve';
 import { CoveragePanel } from '@/components/review/CoveragePanel';
+import { TechPackCanvas } from '@/components/review/TechPackCanvas';
+import { EditPopup } from '@/components/review/EditPopup';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v2';
 
 export default function DraftReviewPage() {
   const params = useParams();
   const revisionId = params.id as string;
   const { data, isLoading, error, refetch } = useDraft(revisionId);
   const updateBlock = useUpdateDraftBlock(revisionId);
+  const { savePositionNow } = useDebouncedPositionSave(revisionId);
+  const toggleVisibility = useToggleBlockVisibility(revisionId);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
   const [isApproving, setIsApproving] = useState(false);
   const [isCreatingRequest, setIsCreatingRequest] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [showOriginalPdf, setShowOriginalPdf] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Edit popup state
+  const [editPopupOpen, setEditPopupOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<DraftBlockType | null>(null);
+
+  // Ref for right sidebar scrolling
+  const blockListRef = useRef<HTMLDivElement>(null);
+  const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Loading state
   if (isLoading) {
@@ -70,38 +88,71 @@ export default function DraftReviewPage() {
     p.blocks.map(b => ({ ...b, page_number: p.page_number }))
   );
 
-  const handleBlockClick = (block: DraftBlockType) => {
-    setSelectedBlockId(block.id);
-    // Find which page this block belongs to
-    const blockPage = revision.pages.find(p =>
-      p.blocks.some(b => b.id === block.id)
-    );
-    if (blockPage) {
-      setCurrentPage(blockPage.page_number);
+  // Get page image URL
+  const getPageImageUrl = (pageNum: number) => {
+    return `${API_BASE}/revisions/${revisionId}/page-image/${pageNum}/?scale=2`;
+  };
+
+  // Handle block selection and scroll right sidebar
+  const handleBlockSelect = (blockId: string) => {
+    setSelectedBlockId(blockId);
+
+    // Scroll right sidebar to the selected block
+    if (!sidebarCollapsed && blockRefs.current.has(blockId)) {
+      const blockEl = blockRefs.current.get(blockId);
+      blockEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
-  const handleEditStart = (block: DraftBlockType) => {
-    setEditingBlockId(block.id);
-    setEditValue(block.edited_text || block.translated_text || block.source_text);
+  const handlePositionChange = (blockId: string, x: number, y: number) => {
+    savePositionNow(blockId, x, y);
   };
 
-  const handleEditSave = async (blockId: string) => {
+  // Handle double-click to edit
+  const handleBlockDoubleClick = (block: DraftBlockType) => {
+    setEditingBlock(block);
+    setEditPopupOpen(true);
+  };
+
+  // Handle delete (hide) block
+  const handleBlockDelete = async (blockId: string) => {
+    try {
+      await toggleVisibility.mutateAsync({ blockId, visible: false });
+      setSelectedBlockId(null);
+    } catch (error) {
+      console.error('Failed to hide block:', error);
+      alert('Failed to hide block. Please try again.');
+    }
+  };
+
+  // Handle restore hidden block
+  const handleBlockRestore = async (blockId: string) => {
+    try {
+      await toggleVisibility.mutateAsync({ blockId, visible: true });
+    } catch (error) {
+      console.error('Failed to restore block:', error);
+      alert('Failed to restore block. Please try again.');
+    }
+  };
+
+  // Handle edit save from popup
+  const handleEditSave = async (text: string) => {
+    if (!editingBlock) return;
     try {
       await updateBlock.mutateAsync({
-        blockId,
-        editedText: editValue,
+        blockId: editingBlock.id,
+        editedText: text,
       });
-      setEditingBlockId(null);
     } catch (error) {
       console.error('Failed to save block edit:', error);
-      alert('Failed to save changes. Please try again.');
+      throw error;
     }
   };
 
-  const handleEditCancel = () => {
-    setEditingBlockId(null);
-    setEditValue('');
+  // Handle delete from popup
+  const handleEditDelete = async () => {
+    if (!editingBlock) return;
+    await handleBlockDelete(editingBlock.id);
   };
 
   const handleApprove = async () => {
@@ -115,7 +166,7 @@ export default function DraftReviewPage() {
     setIsApproving(true);
     try {
       await approveRevision(revisionId);
-      alert('✅ Revision approved successfully!');
+      alert('Revision approved successfully!');
       refetch();
     } catch (error) {
       console.error('Failed to approve revision:', error);
@@ -125,20 +176,42 @@ export default function DraftReviewPage() {
     }
   };
 
+  const handleBatchTranslate = async () => {
+    setIsTranslating(true);
+    try {
+      const response = await fetch(`${API_BASE}/revisions/${revisionId}/translate-batch/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: false }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Translation request failed');
+      }
+
+      const result = await response.json();
+      alert(`Batch translation completed!\n\nTranslated: ${result.translated}\nSkipped: ${result.skipped}\nTotal: ${result.total}`);
+      refetch();
+    } catch (error) {
+      console.error('Failed to batch translate:', error);
+      alert(`Batch translation failed: ${(error as Error).message}`);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   const handleCreateRequest = async () => {
     const confirmed = window.confirm(
-      '✅ 翻译已完成！\n\n' +
-      '确认创建 Sample Request？\n' +
-      '这将生成 Run + MWO + Estimate + PO'
+      'Translation completed!\n\n' +
+      'Confirm to create Sample Request?\n' +
+      'This will generate Run + MWO + Estimate + PO'
     );
 
     if (!confirmed) return;
 
     setIsCreatingRequest(true);
     try {
-      // Step 1: Get style_revision_id from UploadedDocument
-      // We need to find the UploadedDocument that has this tech_pack_revision_id
-      const docResponse = await fetch(`http://localhost:8000/api/v2/uploaded-documents/`);
+      const docResponse = await fetch(`${API_BASE}/uploaded-documents/`);
       if (!docResponse.ok) throw new Error('Failed to fetch documents');
 
       const docs = await docResponse.json();
@@ -149,18 +222,15 @@ export default function DraftReviewPage() {
       if (!document || !document.style_revision) {
         throw new Error(
           'Cannot create Sample Request: No BOM/Spec data found.\n\n' +
-          '请确保文件包含 BOM 和 Measurement 数据。'
+          'Please ensure the document contains BOM and Measurement data.'
         );
       }
 
-      // Step 2: Create Sample Request with style_revision_id
-      const response = await fetch('http://localhost:8000/api/v2/sample-requests/', {
+      const response = await fetch(`${API_BASE}/sample-requests/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          revision: document.style_revision, // ⭐ Use StyleRevision ID (field name is 'revision')
+          revision: document.style_revision,
           request_type: 'proto',
           quantity_requested: 5,
           priority: 'normal',
@@ -173,14 +243,11 @@ export default function DraftReviewPage() {
         throw new Error(errorData.detail || 'Failed to create request');
       }
 
-      const data = await response.json();
-      alert('✅ Sample Request 创建成功！\n\n正在跳转到 Kanban 看板...');
-
-      // Redirect to Kanban
+      alert('Sample Request created successfully!\n\nRedirecting to Kanban...');
       window.location.href = '/dashboard/samples/kanban';
     } catch (error) {
       console.error('Failed to create request:', error);
-      alert(`创建 Request 失败:\n\n${(error as Error).message}`);
+      alert(`Create Request failed:\n\n${(error as Error).message}`);
     } finally {
       setIsCreatingRequest(false);
     }
@@ -192,297 +259,427 @@ export default function DraftReviewPage() {
     );
     if (missingBlocks.length === 0) return;
 
-    // Find first missing on current page or next page
     const currentPageMissing = missingBlocks.find(b => b.page_number === currentPage);
     if (currentPageMissing) {
       setSelectedBlockId(currentPageMissing.id);
     } else {
-      // Jump to first missing block
       const firstMissing = missingBlocks[0];
       setCurrentPage(firstMissing.page_number!);
       setSelectedBlockId(firstMissing.id);
     }
   };
 
+  // Calculate coverage
+  const totalBlocks = allBlocksWithPage.length;
+  const translatedBlocks = allBlocksWithPage.filter(b =>
+    (b.edited_text || b.translated_text || "").trim()
+  ).length;
+  const coveragePercent = totalBlocks > 0 ? Math.round((translatedBlocks / totalBlocks) * 100) : 0;
+
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* Left: PDF Viewer with Bilingual Overlay */}
-      <div className="w-[60%] bg-white border-r border-gray-200 flex flex-col">
+      {/* Left: PDF Viewer */}
+      <div
+        className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+          sidebarCollapsed ? 'flex-1' : 'w-[65%]'
+        }`}
+      >
         {/* Header */}
-        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-lg font-semibold text-gray-900">{revision.filename}</h1>
-              <span
-                className={`px-2 py-1 text-xs rounded font-medium ${
-                  (revision.status as string) === 'completed'
-                    ? 'bg-green-100 text-green-800'
-                    : (revision.status as string) === 'reviewing'
-                    ? 'bg-blue-100 text-blue-800'
-                    : (revision.status as string) === 'parsed'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}
-              >
-                {revision.status}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500">
-              Page {currentPage} of {revision.page_count}
-            </p>
+        <div className="border-b border-gray-200 px-4 py-2 flex items-center justify-between bg-white">
+          <div className="flex items-center gap-3">
+            <h1 className="text-base font-semibold text-gray-900 truncate max-w-[200px]">
+              {revision.filename}
+            </h1>
+            <span
+              className={`px-2 py-0.5 text-xs rounded font-medium ${
+                (revision.status as string) === 'completed'
+                  ? 'bg-green-100 text-green-800'
+                  : (revision.status as string) === 'reviewing'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-800'
+              }`}
+            >
+              {revision.status}
+            </span>
           </div>
+
           <div className="flex items-center gap-2">
+            {/* Zoom Controls */}
+            {!showOriginalPdf && (
+              <>
+                <button
+                  onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))}
+                  disabled={zoomLevel <= 0.5}
+                  className="px-2 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 hover:bg-gray-200 text-sm font-bold"
+                >
+                  −
+                </button>
+                <span className="text-xs text-gray-600 min-w-[40px] text-center">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <button
+                  onClick={() => setZoomLevel(z => Math.min(2, z + 0.25))}
+                  disabled={zoomLevel >= 2}
+                  className="px-2 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 hover:bg-gray-200 text-sm font-bold"
+                >
+                  +
+                </button>
+
+                <span className="border-l border-gray-300 h-5 mx-1"></span>
+
+                {/* Page Navigation */}
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 hover:bg-gray-200 text-xs"
+                >
+                  Prev
+                </button>
+                <span className="text-xs text-gray-600">{currentPage}/{revision.page_count}</span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(revision.page_count, p + 1))}
+                  disabled={currentPage === revision.page_count}
+                  className="px-2 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 hover:bg-gray-200 text-xs"
+                >
+                  Next
+                </button>
+              </>
+            )}
+
+            <span className="border-l border-gray-300 h-5 mx-1"></span>
+
+            {/* Mode Toggle */}
             <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+              onClick={() => setShowOriginalPdf(!showOriginalPdf)}
+              className={`px-2 py-1 text-xs rounded font-medium ${
+                showOriginalPdf
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700'
+              }`}
             >
-              ← Prev
+              {showOriginalPdf ? 'Show Boxes' : 'PDF Only'}
             </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(revision.page_count, p + 1))}
-              disabled={currentPage === (revision.page_count)}
-              className="px-3 py-1 bg-gray-100 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
-            >
-              Next →
-            </button>
+
+            {/* Expand Sidebar Button - only when collapsed */}
+            {sidebarCollapsed && (
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 flex items-center gap-1"
+                title="Expand right panel"
+              >
+                <span>Details</span>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
         {/* PDF Content */}
         <div className="flex-1 overflow-hidden">
-          {revision.file_url ? (
-            <iframe
-              src={revision.file_url}
-              className="w-full h-full border-none"
-              title="PDF Preview"
-            />
-          ) : (
-            <div className="flex items-center justify-center bg-gray-200 h-full">
-              <div className="text-center text-gray-500">
-                <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                <p className="text-sm font-medium">PDF Preview Not Available</p>
-                <p className="text-xs mt-1">File not uploaded yet</p>
+          {showOriginalPdf ? (
+            revision.file_url ? (
+              <iframe
+                src={revision.file_url}
+                className="w-full h-full border-none"
+                title="PDF Preview"
+              />
+            ) : (
+              <div className="flex items-center justify-center bg-gray-200 h-full">
+                <p className="text-gray-500">PDF not available</p>
               </div>
-            </div>
+            )
+          ) : (
+            currentPageData ? (
+              <TechPackCanvas
+                pageImageUrl={getPageImageUrl(currentPage)}
+                pageNumber={currentPage}
+                pageWidth={currentPageData.width || 612}
+                pageHeight={currentPageData.height || 792}
+                blocks={currentPageData.blocks}
+                selectedBlockId={selectedBlockId}
+                onBlockSelect={handleBlockSelect}
+                onPositionChange={handlePositionChange}
+                onBlockDoubleClick={handleBlockDoubleClick}
+                onBlockDelete={handleBlockDelete}
+                zoomLevel={zoomLevel}
+              />
+            ) : (
+              <div className="flex items-center justify-center bg-gray-100 h-full">
+                <p className="text-gray-500">No page data</p>
+              </div>
+            )
           )}
         </div>
+
+        {/* Bottom Toolbar - when sidebar is collapsed */}
+        {sidebarCollapsed && (
+          <div className="border-t border-gray-200 px-4 py-2 bg-white flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Coverage:</span>
+                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 rounded-full"
+                    style={{ width: `${coveragePercent}%` }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-gray-700">{coveragePercent}%</span>
+              </div>
+
+              <button
+                onClick={handleBatchTranslate}
+                disabled={isTranslating || revision.status === 'completed'}
+                className="px-3 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
+              >
+                {isTranslating && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
+                AI Translate
+              </button>
+
+              <button
+                onClick={jumpNextMissing}
+                className="px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
+              >
+                Next Missing
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {(revision.status === 'approved' || revision.status === 'completed') ? (
+                <button
+                  onClick={handleCreateRequest}
+                  disabled={isCreatingRequest}
+                  className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Create Sample Request
+                </button>
+              ) : (
+                <button
+                  onClick={handleApprove}
+                  disabled={isApproving}
+                  className="px-4 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  Approve
+                </button>
+              )}
+
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                title="Expand sidebar"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Right: Coverage Panel + Block Editor Sidebar */}
-      <div className="w-[40%] flex flex-col overflow-hidden">
-        {/* 🆕 Coverage Panel */}
-        <div className="px-4 pt-4">
-          <CoveragePanel
-            blocksAll={allBlocksWithPage}
-            showMissingOnly={showMissingOnly}
-            onToggleMissingOnly={() => setShowMissingOnly(v => !v)}
-            onJumpNextMissing={jumpNextMissing}
-          />
-        </div>
-
-        {/* Sidebar Header */}
-        <div className="border-b border-gray-200 px-6 py-4 bg-white">
-          <h2 className="text-lg font-semibold text-gray-900">Blocks</h2>
-          <p className="text-sm text-gray-500">
-            {showMissingOnly
-              ? `${allBlocksWithPage.filter(b => !((b.edited_text || b.translated_text || "").trim())).length} missing blocks`
-              : `${allBlocksWithPage.length} total blocks`
-            }
-          </p>
-        </div>
-
-        {/* Block List */}
-        <div className="flex-1 overflow-auto p-4 space-y-3">
-          {currentPageData?.blocks.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <p>No blocks on this page</p>
-            </div>
-          ) : (
-            currentPageData?.blocks
-              .filter(block => {
-                if (!showMissingOnly) return true;
-                const finalText = ((block.edited_text || block.translated_text || "") + "").trim();
-                return finalText.length === 0;
-              })
-              .map((block, idx) => (
-              <div
-                key={block.id}
-                className={`
-                  border rounded-lg p-4 transition-all
-                  ${selectedBlockId === block.id
-                    ? 'border-blue-500 bg-blue-50 shadow-md'
-                    : 'border-gray-200 bg-white'
-                  }
-                `}
+      {/* Right: Collapsible Sidebar */}
+      {!sidebarCollapsed && (
+        <div className="w-[35%] flex flex-col overflow-hidden bg-white">
+          {/* Sidebar Header with Collapse Button */}
+          <div className="border-b border-gray-200 px-4 py-2 bg-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSidebarCollapsed(true)}
+                className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded"
+                title="Collapse sidebar"
               >
-                {/* Block Header */}
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-gray-400">
-                      Block #{idx + 1}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleBlockClick(block);
-                      }}
-                      className={`px-2 py-1 text-xs rounded font-medium transition-colors ${
-                        selectedBlockId === block.id
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {selectedBlockId === block.id ? '✓ Selected' : 'Select'}
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">
-                      {block.block_type}
-                    </span>
-                    <span
-                      className={`text-xs px-2 py-1 rounded ${
-                        block.status === 'auto'
-                          ? 'bg-gray-100 text-gray-700'
-                          : block.status === 'edited'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}
-                    >
-                      {block.status}
-                    </span>
-                  </div>
-                </div>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              </button>
+              <span className="text-sm font-medium text-gray-700">Details</span>
+            </div>
 
-                {/* Source Text (Read-only) */}
-                <div className="mb-2">
-                  <span className="text-xs font-medium text-gray-700">Original:</span>
-                  <p className="text-sm text-gray-900 font-medium mt-1 whitespace-pre-line">
-                    {block.source_text}
-                  </p>
-                </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">{coveragePercent}%</span>
+              <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-600" style={{ width: `${coveragePercent}%` }} />
+              </div>
+            </div>
+          </div>
 
-                {/* Editable Translation */}
-                <div className="mb-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-700">Translation:</span>
-                    {editingBlockId !== block.id && (
+          {/* Coverage Panel */}
+          <div className="px-3 py-2 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBatchTranslate}
+                disabled={isTranslating || revision.status === 'completed'}
+                className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-1"
+              >
+                {isTranslating && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
+                {isTranslating ? 'Translating...' : 'AI Batch Translate'}
+              </button>
+              <button
+                onClick={jumpNextMissing}
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
+              >
+                Next Missing
+              </button>
+              <button
+                onClick={() => setShowMissingOnly(!showMissingOnly)}
+                className={`px-3 py-1.5 text-xs rounded ${
+                  showMissingOnly ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {showMissingOnly ? 'Show All' : 'Missing Only'}
+              </button>
+            </div>
+          </div>
+
+          {/* Block List */}
+          <div ref={blockListRef} className="flex-1 overflow-auto p-3 space-y-2">
+            {/* Hidden Blocks Section */}
+            {currentPageData?.blocks.filter(b => b.overlay?.visible === false).length > 0 && (
+              <div className="mb-3 p-2 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-500">
+                    Hidden ({currentPageData.blocks.filter(b => b.overlay?.visible === false).length})
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {currentPageData.blocks
+                    .filter(b => b.overlay?.visible === false)
+                    .map((block) => (
+                      <div
+                        key={block.id}
+                        className="flex items-center justify-between p-2 bg-white rounded border border-gray-100"
+                      >
+                        <span className="text-xs text-gray-500 truncate flex-1">
+                          {block.source_text.substring(0, 30)}...
+                        </span>
+                        <button
+                          onClick={() => handleBlockRestore(block.id)}
+                          className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
+
+            {currentPageData?.blocks.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <p>No blocks on this page</p>
+              </div>
+            ) : (
+              currentPageData?.blocks
+                .filter(block => {
+                  if (block.overlay?.visible === false) return false;
+                  if (!showMissingOnly) return true;
+                  return !((block.edited_text || block.translated_text || "").trim());
+                })
+                .map((block, idx) => (
+                  <div
+                    key={block.id}
+                    ref={(el) => {
+                      if (el) blockRefs.current.set(block.id, el);
+                    }}
+                    className={`border rounded-lg p-3 transition-all cursor-pointer ${
+                      selectedBlockId === block.id
+                        ? 'border-blue-500 bg-blue-50 shadow-md'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                    onClick={() => handleBlockSelect(block.id)}
+                    onDoubleClick={() => handleBlockDoubleClick(block)}
+                  >
+                    {/* Block Header */}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-mono text-gray-400">#{idx + 1}</span>
+                        <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
+                          {block.block_type}
+                        </span>
+                      </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleEditStart(block);
+                          handleBlockDoubleClick(block);
                         }}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        className="text-xs text-blue-600 hover:text-blue-800"
                       >
                         Edit
                       </button>
-                    )}
-                  </div>
-
-                  {editingBlockId === block.id ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-full text-sm border border-blue-400 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        rows={3}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditSave(block.id);
-                          }}
-                          disabled={updateBlock.isPending}
-                          className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          {updateBlock.isPending && (
-                            <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                          )}
-                          {updateBlock.isPending ? 'Saving...' : 'Save'}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditCancel();
-                          }}
-                          disabled={updateBlock.isPending}
-                          className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Cancel
-                        </button>
-                      </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-gray-700 whitespace-pre-line">
+
+                    {/* Source Text */}
+                    <p className="text-xs text-gray-600 mb-1 line-clamp-1">
+                      {block.source_text}
+                    </p>
+
+                    {/* Translation */}
+                    <p className={`text-sm font-medium line-clamp-2 ${
+                      (block.edited_text || block.translated_text)
+                        ? 'text-blue-700'
+                        : 'text-gray-400 italic'
+                    }`}>
                       {block.edited_text || block.translated_text || '(No translation)'}
                     </p>
-                  )}
-                </div>
 
-                {/* Human Edit Indicator */}
-                {block.edited_text && editingBlockId !== block.id && (
-                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-2 text-xs text-yellow-800">
-                    ✏️ Human edited
+                    {block.edited_text && (
+                      <span className="inline-block mt-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
+                        Edited
+                      </span>
+                    )}
                   </div>
-                )}
+                ))
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-gray-200 px-4 py-3 bg-white">
+            {(revision.status === 'approved' || revision.status === 'completed') ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-medium text-green-800">Translation Approved</span>
+                </div>
+                <button
+                  onClick={handleCreateRequest}
+                  disabled={isCreatingRequest}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isCreatingRequest && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
+                  {isCreatingRequest ? 'Creating...' : 'Create Sample Request'}
+                </button>
               </div>
-            ))
-          )}
-        </div>
-
-        {/* Sidebar Footer */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-white space-y-3">
-          {(revision.status === 'approved' || revision.status === 'completed') ? (
-            <>
-              {/* Status Badge */}
-              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm font-medium text-green-800">✅ 翻译已批准</span>
-              </div>
-
-              {/* Create Sample Request Button */}
-              <button
-                onClick={handleCreateRequest}
-                disabled={isCreatingRequest}
-                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md"
-              >
-                {isCreatingRequest && (
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                )}
-                {isCreatingRequest ? '创建中...' : '📋 下 Sample Request'}
-              </button>
-
-              <p className="text-xs text-gray-500 text-center">
-                将生成 Run + MWO + Estimate + PO
-              </p>
-            </>
-          ) : (
-            <>
-              {/* Approve Button */}
+            ) : (
               <button
                 onClick={handleApprove}
                 disabled={isApproving}
-                className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-medium disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isApproving && (
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                )}
+                {isApproving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>}
                 {isApproving ? 'Approving...' : 'Approve Revision'}
               </button>
-
-              <p className="text-xs text-gray-500 text-center">
-                批准后可创建 Sample Request
-              </p>
-            </>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Edit Popup */}
+      <EditPopup
+        isOpen={editPopupOpen}
+        sourceText={editingBlock?.source_text || ''}
+        translatedText={editingBlock?.edited_text || editingBlock?.translated_text || ''}
+        position={{ x: 0, y: 0 }}
+        onSave={handleEditSave}
+        onDelete={handleEditDelete}
+        onClose={() => {
+          setEditPopupOpen(false);
+          setEditingBlock(null);
+        }}
+      />
     </div>
   );
 }

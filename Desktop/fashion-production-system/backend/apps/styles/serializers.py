@@ -16,6 +16,9 @@ class BOMItemSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=4, read_only=True
     )
     can_edit_consumption = serializers.BooleanField(read_only=True)
+    # Make revision and item_number read_only for API (set by ViewSet)
+    revision = serializers.PrimaryKeyRelatedField(read_only=True)
+    item_number = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = BOMItem
@@ -24,10 +27,10 @@ class BOMItemSerializer(serializers.ModelSerializer):
             'material_name', 'supplier', 'supplier_article_no', 'color', 'color_code',
             'material_status',
             'consumption', 'consumption_maturity', 'consumption_maturity_display',
-            # 用量三階段
-            'pre_estimate_value', 'confirmed_value', 'locked_value',
+            # 用量四階段
+            'pre_estimate_value', 'sample_value', 'confirmed_value', 'locked_value',
             'current_consumption', 'can_edit_consumption',
-            'consumption_confirmed_at', 'consumption_locked_at',
+            'sample_confirmed_at', 'consumption_confirmed_at', 'consumption_locked_at',
             'consumption_history',
             # 其他欄位
             'unit', 'placement', 'wastage_rate', 'unit_price', 'leadtime_days',
@@ -42,6 +45,7 @@ class BOMItemSerializer(serializers.ModelSerializer):
         displays = {
             'unknown': '待填寫',
             'pre_estimate': '預估',
+            'sample': '樣衣',
             'confirmed': '已確認',
             'locked': '已鎖定',
         }
@@ -50,6 +54,9 @@ class BOMItemSerializer(serializers.ModelSerializer):
 
 class MeasurementSerializer(serializers.ModelSerializer):
     """Verified Measurement (from DB)"""
+    # Make revision read_only for API (set by ViewSet)
+    revision = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Measurement
         fields = [

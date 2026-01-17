@@ -6,17 +6,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchBOMItems,
   fetchBOMItem,
+  createBOMItem,
   updateBOMItem,
   deleteBOMItem,
   translateBOMItem,
   translateBOMBatch,
   setPreEstimate,
+  setSample,
   confirmConsumption,
   lockConsumption,
   batchConfirmConsumption,
   batchLockConsumption,
 } from '../api/bom';
-import type { UpdateBOMItemPayload } from '../types/bom';
+import type { UpdateBOMItemPayload, CreateBOMItemPayload } from '../types/bom';
 
 /**
  * Fetch BOM items for a revision
@@ -37,6 +39,20 @@ export function useBOMItem(revisionId: string, itemId: string) {
     queryKey: ['bom', revisionId, itemId],
     queryFn: () => fetchBOMItem(revisionId, itemId),
     enabled: !!revisionId && !!itemId,
+  });
+}
+
+/**
+ * Create BOM item mutation
+ */
+export function useCreateBOMItem(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateBOMItemPayload) => createBOMItem(revisionId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
   });
 }
 
@@ -128,7 +144,7 @@ export function useTranslateBOMBatch(revisionId: string) {
   });
 }
 
-// ====== 用量三階段管理 Hooks ======
+// ====== 用量四階段管理 Hooks ======
 
 /**
  * 設置預估用量
@@ -139,6 +155,21 @@ export function useSetPreEstimate(revisionId: string) {
   return useMutation({
     mutationFn: ({ itemId, value }: { itemId: string; value: string }) =>
       setPreEstimate(revisionId, itemId, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
+    },
+  });
+}
+
+/**
+ * 設置樣衣用量
+ */
+export function useSetSample(revisionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ itemId, value }: { itemId: string; value: string }) =>
+      setSample(revisionId, itemId, value),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
     },
@@ -167,7 +198,8 @@ export function useLockConsumption(revisionId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (itemId: string) => lockConsumption(revisionId, itemId),
+    mutationFn: ({ itemId, value }: { itemId: string; value?: string }) =>
+      lockConsumption(revisionId, itemId, value),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bom', revisionId] });
     },

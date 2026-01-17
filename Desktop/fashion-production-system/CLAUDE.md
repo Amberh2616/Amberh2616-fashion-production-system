@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-14
-**Version:** 4.27.0
-**Status:** P0-P19 + P20-A 完成 ✅ | Sample Request 兩步確認流程
+**Last Updated:** 2026-01-17
+**Version:** 4.27.5
+**Status:** P0-P21 + QA-1 + FIX-P0/P1 完成 ✅ | P21 可拖曳翻譯框
 
 ---
 
@@ -11,7 +11,8 @@
 | 文檔 | 說明 |
 |------|------|
 | **本文件** | 核心參考（指令、服務、架構）|
-| **[docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)** | 開發進度詳細記錄（P0-P18）|
+| **[docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)** | 開發進度詳細記錄（P0-P20-A）|
+| **[docs/SYSTEM-ACCEPTANCE-REPORT.md](docs/SYSTEM-ACCEPTANCE-REPORT.md)** | 系統驗收報告 + 待修復清單 + SaaS 規劃 |
 | **[docs/BUSINESS-FLOW.md](docs/BUSINESS-FLOW.md)** | 業務流程與數據模型 |
 | `docs/SYSTEM-ARCHITECTURE-v3.md` | 完整系統架構 |
 
@@ -212,8 +213,9 @@ draft → confirmed → materials_ordered → in_production → completed
 | P14-P17 | 主檔管理 + 採購 + 大貨訂單 + MRP | 2026-01-10 |
 | P18 | 流程連結 + 進度追蹤儀表板 | 2026-01-11 |
 | DA-1 | 批量上傳 Tech Pack（ZIP）| 2026-01-11 |
-| P19 | BOM 用量三階段管理 + 100款性能測試 | 2026-01-13 |
+| P19 | BOM 用量四階段管理 + 100款性能測試 | 2026-01-13 → 01-17 |
 | P20-A | Sample Request 兩步確認流程 | 2026-01-14 |
+| P21 | Tech Pack 翻譯框（拖曳+縮放+編輯+隱藏）| 2026-01-17 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -223,11 +225,33 @@ draft → confirmed → materials_ordered → in_production → completed
 
 | 編號 | 功能 | 狀態 |
 |------|------|------|
-| **P19** | BOM 用量三階段管理 | ✅ 完成 (2026-01-13) |
+| **P19** | BOM 用量四階段管理 | ✅ 完成 (2026-01-13 → 01-17) |
 | **P20-A** | Sample Request 兩步確認流程 | ✅ 完成 (2026-01-14) |
-| **P20** | 庫存管理 (Inventory) | 規劃中 |
-| **P21** | 採購優化 (Procurement Enhancement) | 規劃中 |
+| **QA-1** | 系統驗收報告 + 觸發點交叉比對 | ✅ 完成 (2026-01-16) |
+| **FIX-P0** | 阻塞性問題 (7項) | ✅ 完成 (2026-01-16) |
+| **FIX-P1** | 重要問題 (4項) | ✅ 完成 (2026-01-16) |
+| **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| ✅ 完成 (2026-01-17) |
+| **P22** | 庫存管理 (Inventory) | 規劃中 |
+| **P23** | 採購優化 (Procurement Enhancement) | 規劃中 |
 | DA-2 | Celery 異步處理 | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
-| Phase B | 多人協作 + RBAC | 計劃中 |
+| **SaaS-MVP** | 認證 + 數據隔離 + 前端登入 (11-16h) | 計劃中 |
+| SaaS-RBAC | 權限控制 + 用戶管理 (10-14h) | 計劃中 |
 | Phase B | Supplier Portal | 計劃中 |
+
+### 已修復問題快覽（詳見 docs/SYSTEM-ACCEPTANCE-REPORT.md）
+
+**P0（阻塞性）✅ 全部完成：**
+1. ✅ BOM 新增按鈕
+2. ✅ BOM 刪除按鈕
+3. ✅ Spec 新增按鈕
+4. ✅ Spec 刪除按鈕
+5. ✅ confirm_sample 冪等性
+6. ✅ null unit_price 檢查
+7. ✅ UsageLine 讀取 current_consumption
+
+**P1（重要）✅ 全部完成：**
+8. ✅ Tech Pack 批量翻譯
+9. ✅ MWO Tech Pack 中文疊加
+10. ✅ BOM 驗證門檻 80%
+11. ✅ CostSheet Refresh Snapshot API

@@ -30,6 +30,7 @@ from .serializers_phase23 import (
     CostLineV2Serializer,
 )
 from .services import UsageScenarioService, CostingService
+from .services.costing_service import MissingUnitPriceError
 
 
 class UsageScenarioViewSet(viewsets.ModelViewSet):
@@ -303,6 +304,13 @@ class CostSheetVersionViewSet(viewsets.ModelViewSet):
             serializer = CostSheetVersionDetailSerializer(cost_sheet)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+        except MissingUnitPriceError as e:
+            return Response({
+                'error': str(e),
+                'error_code': 'MISSING_UNIT_PRICE',
+                'missing_items': e.missing_items
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -367,6 +375,50 @@ class CostSheetVersionViewSet(viewsets.ModelViewSet):
 
             serializer = CostSheetVersionDetailSerializer(cloned)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'], url_path='refresh-snapshot')
+    def refresh_snapshot(self, request, pk=None):
+        """
+        Refresh CostSheetVersion from current BOM data.
+        Only allowed for draft status.
+
+        POST /api/v2/cost-sheet-versions/{id}/refresh-snapshot/
+
+        Returns:
+            Updated CostSheetVersion with refreshed cost lines
+
+        Errors:
+            400: Not in draft status or missing unit_price
+        """
+        cost_sheet = self.get_object()
+
+        try:
+            refreshed = CostingService.refresh_snapshot(
+                cost_sheet_id=cost_sheet.id,
+                user=request.user
+            )
+
+            serializer = CostSheetVersionDetailSerializer(refreshed)
+            return Response(serializer.data)
+
+        except MissingUnitPriceError as e:
+            return Response({
+                'error': str(e),
+                'error_code': 'MISSING_UNIT_PRICE',
+                'missing_items': e.missing_items
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         except Exception as e:
             return Response(

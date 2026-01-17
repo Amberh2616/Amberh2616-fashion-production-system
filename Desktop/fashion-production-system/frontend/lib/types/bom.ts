@@ -4,7 +4,7 @@
 
 export type BOMCategory = 'fabric' | 'trim' | 'packaging' | 'label';
 
-export type ConsumptionMaturity = 'unknown' | 'pre_estimate' | 'confirmed' | 'locked';
+export type ConsumptionMaturity = 'unknown' | 'pre_estimate' | 'sample' | 'confirmed' | 'locked';
 
 export type MaterialStatus =
   | 'Pending Submission'
@@ -31,12 +31,14 @@ export interface BOMItem {
   consumption: string; // Decimal as string (原始 Tech Pack 用量)
   consumption_maturity: ConsumptionMaturity;
   consumption_maturity_display: string;
-  // 用量三階段
+  // 用量四階段
   pre_estimate_value: string | null; // 預估用量
+  sample_value: string | null; // 樣衣用量
   confirmed_value: string | null; // 確認用量
   locked_value: string | null; // 鎖定用量
   current_consumption: string | null; // 當前最佳用量
   can_edit_consumption: boolean; // 是否可編輯
+  sample_confirmed_at: string | null;
   consumption_confirmed_at: string | null;
   consumption_locked_at: string | null;
   consumption_history: ConsumptionHistoryEntry[];
@@ -93,4 +95,19 @@ export interface TranslateBatchResponse {
   skipped_count: number;
   error_count: number;
   errors?: string[];
+}
+
+export interface CreateBOMItemPayload {
+  material_name: string;
+  category: BOMCategory;
+  supplier?: string;
+  supplier_article_no?: string;
+  color?: string;
+  color_code?: string;
+  consumption?: string;
+  unit?: string;
+  unit_price?: string;
+  placement?: string[];
+  wastage_rate?: string;
+  leadtime_days?: number;
 }

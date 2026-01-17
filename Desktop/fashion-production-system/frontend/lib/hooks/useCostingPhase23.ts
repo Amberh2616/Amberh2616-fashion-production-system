@@ -12,6 +12,8 @@ import {
   submitCostSheetVersion,
   updateCostSheetSummary,
   updateCostLine,
+  // P11: Refresh Snapshot
+  refreshCostSheetSnapshot,
   // P18: Sample → Bulk APIs
   createBulkQuote,
   acceptCostSheetVersion,
@@ -129,6 +131,23 @@ export function useUpdateCostSheetSummary(styleId: string) {
       // Update detail cache (totals changed)
       queryClient.setQueryData(['cost-sheet-version', data.id], data);
       // Invalidate list to refresh unit_price
+      queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', styleId] });
+    },
+  });
+}
+
+/**
+ * P11: Refresh CostSheetVersion snapshot from current BOM data (Draft only)
+ */
+export function useRefreshCostSheetSnapshot(styleId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (costSheetId: string) => refreshCostSheetSnapshot(costSheetId),
+    onSuccess: (data) => {
+      // Update detail cache with refreshed data
+      queryClient.setQueryData(['cost-sheet-version', data.id], data);
+      // Invalidate list to refresh any displayed values
       queryClient.invalidateQueries({ queryKey: ['cost-sheet-versions', styleId] });
     },
   });

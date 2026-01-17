@@ -10,6 +10,12 @@ export interface BBox {
   height: number;
 }
 
+export interface BlockOverlay {
+  x: number;
+  y: number;
+  visible: boolean;
+}
+
 export interface DraftBlock {
   id: string;
   block_type: 'callout' | 'dimension' | 'note' | 'specification' | 'other';
@@ -18,12 +24,15 @@ export interface DraftBlock {
   translated_text: string | null; // AI translation
   edited_text: string | null;    // Human edits
   status: 'auto' | 'edited' | 'verified';
+  overlay?: BlockOverlay;        // User-adjustable position for translation overlay
 }
 
 export interface RevisionPage {
+  id?: string;
   page_number: number;
   width: number;
   height: number;
+  image_url?: string;            // PDF page rendered as image
   blocks: DraftBlock[];
 }
 

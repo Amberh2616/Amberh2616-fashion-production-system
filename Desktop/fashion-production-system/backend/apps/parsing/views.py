@@ -12,6 +12,8 @@ from .serializers import (
     RevisionListSerializer,
     DraftBlockSerializer,
     DraftBlockPatchSerializer,
+    DraftBlockPositionSerializer,
+    DraftBlockBatchPositionSerializer,
     UploadedDocumentSerializer,
     DocumentUploadSerializer,
 )
@@ -91,6 +93,28 @@ class RevisionViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(revision)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["post"], url_path="translate-batch")
+    def translate_batch(self, request, pk=None):
+        """
+        Batch translate all DraftBlocks for a revision
+
+        POST /api/v2/revisions/{id}/translate-batch/
+        Body: { "force": false }
+
+        Returns:
+            {
+                "translated": 10,
+                "skipped": 5,
+                "errors": [],
+                "total": 15
+            }
+        """
+        from .services.techpack_translator import translate_draft_blocks
+
+        force = request.data.get('force', False)
+        result = translate_draft_blocks(revision_id=str(pk), force=force)
+        return Response(result, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["get"], url_path="export-bilingual-pdf")
     def export_bilingual_pdf(self, request, pk=None):
         """
@@ -119,6 +143,121 @@ class RevisionViewSet(viewsets.ReadOnlyModelViewSet):
                 {"detail": f"Failed to export PDF: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @action(detail=True, methods=["get"], url_path="page-image/(?P<page_num>[0-9]+)")
+    def page_image(self, request, pk=None, page_num=None):
+        """
+        Render a PDF page as a PNG image
+
+        GET /api/v2/revisions/{id}/page-image/{page_num}/
+
+        Query params:
+        - scale: Image scale factor (0.5-3.0, default 1.5)
+
+        Returns:
+            PNG image (image/png)
+        """
+        import fitz  # PyMuPDF
+        from django.http import HttpResponse
+        import io
+
+        revision = self.get_object()
+        page_num = int(page_num)
+
+        # Validate page number
+        if page_num < 1 or page_num > revision.page_count:
+            return Response(
+                {"detail": f"Page {page_num} out of range (1-{revision.page_count})"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get scale parameter
+        scale = float(request.query_params.get('scale', 1.5))
+        scale = max(0.5, min(3.0, scale))  # Clamp to 0.5-3.0
+
+        try:
+            # Open PDF and render page
+            pdf_doc = fitz.open(revision.file.path)
+            page = pdf_doc.load_page(page_num - 1)  # 0-indexed
+
+            # Render with scale
+            mat = fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=mat)
+
+            # Convert to PNG
+            img_data = pix.tobytes("png")
+
+            pdf_doc.close()
+
+            # Return as image response
+            response = HttpResponse(img_data, content_type="image/png")
+            response['Content-Disposition'] = f'inline; filename="page_{page_num}.png"'
+            return response
+
+        except Exception as e:
+            logger.error(f"Failed to render page {page_num} for revision {pk}: {str(e)}")
+            return Response(
+                {"detail": f"Failed to render page: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["patch"], url_path="blocks/positions")
+    def update_block_positions(self, request, pk=None):
+        """
+        批量更新 Block 的翻譯疊加位置
+
+        PATCH /api/v2/revisions/{id}/blocks/positions/
+
+        Request:
+        {
+            "positions": [
+                {"id": "uuid1", "overlay_x": 100, "overlay_y": 200, "overlay_visible": true},
+                {"id": "uuid2", "overlay_x": 150, "overlay_y": 250, "overlay_visible": false}
+            ]
+        }
+
+        Response:
+        {
+            "updated": 2,
+            "errors": []
+        }
+        """
+        revision = self.get_object()
+
+        serializer = DraftBlockBatchPositionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        positions = serializer.validated_data['positions']
+        updated = 0
+        errors = []
+
+        # 獲取這個 revision 下的所有 block IDs
+        valid_block_ids = set(
+            str(b.id) for b in DraftBlock.objects.filter(page__revision=revision)
+        )
+
+        for pos in positions:
+            block_id = str(pos.get('id'))
+
+            # 驗證 block 屬於這個 revision
+            if block_id not in valid_block_ids:
+                errors.append(f"Block {block_id} not found in this revision")
+                continue
+
+            try:
+                DraftBlock.objects.filter(id=block_id).update(
+                    overlay_x=pos.get('overlay_x'),
+                    overlay_y=pos.get('overlay_y'),
+                    overlay_visible=pos.get('overlay_visible', True)
+                )
+                updated += 1
+            except Exception as e:
+                errors.append(f"Failed to update block {block_id}: {str(e)}")
+
+        return Response({
+            "updated": updated,
+            "errors": errors
+        }, status=status.HTTP_200_OK)
 
 
 class DraftBlockViewSet(viewsets.ModelViewSet):
@@ -170,6 +309,32 @@ class DraftBlockViewSet(viewsets.ModelViewSet):
 
         # 如果沒有創建 history，正常 save
         serializer.save()
+
+    @action(detail=True, methods=["patch"], url_path="position")
+    def update_position(self, request, pk=None):
+        """
+        更新單個 Block 的翻譯疊加位置
+
+        PATCH /api/v2/draft-blocks/{id}/position/
+
+        Request:
+        {
+            "overlay_x": 100,
+            "overlay_y": 200,
+            "overlay_visible": true
+        }
+        """
+        block = self.get_object()
+
+        serializer = DraftBlockPositionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        block.overlay_x = serializer.validated_data['overlay_x']
+        block.overlay_y = serializer.validated_data['overlay_y']
+        block.overlay_visible = serializer.validated_data.get('overlay_visible', True)
+        block.save(update_fields=['overlay_x', 'overlay_y', 'overlay_visible', 'updated_at'])
+
+        return Response(DraftBlockSerializer(block).data, status=status.HTTP_200_OK)
 
 
 # ============================================

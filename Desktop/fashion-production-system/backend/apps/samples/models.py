@@ -1207,6 +1207,113 @@ class Sample(models.Model):
         return f"{self.physical_ref or 'Sample'} - {self.get_status_display()}"
 
 
+class RunTechPackPage(models.Model):
+    """
+    Run 的 Tech Pack 頁面快照
+
+    設計原則：
+    - Run 創建時從 RevisionPage 複製
+    - 每個 Run 有自己的翻譯快照
+    - 支援翻譯位置調整（不影響原 Revision）
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    run = models.ForeignKey(
+        SampleRun,
+        on_delete=models.CASCADE,
+        related_name='techpack_pages'
+    )
+
+    page_number = models.IntegerField(help_text="頁碼")
+    width = models.IntegerField(help_text="頁面寬度")
+    height = models.IntegerField(help_text="頁面高度")
+
+    # 來源追溯
+    source_page_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="原始 RevisionPage ID"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'run_techpack_pages'
+        ordering = ['page_number']
+        unique_together = [['run', 'page_number']]
+        indexes = [
+            models.Index(fields=['run']),
+        ]
+
+    def __str__(self):
+        return f"Run {self.run.run_no} - Page {self.page_number}"
+
+
+class RunTechPackBlock(models.Model):
+    """
+    Run 的翻譯快照
+
+    設計原則：
+    - Run 創建時從 DraftBlock 複製
+    - MWO 導出使用這裡的數據
+    - 可獨立修改，不影響原 Revision
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    run_page = models.ForeignKey(
+        RunTechPackPage,
+        on_delete=models.CASCADE,
+        related_name='blocks'
+    )
+
+    # 文字內容（快照）
+    block_type = models.CharField(max_length=30, blank=True)
+    source_text = models.TextField(help_text="原文（英文）")
+    translated_text = models.TextField(help_text="翻譯（中文）")
+
+    # 原始位置（從 DraftBlock 複製）
+    bbox_x = models.FloatField(default=0)
+    bbox_y = models.FloatField(default=0)
+    bbox_width = models.FloatField(default=0)
+    bbox_height = models.FloatField(default=0)
+
+    # 翻譯疊加位置（可在 MWO 中調整）
+    overlay_x = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="翻譯文字框 X 位置"
+    )
+    overlay_y = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="翻譯文字框 Y 位置"
+    )
+    overlay_visible = models.BooleanField(
+        default=True,
+        help_text="是否顯示此翻譯"
+    )
+
+    # 來源追溯
+    source_block_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="原始 DraftBlock ID"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'run_techpack_blocks'
+        ordering = ['bbox_y', 'bbox_x']
+        indexes = [
+            models.Index(fields=['run_page']),
+        ]
+
+    def __str__(self):
+        return f"{self.block_type} - {self.source_text[:30]}..."
+
+
 class SampleAttachment(models.Model):
     """
     Attachments / Photos for Sample Requests or Physical Samples

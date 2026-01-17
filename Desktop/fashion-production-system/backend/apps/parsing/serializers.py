@@ -89,8 +89,10 @@ class DraftBlockSerializer(serializers.ModelSerializer):
     - translated_text: 只讀（AI 翻譯，不可覆寫）
     - edited_text: 可寫（人工修正）
     - bbox: SerializerMethodField（DB 是 flat，API 是 nested）
+    - overlay: 翻譯疊加位置（用戶可拖動調整）
     """
     bbox = serializers.SerializerMethodField()
+    overlay = serializers.SerializerMethodField()
 
     class Meta:
         model = DraftBlock
@@ -98,6 +100,7 @@ class DraftBlockSerializer(serializers.ModelSerializer):
             "id",
             "block_type",
             "bbox",
+            "overlay",
             "source_text",
             "translated_text",
             "edited_text",
@@ -123,6 +126,19 @@ class DraftBlockSerializer(serializers.ModelSerializer):
             "height": obj.bbox_height,
         }
 
+    def get_overlay(self, obj):
+        """
+        翻譯疊加位置
+
+        API: {"x": 100, "y": 130, "visible": true}
+        如果 overlay_x/y 為 null，使用 bbox 位置作為默認值
+        """
+        return {
+            "x": obj.overlay_x if obj.overlay_x is not None else obj.bbox_x,
+            "y": obj.overlay_y if obj.overlay_y is not None else obj.bbox_y,
+            "visible": obj.overlay_visible,
+        }
+
 
 class DraftBlockPatchSerializer(serializers.ModelSerializer):
     """
@@ -130,7 +146,7 @@ class DraftBlockPatchSerializer(serializers.ModelSerializer):
 
     用途：
     - PATCH /api/v2/draft-blocks/{id}/
-    - 只能改「審稿結果」
+    - 只能改「審稿結果」和「疊加位置」
     - 絕對改不到原文與 bbox
     """
     class Meta:
@@ -138,7 +154,46 @@ class DraftBlockPatchSerializer(serializers.ModelSerializer):
         fields = [
             "edited_text",
             "status",
+            "overlay_x",
+            "overlay_y",
+            "overlay_visible",
         ]
+
+
+class DraftBlockPositionSerializer(serializers.Serializer):
+    """
+    專門用於保存翻譯疊加位置
+
+    用途：
+    - PATCH /api/v2/draft-blocks/{id}/position/
+    - 批量更新位置
+    """
+    overlay_x = serializers.FloatField(required=True)
+    overlay_y = serializers.FloatField(required=True)
+    overlay_visible = serializers.BooleanField(required=False, default=True)
+
+
+class DraftBlockBatchPositionSerializer(serializers.Serializer):
+    """
+    批量保存多個 Block 的位置
+
+    用途：
+    - PATCH /api/v2/revisions/{id}/blocks/positions/
+    - 一次保存頁面上所有 block 的位置
+    """
+    positions = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="[{id: uuid, overlay_x: float, overlay_y: float, overlay_visible: bool}, ...]"
+    )
+
+    def validate_positions(self, value):
+        """驗證每個 position 項目"""
+        for item in value:
+            if 'id' not in item:
+                raise serializers.ValidationError("Each position must have an 'id' field")
+            if 'overlay_x' not in item or 'overlay_y' not in item:
+                raise serializers.ValidationError("Each position must have 'overlay_x' and 'overlay_y'")
+        return value
 
 
 class RevisionPageSerializer(serializers.ModelSerializer):

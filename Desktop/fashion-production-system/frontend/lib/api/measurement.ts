@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from './client';
-import type { MeasurementListResponse, MeasurementItem, UpdateMeasurementPayload, TranslateBatchResponse } from '../types/measurement';
+import type { MeasurementListResponse, MeasurementItem, UpdateMeasurementPayload, TranslateBatchResponse, CreateMeasurementPayload } from '../types/measurement';
 
 /**
  * Fetch Measurement items for a specific revision
@@ -17,6 +17,22 @@ export async function fetchMeasurements(revisionId: string): Promise<Measurement
  */
 export async function fetchMeasurement(revisionId: string, itemId: string): Promise<MeasurementItem> {
   return apiClient<MeasurementItem>(`/style-revisions/${revisionId}/measurements/${itemId}/`);
+}
+
+/**
+ * Create a new Measurement item
+ */
+export async function createMeasurement(
+  revisionId: string,
+  data: CreateMeasurementPayload
+): Promise<MeasurementItem> {
+  return apiClient<MeasurementItem>(`/style-revisions/${revisionId}/measurements/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
 }
 
 /**

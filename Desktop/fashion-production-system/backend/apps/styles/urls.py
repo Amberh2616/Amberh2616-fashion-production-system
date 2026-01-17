@@ -28,9 +28,12 @@ bom_translate = views.BOMItemViewSet.as_view({
 bom_translate_batch = views.BOMItemViewSet.as_view({
     'post': 'translate_batch'
 })
-# 用量三階段管理
+# 用量四階段管理
 bom_set_pre_estimate = views.BOMItemViewSet.as_view({
     'post': 'set_pre_estimate'
+})
+bom_set_sample = views.BOMItemViewSet.as_view({
+    'post': 'set_sample'
 })
 bom_confirm_consumption = views.BOMItemViewSet.as_view({
     'post': 'confirm_consumption'
@@ -70,8 +73,9 @@ urlpatterns = [
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/', bom_detail, name='revision-bom-detail'),
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/translate/', bom_translate, name='revision-bom-translate'),
     path('style-revisions/<uuid:revision_pk>/bom/translate-batch/', bom_translate_batch, name='revision-bom-translate-batch'),
-    # 用量三階段管理路由
+    # 用量四階段管理路由
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/set-pre-estimate/', bom_set_pre_estimate, name='revision-bom-set-pre-estimate'),
+    path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/set-sample/', bom_set_sample, name='revision-bom-set-sample'),
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/confirm-consumption/', bom_confirm_consumption, name='revision-bom-confirm-consumption'),
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/lock-consumption/', bom_lock_consumption, name='revision-bom-lock-consumption'),
     path('style-revisions/<uuid:revision_pk>/bom/batch-confirm/', bom_batch_confirm, name='revision-bom-batch-confirm'),

@@ -67,7 +67,8 @@ class UsageScenarioService:
             usage_lines = []
 
             for idx, bom_item in enumerate(bom_items, start=1):
-                consumption = bom_item.consumption if bom_item.consumption else Decimal('0.0000')
+                # 使用三階段用量優先級：locked > confirmed > pre_estimate > consumption
+                consumption = bom_item.current_consumption if bom_item.current_consumption else Decimal('0.0000')
                 usage_line = UsageLine(
                     usage_scenario=scenario,
                     bom_item=bom_item,

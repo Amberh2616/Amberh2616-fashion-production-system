@@ -409,6 +409,7 @@ class TechPackBilingualPDFExporter:
         """
         方案 A: 半透明背景疊加
         中文下方繪製白色半透明矩形
+        如果 bbox 無效，會在頁面底部創建翻譯面板
         """
         pdf_doc = fitz.open(self.revision.file.path)
         processed_images = []
@@ -422,12 +423,17 @@ class TechPackBilingualPDFExporter:
 
             # 轉為 RGBA 以支持半透明
             img = Image.open(BytesIO(img_data)).convert('RGBA')
+            img_width, img_height = img.size
 
             # 創建半透明圖層
             overlay = Image.new('RGBA', img.size, (255, 255, 255, 0))
             draw = ImageDraw.Draw(overlay)
 
             blocks = page_data.blocks.all().order_by('bbox_y', 'bbox_x')
+
+            # 用於 fallback 的位置追蹤
+            fallback_y = 50  # 從頂部開始
+            has_any_valid_bbox = False
 
             for block in blocks:
                 chinese_text = block.edited_text or block.translated_text
@@ -437,6 +443,7 @@ class TechPackBilingualPDFExporter:
                 has_valid_bbox = (block.bbox_x != 0 or block.bbox_y != 0)
 
                 if has_valid_bbox:
+                    has_any_valid_bbox = True
                     x = block.bbox_x * 2
                     y = block.bbox_y * 2
 
@@ -458,6 +465,69 @@ class TechPackBilingualPDFExporter:
                     # 繪製中文
                     draw.text((x, y), chinese_text, font=self.pil_font, fill=self.translation_color + (255,))
 
+            # 如果沒有有效的 bbox，在頁面上創建翻譯面板
+            if not has_any_valid_bbox and blocks.exists():
+                # 在頁面右側創建翻譯面板
+                panel_width = min(600, img_width // 3)
+                panel_x = img_width - panel_width - 20
+                panel_y = 30
+
+                # 面板背景
+                draw.rectangle(
+                    [panel_x - 10, panel_y - 10, img_width - 10, img_height - 30],
+                    fill=(255, 255, 255, 230)
+                )
+
+                # 標題
+                draw.text(
+                    (panel_x, panel_y),
+                    f"中文翻譯 - P{page_data.page_number}",
+                    font=self.pil_font_title,
+                    fill=(0, 0, 0, 255)
+                )
+                current_y = panel_y + self.font_size + 20
+
+                for block in blocks:
+                    chinese_text = block.edited_text or block.translated_text
+                    if not chinese_text or not chinese_text.strip():
+                        continue
+
+                    original_text = block.source_text or ""
+
+                    # 原文（小灰字）
+                    if original_text.strip():
+                        display_original = original_text[:40] + "..." if len(original_text) > 40 else original_text
+                        draw.text(
+                            (panel_x, current_y),
+                            f"EN: {display_original}",
+                            font=self.pil_font_small,
+                            fill=(128, 128, 128, 255)
+                        )
+                        current_y += self.font_size
+
+                    # 中文翻譯
+                    wrapped_lines = self._wrap_text(chinese_text, panel_width - 20)
+                    for line in wrapped_lines:
+                        draw.text(
+                            (panel_x, current_y),
+                            line,
+                            font=self.pil_font,
+                            fill=self.translation_color + (255,)
+                        )
+                        current_y += self.font_size + 8
+
+                    current_y += 15
+
+                    # 檢查是否超出頁面
+                    if current_y > img_height - 80:
+                        draw.text(
+                            (panel_x, current_y),
+                            "...更多內容...",
+                            font=self.pil_font_small,
+                            fill=(150, 150, 150, 255)
+                        )
+                        break
+
             # 合併圖層
             img = Image.alpha_composite(img, overlay)
             img = img.convert('RGB')
@@ -466,7 +536,7 @@ class TechPackBilingualPDFExporter:
             img.save(img_bytes, format='PNG')
             processed_images.append(img_bytes.getvalue())
 
-            logger.info(f"Page {page_data.page_number}: Background overlay created")
+            logger.info(f"Page {page_data.page_number}: Background overlay created (valid_bbox={has_any_valid_bbox})")
 
         pdf_doc.close()
         return self._images_to_pdf(processed_images)
@@ -603,3 +673,196 @@ def get_available_export_modes() -> dict:
             "recommended_for": ["空間緊湊的文檔", "簡單翻譯"]
         }
     }
+
+
+# ============================================================
+# Run Snapshot 匯出接口
+# ============================================================
+
+def export_techpack_from_run_snapshot(tech_pack_revision, run_pages) -> bytes:
+    """
+    使用 Run 的快照數據渲染 Tech Pack PDF
+
+    這個函數使用 RunTechPackBlock 的數據（包括用戶調整的 overlay 位置），
+    而不是直接使用 DraftBlock。這樣每個 Run 可以有獨立的翻譯和位置設定。
+
+    Args:
+        tech_pack_revision: 原始 TechPackRevision（用於獲取 PDF 文件）
+        run_pages: RunTechPackPage QuerySet（包含快照數據）
+
+    Returns:
+        bytes: PDF 文件的字節數據
+    """
+    # 載入字體
+    chinese_font_path = find_chinese_font()
+    if not chinese_font_path:
+        raise Exception("Chinese font not found.")
+
+    font_size = 20
+    pil_font = ImageFont.truetype(chinese_font_path, font_size)
+    pil_font_small = ImageFont.truetype(chinese_font_path, max(12, font_size - 4))
+    pil_font_title = ImageFont.truetype(chinese_font_path, font_size + 4)
+
+    translation_color = (0, 51, 153)  # 深藍色
+
+    # 打開原始 PDF
+    pdf_doc = fitz.open(tech_pack_revision.file.path)
+    processed_images = []
+
+    # 建立頁碼映射
+    run_pages_dict = {rp.page_number: rp for rp in run_pages}
+
+    for page_num in range(1, pdf_doc.page_count + 1):
+        page = pdf_doc.load_page(page_num - 1)
+
+        mat = fitz.Matrix(2, 2)
+        pix = page.get_pixmap(matrix=mat)
+        img_data = pix.tobytes("png")
+
+        # 轉為 RGBA 以支持半透明
+        img = Image.open(BytesIO(img_data)).convert('RGBA')
+        img_width, img_height = img.size
+
+        # 創建半透明圖層
+        overlay = Image.new('RGBA', img.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # 獲取該頁的快照 blocks
+        run_page = run_pages_dict.get(page_num)
+        if run_page:
+            blocks = run_page.blocks.all().order_by('bbox_y', 'bbox_x')
+        else:
+            blocks = []
+
+        # 用於 fallback 的追蹤
+        has_any_valid_overlay = False
+
+        for block in blocks:
+            # 跳過隱藏的 blocks
+            if not block.overlay_visible:
+                continue
+
+            chinese_text = block.translated_text
+            if not chinese_text or not chinese_text.strip():
+                continue
+
+            # ⭐ 使用 overlay 位置（用戶調整後的位置）
+            # 如果沒有設定 overlay 位置，使用原始 bbox
+            overlay_x = block.overlay_x if block.overlay_x is not None else block.bbox_x
+            overlay_y = block.overlay_y if block.overlay_y is not None else block.bbox_y
+
+            has_valid_position = (overlay_x != 0 or overlay_y != 0)
+
+            if has_valid_position:
+                has_any_valid_overlay = True
+                x = overlay_x * 2  # 因為圖片放大了 2 倍
+                y = overlay_y * 2
+
+                # 計算文字尺寸
+                text_bbox = draw.textbbox((x, y), chinese_text, font=pil_font)
+                padding = 6
+
+                # 繪製半透明白色背景
+                draw.rectangle(
+                    [
+                        text_bbox[0] - padding,
+                        text_bbox[1] - padding,
+                        text_bbox[2] + padding,
+                        text_bbox[3] + padding
+                    ],
+                    fill=(255, 255, 255, 200)
+                )
+
+                # 繪製中文
+                draw.text((x, y), chinese_text, font=pil_font, fill=translation_color + (255,))
+
+        # 如果沒有有效位置的 block，在頁面右側創建翻譯面板
+        if not has_any_valid_overlay and blocks:
+            panel_width = min(600, img_width // 3)
+            panel_x = img_width - panel_width - 20
+            panel_y = 30
+
+            # 面板背景
+            draw.rectangle(
+                [panel_x - 10, panel_y - 10, img_width - 10, img_height - 30],
+                fill=(255, 255, 255, 230)
+            )
+
+            # 標題
+            draw.text(
+                (panel_x, panel_y),
+                f"中文翻譯 - P{page_num}",
+                font=pil_font_title,
+                fill=(0, 0, 0, 255)
+            )
+            current_y = panel_y + font_size + 20
+
+            for block in blocks:
+                if not block.overlay_visible:
+                    continue
+
+                chinese_text = block.translated_text
+                if not chinese_text or not chinese_text.strip():
+                    continue
+
+                original_text = block.source_text or ""
+
+                # 原文（小灰字）
+                if original_text.strip():
+                    display_original = original_text[:40] + "..." if len(original_text) > 40 else original_text
+                    draw.text(
+                        (panel_x, current_y),
+                        f"EN: {display_original}",
+                        font=pil_font_small,
+                        fill=(128, 128, 128, 255)
+                    )
+                    current_y += font_size
+
+                # 中文翻譯（自動換行）
+                max_chars = (panel_width - 20) // (font_size * 0.6)
+                lines = [chinese_text[i:i+int(max_chars)] for i in range(0, len(chinese_text), int(max_chars))]
+                for line in lines:
+                    draw.text(
+                        (panel_x, current_y),
+                        line,
+                        font=pil_font,
+                        fill=translation_color + (255,)
+                    )
+                    current_y += font_size + 8
+
+                current_y += 15
+
+                # 檢查是否超出頁面
+                if current_y > img_height - 80:
+                    draw.text(
+                        (panel_x, current_y),
+                        "...更多內容...",
+                        font=pil_font_small,
+                        fill=(150, 150, 150, 255)
+                    )
+                    break
+
+        # 合併圖層
+        img = Image.alpha_composite(img, overlay)
+        img = img.convert('RGB')
+
+        img_bytes = BytesIO()
+        img.save(img_bytes, format='PNG')
+        processed_images.append(img_bytes.getvalue())
+
+        logger.info(f"Page {page_num}: Snapshot overlay created (has_valid_overlay={has_any_valid_overlay})")
+
+    pdf_doc.close()
+
+    # 轉換為 PDF
+    output_pdf = fitz.open()
+    for img_bytes in processed_images:
+        img = Image.open(BytesIO(img_bytes))
+        w, h = img.size
+        page = output_pdf.new_page(width=w, height=h)
+        page.insert_image(page.rect, stream=img_bytes)
+
+    pdf_bytes = output_pdf.tobytes()
+    output_pdf.close()
+
+    return pdf_bytes

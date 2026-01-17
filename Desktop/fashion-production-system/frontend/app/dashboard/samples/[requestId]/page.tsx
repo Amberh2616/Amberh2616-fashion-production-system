@@ -118,8 +118,17 @@ export default function SampleRequestDetailPage() {
   const handleConfirmSample = async () => {
     try {
       await confirmMutation.mutateAsync(requestId);
-    } catch (err) {
+      alert('✅ 確認成功！已生成 Run、MWO 和報價單。');
+    } catch (err: any) {
       console.error('Failed to confirm sample:', err);
+      // 處理已確認過的情況（冪等性錯誤）
+      if (err?.message?.includes('已確認過') || err?.message?.includes('已有 Sample Run')) {
+        alert('⚠️ 此請求已確認過，請刷新頁面查看最新狀態。');
+        // 刷新數據
+        window.location.reload();
+      } else {
+        alert(`❌ 確認失敗：${err?.message || '未知錯誤'}`);
+      }
     }
   };
 
