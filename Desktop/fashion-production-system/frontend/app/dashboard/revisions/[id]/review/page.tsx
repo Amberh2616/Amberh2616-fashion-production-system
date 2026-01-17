@@ -10,7 +10,7 @@
  * - Double-click to edit, ✕ to delete
  */
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { useDraft, useUpdateDraftBlock } from '@/lib/hooks/useDraft';
 import { useDebouncedPositionSave, useToggleBlockVisibility } from '@/lib/hooks/useDraftBlockPosition';
@@ -24,6 +24,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v
 
 export default function DraftReviewPage() {
   const params = useParams();
+  const router = useRouter();
   const revisionId = params.id as string;
   const { data, isLoading, error, refetch } = useDraft(revisionId);
   const updateBlock = useUpdateDraftBlock(revisionId);
@@ -158,7 +159,7 @@ export default function DraftReviewPage() {
   const handleApprove = async () => {
     const confirmed = window.confirm(
       'Are you sure you want to approve this revision?\n\n' +
-      'This will mark it as completed and lock the review.'
+      'This will mark it as completed and redirect to Sample Request page.'
     );
 
     if (!confirmed) return;
@@ -166,8 +167,8 @@ export default function DraftReviewPage() {
     setIsApproving(true);
     try {
       await approveRevision(revisionId);
-      alert('Revision approved successfully!');
-      refetch();
+      alert('Revision approved successfully!\n\nRedirecting to Sample Requests...');
+      router.push('/dashboard/samples');
     } catch (error) {
       console.error('Failed to approve revision:', error);
       alert(`Failed to approve revision: ${(error as Error).message}`);
