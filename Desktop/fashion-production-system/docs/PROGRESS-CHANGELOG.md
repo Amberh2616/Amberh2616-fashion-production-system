@@ -50,6 +50,92 @@
 | **P20-A** | Sample Request 兩步確認流程 | 2026-01-14 |
 | **QA-1** | 系統驗收報告 + 觸發點交叉比對 | 2026-01-16 |
 | **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| 2026-01-17 |
+| **FIX-0117** | 完整工作流程跳轉路徑修復 | 2026-01-17 |
+
+---
+
+## FIX-0117: 完整工作流程跳轉路徑（2026-01-17）
+
+### 完整工作流程
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Fashion Production System 完整流程                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. 上傳 PDF                                                                 │
+│     /dashboard/upload                                                       │
+│         ↓ 上傳成功                                                           │
+│                                                                             │
+│  2. AI 處理中                                                                │
+│     /dashboard/documents/{id}/processing                                    │
+│         ↓ 分類完成（自動）                                                    │
+│                                                                             │
+│  3. 分類審查                                                                 │
+│     /dashboard/documents/{id}/review                                        │
+│         ↓ 點擊 "Confirm & Extract Data"                                     │
+│                                                                             │
+│  4. 翻譯審校（Tech Pack）/ BOM 編輯 / Spec 編輯                               │
+│     /dashboard/revisions/{id}/review  ← Tech Pack                          │
+│     /dashboard/revisions/{id}/bom     ← BOM                                │
+│     /dashboard/revisions/{id}/spec    ← Measurement                        │
+│         ↓ 點擊 "Approve"                                                    │
+│                                                                             │
+│  5. Sample Request 列表                                                     │
+│     /dashboard/samples                                                      │
+│         ↓ 點擊 "+ Create"                                                   │
+│                                                                             │
+│  6. Sample Request 詳情                                                     │
+│     /dashboard/samples/{requestId}                                          │
+│         ↓ 點擊 "確認樣衣請求"                                                 │
+│         ↓ 系統自動建立 Sample Run + MWO + Cost Sheet                        │
+│                                                                             │
+│  7. Sample Run 操作（在詳情頁或 Kanban）                                      │
+│     /dashboard/samples/{requestId}  → 點擊 Run 卡片                         │
+│     /dashboard/samples/kanban       → 拖拽卡片更新狀態                       │
+│                                                                             │
+│  Sample Run 狀態流程:                                                        │
+│     draft → materials_planning → in_progress → completed                    │
+│       ↓           ↓                  ↓            ↓                         │
+│    確認樣衣    開始執行            完成        ✅ 結束                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 跳轉路徑總覽
+
+| 觸發點 | 來源頁面 | 目標頁面 |
+|--------|----------|----------|
+| 上傳成功 | `/dashboard/upload` | `/dashboard/documents/{id}/processing` |
+| 分類完成 | `/dashboard/documents/{id}/processing` | `/dashboard/documents/{id}/review` |
+| Extract Data | `/dashboard/documents/{id}/review` | `/dashboard/revisions/{id}/review` 或 `/bom` 或 `/spec` |
+| Approve | `/dashboard/revisions/{id}/review` | `/dashboard/samples` |
+| Create Request | `/dashboard/samples` | `/dashboard/samples/{requestId}` |
+| 確認樣衣請求 | `/dashboard/samples/{requestId}` | 停留（顯示成功訊息） |
+| 確認樣衣 (Run) | Sample Run 詳情面板 | 停留（狀態更新） |
+
+### 今日修復項目
+
+| 問題 | 修復內容 | Commit |
+|------|----------|--------|
+| Extract 後沒跳轉 | 直接從 API 回應取得 `tech_pack_revision_id` 跳轉 | `5312640` |
+| Approve 後沒跳轉 | 加入 `router.push('/dashboard/samples')` | `c4acba9` |
+| Run 操作沒成功訊息 | 加入 alert 成功/失敗訊息 | `8e636d5` |
+| 確認樣衣按鈕 404 | 後端加入 `/sample-runs/{id}/submit/` 端點 | `174a81d` |
+
+### API 端點對應
+
+| 前端操作 | API 端點 | 說明 |
+|----------|----------|------|
+| 上傳 PDF | `POST /api/v2/uploaded-documents/` | 上傳文件 |
+| 觸發分類 | `POST /api/v2/uploaded-documents/{id}/classify/` | AI 分類 |
+| 觸發提取 | `POST /api/v2/uploaded-documents/{id}/extract/` | AI 提取 + 建立 Revision |
+| Approve 翻譯 | `POST /api/v2/revisions/{id}/approve/` | 批准翻譯 |
+| 建立 Sample Request | `POST /api/v2/sample-requests/` | 建立請求 |
+| 確認 Sample Request | `POST /api/v2/sample-requests/{id}/confirm-sample/` | 確認 + 建立 Run |
+| 確認樣衣 (Run) | `POST /api/v2/sample-runs/{id}/submit/` | draft → materials_planning |
+| 開始執行 | `POST /api/v2/sample-runs/{id}/start-execution/` | materials_planning → in_progress |
+| 完成 | `POST /api/v2/sample-runs/{id}/complete/` | in_progress → completed |
 
 ---
 
