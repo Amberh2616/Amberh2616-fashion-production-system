@@ -233,6 +233,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| ✅ 完成 (2026-01-17) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | **P23** | 採購優化 (Procurement Enhancement) | 規劃中 |
+| **P24** | PO 寄送供應商（Email 功能）| 🔴 TODO |
 | DA-2 | Celery 異步處理 | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 認證 + 數據隔離 + 前端登入 (11-16h) | 計劃中 |
@@ -255,3 +256,30 @@ draft → confirmed → materials_ordered → in_production → completed
 9. ✅ MWO Tech Pack 中文疊加
 10. ✅ BOM 驗證門檻 80%
 11. ✅ CostSheet Refresh Snapshot API
+
+### P24 PO 寄送供應商（待開發）
+
+**現有基礎：**
+- ✅ `Supplier` model 已有 `email` 欄位
+- ✅ `PurchaseOrder` model 已有完整狀態流程
+- ✅ `production.py` 已有 SMTP 設定框架
+
+**待實現功能：**
+1. **Email 發送服務** - `backend/apps/procurement/services/email_service.py`
+2. **PO PDF 附件** - 生成 PO PDF 並作為附件
+3. **發送按鈕** - PO 詳情頁新增「發送給供應商」按鈕
+4. **狀態更新** - 發送後 PO 狀態從 `ready` → `sent`
+5. **發送記錄** - 記錄發送時間、收件人
+
+**測試信箱設定：**
+```python
+# backend/config/settings/development.py
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"  # 開發用，輸出到 console
+
+# 或使用測試 SMTP
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "test@example.com"
+EMAIL_HOST_PASSWORD = "app-password"
+```
