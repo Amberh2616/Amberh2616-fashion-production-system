@@ -271,15 +271,57 @@ draft → confirmed → materials_ordered → in_production → completed
 4. **狀態更新** - 發送後 PO 狀態從 `ready` → `sent`
 5. **發送記錄** - 記錄發送時間、收件人
 
+**技術設計（預估 7h）：**
+
+```
+架構流程：
+Frontend Button → POST /api/v2/purchase-orders/{id}/send/
+                         ↓
+              ┌──────────────────┐
+              │  PO ViewSet      │
+              │  send_to_supplier│
+              └────────┬─────────┘
+                       ↓
+         ┌─────────────┴─────────────┐
+         ↓                           ↓
+┌─────────────────┐      ┌───────────────────┐
+│ POPdfGenerator  │      │  POEmailService   │
+│ generate(po)    │─────▶│ send_po_to_supplier│
+└─────────────────┘      └───────────────────┘
+                                  ↓
+                         ┌───────────────┐
+                         │  SMTP Server  │
+                         │ (Gmail/SES)   │
+                         └───────────────┘
+```
+
+**待建立檔案：**
+1. `backend/apps/procurement/services/email_service.py` - Email 發送服務
+2. `backend/templates/emails/po_to_supplier.html` - Email 模板
+3. `frontend/components/procurement/SendPOButton.tsx` - 發送按鈕
+
+**API 設計：**
+- `POST /api/v2/purchase-orders/{id}/send/`
+- 驗證：status = 'ready', supplier.email 存在
+- 成功後：status → 'sent', 記錄 sent_at, sent_to_email
+
+**Model 擴充：**
+```python
+# PurchaseOrder 新增欄位
+sent_at = models.DateTimeField(null=True)
+sent_to_email = models.EmailField(blank=True)
+sent_count = models.IntegerField(default=0)
+```
+
 **測試信箱設定：**
 ```python
-# backend/config/settings/development.py
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"  # 開發用，輸出到 console
+# 開發用（輸出到 console）
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-# 或使用測試 SMTP
+# 或 Gmail SMTP
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = "test@example.com"
+EMAIL_HOST_USER = "your-email@gmail.com"
 EMAIL_HOST_PASSWORD = "app-password"
 ```
