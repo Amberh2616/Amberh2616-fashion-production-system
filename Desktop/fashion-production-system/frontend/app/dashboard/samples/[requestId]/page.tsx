@@ -207,15 +207,19 @@ export default function SampleRequestDetailPage() {
       switch (action) {
         case 'submit':
           await submitRunMutation.mutateAsync({ id: selectedRunId });
+          alert('✅ 確認成功！Run 已進入物料規劃階段。');
           break;
         case 'start_execution':
           await startExecutionMutation.mutateAsync({ id: selectedRunId });
+          alert('✅ 已開始執行！Run 進入生產中。');
           break;
         case 'complete':
           await completeRunMutation.mutateAsync({ id: selectedRunId });
+          alert('✅ 已完成！Run 標記為完成。');
           break;
         case 'cancel':
           await cancelRunMutation.mutateAsync({ id: selectedRunId });
+          alert('⚠️ 已取消！Run 已被取消。');
           break;
       }
       // Refresh selected run
@@ -223,6 +227,7 @@ export default function SampleRequestDetailPage() {
       setSelectedRunId(null);
     } catch (err) {
       console.error('Failed to execute action:', err);
+      alert(`❌ 操作失敗: ${(err as Error).message}`);
     }
   };
 
