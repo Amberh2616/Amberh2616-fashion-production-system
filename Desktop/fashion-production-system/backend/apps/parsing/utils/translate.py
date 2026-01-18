@@ -23,6 +23,38 @@ def is_chinese(text: str) -> bool:
     return bool(chinese_pattern.search(text))
 
 
+def get_translation_client():
+    """
+    取得翻譯用的 OpenAI client
+
+    支援：
+    - OpenAI API（預設）
+    - LM Studio（OPENAI_BASE_URL=http://localhost:1234/v1）
+    - Ollama（OPENAI_BASE_URL=http://localhost:11434/v1）
+    """
+    from openai import OpenAI
+    import os
+
+    base_url = os.getenv('OPENAI_BASE_URL')
+    api_key = os.getenv('OPENAI_API_KEY')
+
+    # 本地模型不需要真正的 API key
+    if base_url and 'localhost' in base_url:
+        api_key = api_key or 'not-needed'
+
+    if base_url:
+        return OpenAI(api_key=api_key, base_url=base_url)
+    else:
+        # 使用 OpenAI 預設端點
+        return OpenAI(api_key=api_key)
+
+
+def get_translation_model() -> str:
+    """取得翻譯模型名稱"""
+    import os
+    return os.getenv('TRANSLATION_MODEL', 'gpt-4o-mini')
+
+
 def machine_translate(text: str) -> str:
     """
     機器翻譯
@@ -36,24 +68,22 @@ def machine_translate(text: str) -> str:
     Rules:
     - 如果原文已是中文 → 回傳 "" (前端不顯示翻譯欄位)
     - 如果原文是英文 → 翻譯成中文
+
+    環境變數：
+    - OPENAI_BASE_URL: API 端點（預設 OpenAI，可改 LM Studio/Ollama）
+    - TRANSLATION_MODEL: 模型名稱（預設 gpt-4o-mini）
     """
     # Critical Issue #1 修正：中文原文判斷
     if is_chinese(text):
         return ""  # 前端會判斷空字串 → 不顯示翻譯欄位
 
-    # ✅ OpenAI 翻譯
+    # ✅ 翻譯（支援 OpenAI / LM Studio / Ollama）
     try:
-        from openai import OpenAI
-        import os
+        client = get_translation_client()
+        model = get_translation_model()
 
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            # 沒有 API key，回傳原文
-            return text
-
-        client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=[
                 {"role": "system", "content": "You are a fashion industry translator. Translate English to Traditional Chinese. Keep technical terms accurate."},
                 {"role": "user", "content": text}
@@ -107,18 +137,10 @@ def batch_translate(texts: list[str]) -> list[str]:
 
     # 批量翻譯
     try:
-        from openai import OpenAI
-        import os
         import json
 
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            # 沒有 API key，回傳原文
-            for i in indices_to_translate:
-                results[i] = texts[i]
-            return results
-
-        client = OpenAI(api_key=api_key)
+        client = get_translation_client()
+        model = get_translation_model()
 
         # 構建 JSON 格式提示
         prompt = f"""Translate the following English texts to Traditional Chinese. Return a JSON array with the same number of items.
@@ -134,7 +156,7 @@ Rules:
 - Return ONLY the JSON array"""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=[
                 {"role": "system", "content": "You are a fashion industry translator. Translate English to Traditional Chinese."},
                 {"role": "user", "content": prompt}

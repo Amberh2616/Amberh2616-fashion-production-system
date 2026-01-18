@@ -23,7 +23,6 @@ import {
 
 import {
   usePurchaseOrder,
-  useSendPO,
   useConfirmPO,
   useReceivePO,
   useCancelPO,
@@ -31,6 +30,7 @@ import {
   useConfirmPOLine,
   useUnconfirmPOLine,
 } from "@/lib/hooks/usePurchaseOrders";
+import { SendPOButton } from "@/components/procurement/SendPOButton";
 import { getPOPdfUrl } from "@/lib/api/purchase-orders";
 import type { POStatus, POType, POLine } from "@/lib/types/purchase-order";
 import { PO_STATUS_OPTIONS, PO_TYPE_OPTIONS } from "@/lib/types/purchase-order";
@@ -106,7 +106,6 @@ export default function PurchaseOrderDetailPage({
   const [editNotes, setEditNotes] = useState("");
 
   // Status mutations
-  const sendPO = useSendPO();
   const confirmPO = useConfirmPO();
   const receivePO = useReceivePO();
   const cancelPO = useCancelPO();
@@ -236,15 +235,20 @@ export default function PurchaseOrderDetailPage({
             {!allConfirmed && <span className="ml-1 text-orange-500">({confirmedCount}/{totalCount})</span>}
           </Button>
 
-          {po.status === 'draft' && allConfirmed && (
-            <Button
-              onClick={() => sendPO.mutate(id)}
-              disabled={sendPO.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Send to Supplier
-            </Button>
+          {/* P24: SendPOButton with email dialog */}
+          {['draft', 'ready', 'sent'].includes(po.status) && (
+            <SendPOButton
+              poId={id}
+              poNumber={po.po_number}
+              supplierName={po.supplier_name || ""}
+              supplierEmail={po.supplier_data?.email}
+              status={po.status}
+              allLinesConfirmed={allConfirmed}
+              sentAt={po.sent_at}
+              sentToEmail={po.sent_to_email}
+              sentCount={po.sent_count}
+              onSuccess={() => refetch()}
+            />
           )}
           {po.status === 'sent' && (
             <Button

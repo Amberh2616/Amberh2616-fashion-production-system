@@ -261,6 +261,21 @@ class PurchaseOrder(models.Model):
         default=0
     )
 
+    # Email tracking (P24)
+    sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Email 發送時間'
+    )
+    sent_to_email = models.EmailField(
+        blank=True,
+        help_text='發送目標 Email'
+    )
+    sent_count = models.IntegerField(
+        default=0,
+        help_text='發送次數'
+    )
+
     # Metadata
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

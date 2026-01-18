@@ -536,7 +536,7 @@ export default function DraftReviewPage() {
           {/* Block List */}
           <div ref={blockListRef} className="flex-1 overflow-auto p-3 space-y-2">
             {/* Hidden Blocks Section */}
-            {currentPageData?.blocks.filter(b => b.overlay?.visible === false).length > 0 && (
+            {currentPageData && currentPageData.blocks.filter(b => b.overlay?.visible === false).length > 0 && (
               <div className="mb-3 p-2 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-medium text-gray-500">

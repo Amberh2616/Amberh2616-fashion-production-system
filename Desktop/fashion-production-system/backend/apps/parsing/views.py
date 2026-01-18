@@ -488,7 +488,9 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
             'updated_at': doc.updated_at.isoformat(),
         }
 
-        # ⚡ Add tech_pack_revision_id if available (for P0 review navigation)
+        # ⚡ Add revision IDs if available (for navigation after extraction)
+        if doc.style_revision:
+            response_data['style_revision_id'] = str(doc.style_revision.id)
         if doc.tech_pack_revision:
             response_data['tech_pack_revision_id'] = str(doc.tech_pack_revision.id)
 
@@ -713,7 +715,8 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
             response_data = serializer.data
             response_data['extraction_stats'] = extraction_stats
             response_data['revision_id'] = str(revision.id)
-            response_data['tech_pack_revision_id'] = str(tech_pack_revision.id)  # ⚡ For P0 review navigation
+            response_data['style_revision_id'] = str(revision.id)  # ⚡ For BOM/Spec navigation
+            response_data['tech_pack_revision_id'] = str(tech_pack_revision.id)  # ⚡ For translation review navigation
 
             return Response(response_data)
 

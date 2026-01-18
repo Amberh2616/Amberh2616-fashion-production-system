@@ -22,6 +22,7 @@ import {
   useCompleteSampleRun,
   useCancelSampleRun,
   useConfirmSampleRequest,
+  useCreateNextRun,
 } from '@/lib/hooks/useSamples';
 import type { CreateSampleRunPayload, UpdateSampleRequestPayload } from '@/types/samples';
 import {
@@ -48,7 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, ArrowLeft, Plus, Calendar, Package, AlertCircle, FileText, Ruler, CheckCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, Calendar, Package, AlertCircle, FileText, Ruler, CheckCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { apiClient } from '@/lib/api/client';
@@ -113,6 +114,7 @@ export default function SampleRequestDetailPage() {
   const completeRunMutation = useCompleteSampleRun(requestId);
   const cancelRunMutation = useCancelSampleRun(requestId);
   const confirmMutation = useConfirmSampleRequest();
+  const createNextRunMutation = useCreateNextRun(requestId);
 
   // 確認樣衣 handler
   const handleConfirmSample = async () => {
@@ -132,8 +134,23 @@ export default function SampleRequestDetailPage() {
     }
   };
 
+  // 創建下一輪 handler（多輪 Fit Sample 支援）
+  const handleCreateNextRun = async () => {
+    try {
+      const result = await createNextRunMutation.mutateAsync({});
+      alert(`✅ 已創建 Run #${result.sample_run.run_no}！`);
+    } catch (err: any) {
+      console.error('Failed to create next run:', err);
+      alert(`❌ 創建失敗：${err?.message || '未知錯誤'}`);
+    }
+  };
+
   // 檢查是否已確認（有 runs）
   const isConfirmed = runs.length > 0;
+
+  // 計算下一輪號碼
+  const maxRunNo = runs.length > 0 ? Math.max(...runs.map(r => r.run_no || 1)) : 0;
+  const nextRunNo = maxRunNo + 1;
 
   // Loading state
   if (isLoadingRequest) {
@@ -255,6 +272,28 @@ export default function SampleRequestDetailPage() {
             {SampleRequestTypeLabels[request.request_type]} - {request.brand_name || 'N/A'}
           </p>
         </div>
+
+        {/* 多輪 Fit Sample 支援：創建下一輪按鈕 */}
+        {isConfirmed && (
+          <Button
+            onClick={handleCreateNextRun}
+            disabled={createNextRunMutation.isPending}
+            variant="outline"
+            className="border-blue-500 text-blue-600 hover:bg-blue-50"
+          >
+            {createNextRunMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                創建中...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                創建下一輪 (Run #{nextRunNo})
+              </>
+            )}
+          </Button>
+        )}
 
         <Button onClick={() => setIsCreateRunDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />

@@ -62,7 +62,7 @@ from .services.pdf_export import (
 )
 from .services.mwo_complete_export import export_mwo_complete
 from .services.batch_export import batch_export_sample_runs
-from .services.auto_generation import create_with_initial_run
+from .services.auto_generation import create_with_initial_run, create_next_run_for_request
 
 
 def _get_user_organization(request):
@@ -316,6 +316,122 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
             "can_submit": can_transition(obj, "submit"),
             "can_approve": can_transition(obj, "approve"),
             "can_reject": can_transition(obj, "reject"),
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="create-next-run")
+    def create_next_run(self, request, pk=None):
+        """
+        創建下一輪 SampleRun（支援多輪 Fit Sample）
+
+        POST /api/v2/sample-requests/{id}/create-next-run/
+
+        用於 Fit Sample 多輪調整場景：
+        - Fit 1st → 客戶評論 → 調整 → Fit 2nd → ...
+
+        Request body (all optional):
+        {
+            "run_type": "fit",      // 可選，預設繼承上一輪
+            "quantity": 3,          // 可選，預設繼承上一輪
+            "target_due_date": "2026-01-20",  // 可選
+            "notes": "Round 2 adjustments based on fit comments"
+        }
+
+        Response:
+        {
+            "message": "已創建 Run #2",
+            "sample_run": {...},
+            "documents": {...}
+        }
+        """
+        sample_request = self.get_object()
+
+        # 檢查是否已有至少一個 Run（必須先確認樣衣）
+        if not sample_request.runs.exists():
+            return Response({
+                "detail": "請先確認樣衣（創建 Run #1）後才能創建下一輪。"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 解析請求參數
+        run_type = request.data.get('run_type')
+        quantity = request.data.get('quantity')
+        target_due_date = request.data.get('target_due_date')
+        notes = request.data.get('notes', '')
+
+        try:
+            sample_run, documents = create_next_run_for_request(
+                sample_request=sample_request,
+                run_type=run_type,
+                quantity=quantity,
+                target_due_date=target_due_date,
+                notes=notes,
+                user=request.user if request.user.is_authenticated else None,
+            )
+        except DjangoValidationError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response({
+            "message": f"已創建 Run #{sample_run.run_no}",
+            "sample_run": {
+                "id": str(sample_run.id),
+                "run_no": sample_run.run_no,
+                "run_type": sample_run.run_type,
+                "status": sample_run.status,
+                "quantity": sample_run.quantity,
+            },
+            "documents": documents,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="runs-summary")
+    def runs_summary(self, request, pk=None):
+        """
+        獲取該 SampleRequest 的所有 Run 摘要
+
+        GET /api/v2/sample-requests/{id}/runs-summary/
+
+        Response:
+        {
+            "request_id": "uuid",
+            "request_type": "fit",
+            "total_runs": 3,
+            "runs": [
+                {"run_no": 1, "run_type": "fit", "status": "accepted", ...},
+                {"run_no": 2, "run_type": "fit", "status": "quoted", ...},
+                {"run_no": 3, "run_type": "fit", "status": "draft", ...}
+            ],
+            "can_create_next_run": true
+        }
+        """
+        sample_request = self.get_object()
+
+        runs = sample_request.runs.all().order_by('run_no')
+        runs_data = []
+
+        for run in runs:
+            runs_data.append({
+                "id": str(run.id),
+                "run_no": run.run_no,
+                "run_type": run.run_type,
+                "run_type_label": run.get_run_type_display(),
+                "status": run.status,
+                "status_label": run.get_status_display(),
+                "quantity": run.quantity,
+                "target_due_date": run.target_due_date.isoformat() if run.target_due_date else None,
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+            })
+
+        # 判斷是否可以創建下一輪（已有 Run 才能創建下一輪）
+        can_create_next_run = runs.exists()
+
+        return Response({
+            "request_id": str(sample_request.id),
+            "request_type": sample_request.request_type,
+            "total_runs": runs.count(),
+            "runs": runs_data,
+            "can_create_next_run": can_create_next_run,
+            "next_run_no": (runs.count() + 1) if can_create_next_run else None,
         }, status=status.HTTP_200_OK)
 
 

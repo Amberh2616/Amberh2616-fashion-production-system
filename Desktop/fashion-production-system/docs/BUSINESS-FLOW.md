@@ -97,8 +97,11 @@ Tech Pack 上傳 → AI 解析 → BOM 提取 → 翻譯審校 → Style/Revisio
 ───────────────────────────────────────────────────────────────────────────────
 SampleRequest
 ├── Run 1: Proto Sample (原版樣) → Estimate ✅ 需報價
-├── Run 2: Fit Sample (尺寸樣) → Estimate ✅ 需報價
-├── Run 3: Size Set Sample (全套尺寸樣) → Estimate ✅ 需報價
+├── Run 2-N: Fit Sample (尺寸樣) → Estimate ✅ 需報價【可多輪】
+│            ├─ Fit 1st → 客戶評論 → 調整
+│            ├─ Fit 2nd → 客戶評論 → 調整
+│            └─ Fit Nth → 客戶批准
+├── Run N+1: Size Set Sample (全套尺寸樣) → Estimate ✅ 需報價
 │                                              │
 │   ════════════════════════════════════════════════════════════════════════
 │   📍 用量確認 (confirmed_value → locked_value)
@@ -106,8 +109,8 @@ SampleRequest
 │   📍 客戶確認下單 → ProductionOrder
 │   ════════════════════════════════════════════════════════════════════════
 │
-├── Run 4: PP Sample (產前樣) → ❌ 不報價（價格已定）
-└── Run 5: TOP Sample (頭缸樣) → ❌ 不報價（從大貨扣除）
+├── Run N+2: PP Sample (產前樣) → ❌ 不報價（價格已定）
+└── Run N+3: TOP Sample (頭缸樣) → ❌ 不報價（從大貨扣除）
 
 
 【Phase 3: 報價階段】
@@ -148,11 +151,13 @@ PurchaseOrder (每筆物料獨立採購單) ✅
 | Run | 類型 | 數量 | 需報價？ | 說明 |
 |-----|------|------|----------|------|
 | 1 | Proto Sample (原版樣) | 1-3 件 | ✅ 是 | 確認版型設計 |
-| 2 | Fit Sample (尺寸樣) | 2-5 件 | ✅ 是 | 確認合身度 |
-| 3 | Size Set Sample (全套尺寸樣) | 5-50 件 | ✅ 是 | 最後報價樣 |
+| 2-N | Fit Sample (尺寸樣) | 2-5 件/輪 | ✅ 是 | 確認合身度，**可多輪** |
+| N+1 | Size Set Sample (全套尺寸樣) | 5-50 件 | ✅ 是 | 最後報價樣 |
 | | **═══ 大貨報價 + 下單 ═══** | | | |
-| 4 | PP Sample (產前樣) | 10-30 件 | ❌ 否 | 價格已定 |
-| 5 | TOP Sample (頭缸樣) | 50+ 件 | ❌ 否 | 從大貨扣除 |
+| N+2 | PP Sample (產前樣) | 10-30 件 | ❌ 否 | 價格已定 |
+| N+3 | TOP Sample (頭缸樣) | 50+ 件 | ❌ 否 | 從大貨扣除 |
+
+> **Fit Sample 多輪說明：** 實際業務中，Fit Sample 通常需要 1-5 輪調整才能達到客戶滿意的合身度。每輪都是獨立的 SampleRun，需要獨立報價和成本追蹤。
 
 ---
 

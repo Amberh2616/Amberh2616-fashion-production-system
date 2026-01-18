@@ -24,7 +24,8 @@ interface DocumentStatus {
   classification_result?: ClassificationResult
   extraction_errors: any[]
   file_url?: string
-  tech_pack_revision_id?: string  // ⚡ For P0 review navigation
+  style_revision_id?: string  // ⚡ For BOM/Spec navigation
+  tech_pack_revision_id?: string  // ⚡ For translation review navigation
 }
 
 export default function ReviewPage() {
@@ -67,23 +68,22 @@ export default function ReviewPage() {
         setIsCompleted(true)
 
         // ⚡ Auto-navigate based on file type
-        if (data.tech_pack_revision_id) {
+        const styleRevId = data.style_revision_id
+        const techPackRevId = data.tech_pack_revision_id
+
+        if (styleRevId || techPackRevId) {
           const fileType = data.classification_result?.file_type || 'tech_pack'
           const hasBOM = data.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
           const hasSpec = data.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
 
-          setTimeout(() => {
-            if (fileType === 'bom' || hasBOM) {
-              // BOM file → go to BOM edit page
-              router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/bom`)
-            } else if (fileType === 'measurement' || hasSpec) {
-              // Measurement file → go to Spec edit page
-              router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/spec`)
-            } else {
-              // Tech Pack → go to translation review page
-              router.push(`/dashboard/revisions/${data.tech_pack_revision_id}/review`)
-            }
-          }, 2000)  // Wait 2 seconds to show completion message
+          // 立即跳轉，不等待
+          if ((fileType === 'bom' || hasBOM) && styleRevId) {
+            router.push(`/dashboard/revisions/${styleRevId}/bom`)
+          } else if ((fileType === 'measurement' || hasSpec) && styleRevId) {
+            router.push(`/dashboard/revisions/${styleRevId}/spec`)
+          } else if (techPackRevId) {
+            router.push(`/dashboard/revisions/${techPackRevId}/review`)
+          }
         }
       }
     } catch (err) {
@@ -97,9 +97,9 @@ export default function ReviewPage() {
     setError(null)
 
     try {
-      // Use AbortController for timeout (3 minutes for large PDFs)
+      // Use AbortController for timeout (10 minutes for large PDFs with many BOM items)
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 180000)
+      const timeoutId = setTimeout(() => controller.abort(), 600000)
 
       const response = await fetch(
         `http://localhost:8000/api/v2/uploaded-documents/${documentId}/extract/`,
@@ -120,7 +120,10 @@ export default function ReviewPage() {
       const extractData = await response.json()
       console.log('Extract response:', extractData)
 
-      if (extractData.tech_pack_revision_id) {
+      const styleRevId = extractData.style_revision_id
+      const techPackRevId = extractData.tech_pack_revision_id
+
+      if (styleRevId || techPackRevId) {
         // Extraction completed - redirect immediately
         setIsExtracting(false)
         setIsCompleted(true)
@@ -129,12 +132,18 @@ export default function ReviewPage() {
         const hasBOM = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'bom_table')
         const hasSpec = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'measurement_table')
 
-        // Redirect based on file type
-        const targetUrl = (fileType === 'bom' || hasBOM)
-          ? `/dashboard/revisions/${extractData.tech_pack_revision_id}/bom`
-          : (fileType === 'measurement' || hasSpec)
-          ? `/dashboard/revisions/${extractData.tech_pack_revision_id}/spec`
-          : `/dashboard/revisions/${extractData.tech_pack_revision_id}/review`
+        // Redirect based on file type (BOM/Spec use style_revision_id, Tech Pack uses tech_pack_revision_id)
+        let targetUrl: string
+        if ((fileType === 'bom' || hasBOM) && styleRevId) {
+          targetUrl = `/dashboard/revisions/${styleRevId}/bom`
+        } else if ((fileType === 'measurement' || hasSpec) && styleRevId) {
+          targetUrl = `/dashboard/revisions/${styleRevId}/spec`
+        } else if (techPackRevId) {
+          targetUrl = `/dashboard/revisions/${techPackRevId}/review`
+        } else {
+          // Fallback
+          targetUrl = `/dashboard/styles`
+        }
 
         console.log('Redirecting to:', targetUrl)
         router.push(targetUrl)
@@ -154,19 +163,21 @@ export default function ReviewPage() {
           setIsCompleted(true)
           setStatus(statusData)
 
-          if (statusData.tech_pack_revision_id) {
+          const pollStyleRevId = statusData.style_revision_id
+          const pollTechPackRevId = statusData.tech_pack_revision_id
+
+          if (pollStyleRevId || pollTechPackRevId) {
             const fileType = statusData.classification_result?.file_type || 'tech_pack'
             const hasBOM = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
             const hasSpec = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
 
-            alert('Extraction completed! Redirecting...')
-
-            if (fileType === 'bom' || hasBOM) {
-              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/bom`)
-            } else if (fileType === 'measurement' || hasSpec) {
-              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/spec`)
-            } else {
-              router.push(`/dashboard/revisions/${statusData.tech_pack_revision_id}/review`)
+            // 立即跳轉，不彈窗
+            if ((fileType === 'bom' || hasBOM) && pollStyleRevId) {
+              router.push(`/dashboard/revisions/${pollStyleRevId}/bom`)
+            } else if ((fileType === 'measurement' || hasSpec) && pollStyleRevId) {
+              router.push(`/dashboard/revisions/${pollStyleRevId}/spec`)
+            } else if (pollTechPackRevId) {
+              router.push(`/dashboard/revisions/${pollTechPackRevId}/review`)
             }
           }
         } else if (statusData.status === 'failed') {

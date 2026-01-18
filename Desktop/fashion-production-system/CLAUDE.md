@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-17
-**Version:** 4.27.5
-**Status:** P0-P21 + QA-1 + FIX-P0/P1 完成 ✅ | P21 可拖曳翻譯框
+**Last Updated:** 2026-01-19
+**Version:** 4.31.0
+**Status:** P0-P26 完成 ✅ | P26 UI/UX 優化（跳轉加速）
 
 ---
 
@@ -216,6 +216,9 @@ draft → confirmed → materials_ordered → in_production → completed
 | P19 | BOM 用量四階段管理 + 100款性能測試 | 2026-01-13 → 01-17 |
 | P20-A | Sample Request 兩步確認流程 | 2026-01-14 |
 | P21 | Tech Pack 翻譯框（拖曳+縮放+編輯+隱藏）| 2026-01-17 |
+| P24 | PO 寄送供應商（Email + PDF 附件）| 2026-01-17 |
+| P25 | 多輪 Fit Sample 支援 | 2026-01-18 |
+| P26 | UI/UX 優化（導航、編輯介面、提取流程）| 2026-01-18 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -231,9 +234,11 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-P0** | 阻塞性問題 (7項) | ✅ 完成 (2026-01-16) |
 | **FIX-P1** | 重要問題 (4項) | ✅ 完成 (2026-01-16) |
 | **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| ✅ 完成 (2026-01-17) |
+| **P24** | PO 寄送供應商（Email 功能）| ✅ 完成 (2026-01-17) |
+| **P25** | 多輪 Fit Sample 支援 | ✅ 完成 (2026-01-18) |
+| **P26** | UI/UX 優化 | ✅ 完成 (2026-01-18) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | **P23** | 採購優化 (Procurement Enhancement) | 規劃中 |
-| **P24** | PO 寄送供應商（Email 功能）| 🔴 TODO |
 | DA-2 | Celery 異步處理 | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 認證 + 數據隔離 + 前端登入 (11-16h) | 計劃中 |
@@ -257,71 +262,126 @@ draft → confirmed → materials_ordered → in_production → completed
 10. ✅ BOM 驗證門檻 80%
 11. ✅ CostSheet Refresh Snapshot API
 
-### P24 PO 寄送供應商（待開發）
+### P24 PO 寄送供應商 ✅ 完成 (2026-01-17)
 
-**現有基礎：**
-- ✅ `Supplier` model 已有 `email` 欄位
-- ✅ `PurchaseOrder` model 已有完整狀態流程
-- ✅ `production.py` 已有 SMTP 設定框架
+**已實現功能：**
+- ✅ Email 發送服務 - `backend/apps/procurement/services/email_service.py`
+- ✅ PO PDF 附件 - 自動附加 PO PDF
+- ✅ 發送按鈕組件 - `frontend/components/procurement/SendPOButton.tsx`
+- ✅ 狀態追蹤 - sent_at, sent_to_email, sent_count
+- ✅ 重發支援 - sent 狀態可重發
+- ✅ 自訂收件人 - 可覆蓋 supplier.email
+- ✅ Email HTML 模板 - `backend/templates/emails/po_to_supplier.html`
 
-**待實現功能：**
-1. **Email 發送服務** - `backend/apps/procurement/services/email_service.py`
-2. **PO PDF 附件** - 生成 PO PDF 並作為附件
-3. **發送按鈕** - PO 詳情頁新增「發送給供應商」按鈕
-4. **狀態更新** - 發送後 PO 狀態從 `ready` → `sent`
-5. **發送記錄** - 記錄發送時間、收件人
-
-**技術設計（預估 7h）：**
-
-```
-架構流程：
-Frontend Button → POST /api/v2/purchase-orders/{id}/send/
-                         ↓
-              ┌──────────────────┐
-              │  PO ViewSet      │
-              │  send_to_supplier│
-              └────────┬─────────┘
-                       ↓
-         ┌─────────────┴─────────────┐
-         ↓                           ↓
-┌─────────────────┐      ┌───────────────────┐
-│ POPdfGenerator  │      │  POEmailService   │
-│ generate(po)    │─────▶│ send_po_to_supplier│
-└─────────────────┘      └───────────────────┘
-                                  ↓
-                         ┌───────────────┐
-                         │  SMTP Server  │
-                         │ (Gmail/SES)   │
-                         └───────────────┘
-```
-
-**待建立檔案：**
-1. `backend/apps/procurement/services/email_service.py` - Email 發送服務
-2. `backend/templates/emails/po_to_supplier.html` - Email 模板
-3. `frontend/components/procurement/SendPOButton.tsx` - 發送按鈕
-
-**API 設計：**
+**API：**
 - `POST /api/v2/purchase-orders/{id}/send/`
-- 驗證：status = 'ready', supplier.email 存在
-- 成功後：status → 'sent', 記錄 sent_at, sent_to_email
+- Body: `{ "email": "custom@email.com" }` (可選)
 
-**Model 擴充：**
+**Email 設定（待配置）：**
 ```python
-# PurchaseOrder 新增欄位
-sent_at = models.DateTimeField(null=True)
-sent_to_email = models.EmailField(blank=True)
-sent_count = models.IntegerField(default=0)
-```
-
-**測試信箱設定：**
-```python
-# 開發用（輸出到 console）
+# 開發環境（目前）- 輸出到 console
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-# 或 Gmail SMTP
+# 生產環境 - Gmail SMTP
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "your-email@gmail.com"
 EMAIL_HOST_PASSWORD = "app-password"
+```
+
+### P25 多輪 Fit Sample 支援 ✅ 完成 (2026-01-18)
+
+**已實現功能：**
+- ✅ 後端服務函數 - `create_next_run_for_request()`
+- ✅ API 端點 - `POST /api/v2/sample-requests/{id}/create-next-run/`
+- ✅ API 端點 - `GET /api/v2/sample-requests/{id}/runs-summary/`
+- ✅ 自動計算 run_no - max(run_no) + 1
+- ✅ 繼承上一輪配置 - run_type, quantity
+- ✅ 自動快照 - BOM/Operations/TechPack
+- ✅ 自動生成 - MWO + CostSheet
+
+**前端功能：**
+- ✅ SampleRequest 詳情頁 - 「創建下一輪」按鈕
+- ✅ Kanban 卡片 - 顯示 Run 輪次編號
+- ✅ Fit Sample 多輪視覺標記
+
+**使用方式：**
+```
+Fit Sample 多輪流程：
+  1️⃣ Run #1 (Fit/Draft)
+       ↓ 製作完成、客戶反饋
+  2️⃣ 點擊「創建下一輪 (Run #2)」
+       ↓ 自動生成 Run #2 + MWO + 報價單
+  3️⃣ Run #2 (Fit/Draft)
+       ↓ 根據反饋調整、再次製作
+  ...
+  ✅ Final Acceptance
+```
+
+**API 使用範例：**
+```bash
+# 創建下一輪
+POST /api/v2/sample-requests/{id}/create-next-run/
+{
+  "run_type": "fit",      # 可選，預設繼承上一輪
+  "quantity": 3,          # 可選，預設繼承上一輪
+  "notes": "Round 2 adjustments"
+}
+
+# 獲取 Run 摘要
+GET /api/v2/sample-requests/{id}/runs-summary/
+```
+
+### P26 UI/UX 優化 ✅ 完成 (2026-01-18)
+
+**1. Spec 編輯介面簡化：**
+- ✅ 移除 3 個 Tab（基本資訊/尺碼數值/翻譯）
+- ✅ 合併為單一頁面，減少點擊次數
+- ✅ AI 翻譯按鈕整合在中文名稱欄位旁邊
+- 文件：`frontend/components/measurement/MeasurementEditDrawer.tsx`
+
+**2. BOM/Spec/Costing 頁面導航：**
+- ✅ 三個頁面新增統一導航按鈕
+- ✅ 可在 BOM ↔ Spec ↔ 報價 之間快速切換
+- 文件：
+  - `frontend/app/dashboard/revisions/[id]/bom/page.tsx`
+  - `frontend/app/dashboard/revisions/[id]/spec/page.tsx`
+  - `frontend/app/dashboard/revisions/[id]/costing-phase23/page.tsx`
+
+**3. 文件提取流程修復：**
+- ✅ 後端 API 返回 `style_revision_id` + `tech_pack_revision_id`
+- ✅ BOM 文件提取後正確跳轉到 BOM 頁面
+- ✅ Spec 文件提取後正確跳轉到 Spec 頁面
+- ✅ Tech Pack 提取後跳轉到翻譯審校頁面
+- ✅ 提取超時增加到 10 分鐘（大型 PDF）
+- 文件：
+  - `backend/apps/parsing/views.py`
+  - `frontend/app/dashboard/documents/[id]/review/page.tsx`
+
+**4. 上傳頁面優化（2026-01-18 新增）：**
+- ✅ 真實上傳進度條 - 使用 XHR 追蹤上傳百分比
+- ✅ 改進錯誤處理 - 網路錯誤、回應解析錯誤
+- 文件：`frontend/app/dashboard/upload/page.tsx`
+
+**5. AI 處理頁面優化（2026-01-18 新增）：**
+- ✅ 處理計時器 - 顯示已用時間（分秒）
+- ✅ 取消按鈕 - 可中止處理返回上傳頁
+- ✅ Toast 提示 - 分類完成/失敗通知
+- ✅ AbortController - 頁面離開時清理請求
+- 文件：`frontend/app/dashboard/documents/[id]/processing/page.tsx`
+
+**6. 跳轉延遲移除（2026-01-19 新增）：**
+- ✅ 移除 processing → review 的 1.5 秒延遲
+- ✅ 移除 review → BOM/Spec/翻譯 的 2 秒延遲
+- ✅ 移除 alert() 彈窗阻塞
+- 文件：
+  - `frontend/app/dashboard/documents/[id]/processing/page.tsx`
+  - `frontend/app/dashboard/documents/[id]/review/page.tsx`
+
+**導航佈局：**
+```
+┌────────────────────────────────────────────────────────────┐
+│ [← 返回列表] | [📦 BOM 物料] | [📏 Spec 尺寸] | [$ 報價]   │
+└────────────────────────────────────────────────────────────┘
 ```

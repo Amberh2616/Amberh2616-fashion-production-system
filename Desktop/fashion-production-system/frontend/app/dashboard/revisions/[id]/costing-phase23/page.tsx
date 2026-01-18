@@ -17,7 +17,7 @@ import { getRevision } from '@/lib/api/styles';
 import { CostingVersionsTimeline } from '@/components/costing/CostingVersionsTimeline';
 import { CreateCostSheetDialog } from '@/components/costing/CostingDialogs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Ruler, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CostingPhase23Page() {
@@ -74,19 +74,38 @@ export default function CostingPhase23Page() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href={`/dashboard/revisions/${revisionId}/bom`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to BOM
-          </Button>
-        </Link>
-
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">Costing (Phase 2-3)</h1>
-          <p className="text-muted-foreground mt-1">
-            Revision: {revision.revision_label}
-          </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <Link href="/dashboard/costing">
+              <Button variant="ghost" size="sm" className="gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                返回列表
+              </Button>
+            </Link>
+            <div className="h-4 w-px bg-border" />
+            <Link href={`/dashboard/revisions/${revisionId}/bom`}>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <Package className="h-4 w-4" />
+                BOM 物料
+              </Button>
+            </Link>
+            <Link href={`/dashboard/revisions/${revisionId}/spec`}>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <Ruler className="h-4 w-4" />
+                Spec 尺寸
+              </Button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-3">
+            <DollarSign className="h-6 w-6 text-green-600" />
+            <div>
+              <h1 className="text-2xl font-bold">報價 Costing</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Revision: {revision.revision_label} - 管理樣衣與大貨報價
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

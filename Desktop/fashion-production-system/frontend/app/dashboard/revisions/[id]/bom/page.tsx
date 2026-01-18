@@ -21,7 +21,7 @@ import { BOMEditDrawer } from "@/components/bom/BOMEditDrawer";
 import { BOMTranslationDrawer } from "@/components/bom/BOMTranslationDrawer";
 import { EditableConsumptionCell } from "@/components/bom/EditableConsumptionCell";
 import type { BOMItem } from "@/lib/types/bom";
-import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft, Trash2, Plus } from "lucide-react";
+import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft, Trash2, Plus, Ruler, DollarSign } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -363,7 +363,20 @@ export default function BOMPage() {
             <Link href="/dashboard/bom">
               <Button variant="ghost" size="sm" className="gap-1">
                 <ArrowLeft className="h-4 w-4" />
-                返回
+                返回列表
+              </Button>
+            </Link>
+            <div className="h-4 w-px bg-border" />
+            <Link href={`/dashboard/revisions/${revisionId}/spec`}>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <Ruler className="h-4 w-4" />
+                Spec 尺寸
+              </Button>
+            </Link>
+            <Link href={`/dashboard/revisions/${revisionId}/costing-phase23`}>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <DollarSign className="h-4 w-4" />
+                報價
               </Button>
             </Link>
           </div>

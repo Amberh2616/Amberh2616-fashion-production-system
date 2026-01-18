@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { MeasurementEditDrawer } from "@/components/measurement/MeasurementEditDrawer";
 import type { MeasurementItem, CreateMeasurementPayload } from "@/lib/types/measurement";
-import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft, Trash2, Plus } from "lucide-react";
+import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft, Trash2, Plus, Package, DollarSign } from "lucide-react";
 import Link from "next/link";
 
 const API_BASE = "http://localhost:8000";
@@ -298,6 +298,19 @@ export default function SpecPage() {
               <Button variant="ghost" size="sm" className="gap-1">
                 <ArrowLeft className="h-4 w-4" />
                 返回列表
+              </Button>
+            </Link>
+            <div className="h-4 w-px bg-border" />
+            <Link href={`/dashboard/revisions/${revisionId}/bom`}>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <Package className="h-4 w-4" />
+                BOM 物料
+              </Button>
+            </Link>
+            <Link href={`/dashboard/revisions/${revisionId}/costing-phase23`}>
+              <Button variant="ghost" size="sm" className="gap-1">
+                <DollarSign className="h-4 w-4" />
+                報價
               </Button>
             </Link>
           </div>

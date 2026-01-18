@@ -137,8 +137,8 @@ function SingleUpload() {
     setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const uploadFile = async (uploadedFile: UploadedFile) => {
-    try {
+  const uploadFile = async (uploadedFile: UploadedFile): Promise<string | null> => {
+    return new Promise((resolve) => {
       setFiles((prev) =>
         prev.map((f) =>
           f.id === uploadedFile.id ? { ...f, status: 'uploading' as const, progress: 0 } : f
@@ -148,40 +148,68 @@ function SingleUpload() {
       const formData = new FormData();
       formData.append('file', uploadedFile.file);
 
-      const response = await fetch('http://localhost:8000/api/v2/uploaded-documents/', {
-        method: 'POST',
-        body: formData,
+      const xhr = new XMLHttpRequest();
+
+      // 追蹤上傳進度
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadedFile.id ? { ...f, progress } : f
+            )
+          );
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.id === uploadedFile.id
+                  ? { ...f, status: 'uploaded' as const, progress: 100, documentId: data.id }
+                  : f
+              )
+            );
+            resolve(data.id);
+          } catch {
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.id === uploadedFile.id
+                  ? { ...f, status: 'error' as const, error: 'Invalid response' }
+                  : f
+              )
+            );
+            resolve(null);
+          }
+        } else {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadedFile.id
+                ? { ...f, status: 'error' as const, error: `Upload failed: ${xhr.statusText}` }
+                : f
+            )
+          );
+          resolve(null);
+        }
+      });
 
-      const data = await response.json();
+      xhr.addEventListener('error', () => {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadedFile.id
+              ? { ...f, status: 'error' as const, error: 'Network error' }
+              : f
+          )
+        );
+        resolve(null);
+      });
 
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === uploadedFile.id
-            ? { ...f, status: 'uploaded' as const, progress: 100, documentId: data.id }
-            : f
-        )
-      );
-
-      return data.id;
-    } catch (error) {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === uploadedFile.id
-            ? {
-                ...f,
-                status: 'error' as const,
-                error: error instanceof Error ? error.message : 'Upload failed',
-              }
-            : f
-        )
-      );
-      return null;
-    }
+      xhr.open('POST', 'http://localhost:8000/api/v2/uploaded-documents/');
+      xhr.send(formData);
+    });
   };
 
   const handleUploadAll = async () => {
@@ -271,7 +299,7 @@ function SingleUpload() {
             {files.map((uploadedFile) => (
               <div
                 key={uploadedFile.id}
-                className={`flex items-center gap-3 p-3 border rounded-lg ${
+                className={`p-3 border rounded-lg ${
                   uploadedFile.status === 'error'
                     ? 'border-red-200 bg-red-50'
                     : uploadedFile.status === 'uploaded'
@@ -279,25 +307,33 @@ function SingleUpload() {
                     : 'border-border'
                 }`}
               >
-                {getFileIcon(uploadedFile.file.name)}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{uploadedFile.file.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatFileSize(uploadedFile.file.size)}
-                    {uploadedFile.status === 'uploading' && (
-                      <span className="ml-2">Uploading...</span>
-                    )}
-                    {uploadedFile.status === 'uploaded' && (
-                      <span className="ml-2 text-green-600">Uploaded</span>
-                    )}
-                    {uploadedFile.status === 'error' && (
-                      <span className="ml-2 text-red-600">{uploadedFile.error}</span>
-                    )}
-                  </p>
+                <div className="flex items-center gap-3">
+                  {getFileIcon(uploadedFile.file.name)}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{uploadedFile.file.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatFileSize(uploadedFile.file.size)}
+                      {uploadedFile.status === 'uploading' && (
+                        <span className="ml-2 text-blue-600">{uploadedFile.progress}%</span>
+                      )}
+                      {uploadedFile.status === 'uploaded' && (
+                        <span className="ml-2 text-green-600">✓ 上傳完成</span>
+                      )}
+                      {uploadedFile.status === 'error' && (
+                        <span className="ml-2 text-red-600">{uploadedFile.error}</span>
+                      )}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeFile(uploadedFile.id)}>
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => removeFile(uploadedFile.id)}>
-                  <X className="h-4 w-4" />
-                </Button>
+                {/* 進度條 */}
+                {uploadedFile.status === 'uploading' && (
+                  <div className="mt-2">
+                    <Progress value={uploadedFile.progress} className="h-2" />
+                  </div>
+                )}
               </div>
             ))}
           </CardContent>

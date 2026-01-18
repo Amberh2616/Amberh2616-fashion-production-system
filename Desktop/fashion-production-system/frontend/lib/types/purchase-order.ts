@@ -61,6 +61,7 @@ export interface PurchaseOrder {
     name: string;
     supplier_code: string;
     supplier_type: string;
+    email?: string;
   };
   status: POStatus;
   status_display?: string;
@@ -78,6 +79,10 @@ export interface PurchaseOrder {
   all_lines_confirmed?: boolean;
   confirmed_lines_count?: number;
   total_lines_count?: number;
+  // P24: Email tracking
+  sent_at?: string | null;
+  sent_to_email?: string | null;
+  sent_count?: number;
 }
 
 export interface POListResponse {

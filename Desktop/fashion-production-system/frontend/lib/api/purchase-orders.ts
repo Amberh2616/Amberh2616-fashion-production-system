@@ -87,11 +87,31 @@ export async function getPOStats(): Promise<POStats> {
 // ============ Status Transitions ============
 
 /**
- * Send PO to supplier (draft → sent)
+ * P24: Send PO to supplier via email
+ * @param id - PO ID
+ * @param email - Optional custom recipient email (defaults to supplier.email)
  */
-export async function sendPO(id: string): Promise<{ status: string; message: string }> {
-  return apiClient<{ status: string; message: string }>(`/purchase-orders/${id}/send/`, {
+export async function sendPO(
+  id: string,
+  email?: string
+): Promise<{
+  status: string;
+  message: string;
+  sent_to?: string;
+  sent_at?: string;
+  sent_count?: number;
+  error?: string;
+}> {
+  return apiClient<{
+    status: string;
+    message: string;
+    sent_to?: string;
+    sent_at?: string;
+    sent_count?: number;
+  }>(`/purchase-orders/${id}/send/`, {
     method: 'POST',
+    headers: email ? { 'Content-Type': 'application/json' } : undefined,
+    body: email ? JSON.stringify({ email }) : undefined,
   });
 }
 

@@ -15,7 +15,7 @@ class SupplierSimpleSerializer(serializers.ModelSerializer):
     """Simplified supplier for dropdown/references"""
     class Meta:
         model = Supplier
-        fields = ['id', 'name', 'supplier_code', 'supplier_type']
+        fields = ['id', 'name', 'supplier_code', 'supplier_type', 'email']
 
 
 class MaterialSerializer(serializers.ModelSerializer):

@@ -677,9 +677,18 @@ function KanbanCard({
           />
           <span className={cn('px-1.5 py-0.5 text-xs rounded', runTypeBadge.color)}>
             {runTypeBadge.label}
+            {/* 多輪 Fit Sample：顯示輪次編號 */}
+            {run.run_no > 1 && run.run_type === 'fit' && (
+              <span className="ml-0.5 font-bold">#{run.run_no}</span>
+            )}
           </span>
         </div>
-        <span className="text-xs text-gray-400">#{run.run_no}</span>
+        <span className={cn(
+          'text-xs',
+          run.run_no > 1 ? 'text-blue-600 font-semibold' : 'text-gray-400'
+        )}>
+          Run #{run.run_no}
+        </span>
       </div>
 
       {/* Style Number */}

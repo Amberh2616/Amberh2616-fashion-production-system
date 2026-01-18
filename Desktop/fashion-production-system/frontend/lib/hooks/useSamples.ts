@@ -12,6 +12,8 @@ import {
   deleteSampleRequest,
   confirmSampleRequest,
   fetchAllowedActions,
+  createNextRun,
+  fetchRunsSummary,
   fetchSampleRuns,
   fetchSampleRun,
   createSampleRun,
@@ -52,6 +54,7 @@ import type {
   CreateSampleAttachmentPayload,
   SampleActuals,
 } from '@/types/samples';
+import type { CreateNextRunPayload } from '../api/samples';
 
 // ========================================
 // SampleRequest Hooks
@@ -161,6 +164,47 @@ export function useAllowedActions(id: string | null) {
     queryKey: ['sample-request-allowed-actions', id],
     queryFn: () => fetchAllowedActions(id!),
     enabled: !!id,
+  });
+}
+
+// ========================================
+// 多輪 Fit Sample Hooks
+// ========================================
+
+/**
+ * 創建下一輪 SampleRun（支援多輪 Fit Sample）
+ *
+ * 用於 Fit Sample 多輪調整場景：
+ * - Fit 1st → 客戶評論 → 調整 → Fit 2nd → ...
+ */
+export function useCreateNextRun(requestId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload?: CreateNextRunPayload) => {
+      if (!requestId) throw new Error('Request ID is required');
+      return createNextRun(requestId, payload);
+    },
+    onSuccess: (data) => {
+      // 創建下一輪後刷新相關查詢
+      queryClient.invalidateQueries({ queryKey: ['sample-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['sample-request', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['sample-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['runs-summary', requestId] });
+      queryClient.invalidateQueries({ queryKey: ['kanban-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['kanban-counts'] });
+    },
+  });
+}
+
+/**
+ * 獲取該 SampleRequest 的所有 Run 摘要
+ */
+export function useRunsSummary(requestId: string | null) {
+  return useQuery({
+    queryKey: ['runs-summary', requestId],
+    queryFn: () => fetchRunsSummary(requestId!),
+    enabled: !!requestId,
   });
 }
 

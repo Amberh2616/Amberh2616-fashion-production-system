@@ -62,18 +62,45 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             return PurchaseOrderDetailSerializer
         return PurchaseOrderSerializer
 
-    # Status transition: draft → sent
+    # P24: Send PO to supplier via email
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
+        """
+        發送 PO 給供應商（附帶 PDF）
+
+        Request body (optional):
+            { "email": "custom@email.com" }  // 可自訂收件人
+        """
+        from .services.email_service import send_po_to_supplier
+
         po = self.get_object()
-        if po.status != 'draft':
+
+        # 允許 draft, ready, sent 狀態發送（sent = 重發）
+        if po.status not in ['draft', 'ready', 'sent']:
             return Response(
-                {'error': 'Can only send PO in draft status'},
+                {'error': f'Cannot send PO in {po.status} status'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        po.status = 'sent'
-        po.save()
-        return Response({'status': 'sent', 'message': 'PO sent to supplier'})
+
+        # 取得自訂 email（可選）
+        custom_email = request.data.get('email')
+
+        # 發送 Email
+        result = send_po_to_supplier(po, custom_email)
+
+        if result['success']:
+            return Response({
+                'status': 'sent',
+                'message': result['message'],
+                'sent_to': result['sent_to'],
+                'sent_at': result['sent_at'].isoformat() if result['sent_at'] else None,
+                'sent_count': po.sent_count
+            })
+        else:
+            return Response(
+                {'error': result['message']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # Status transition: sent → confirmed
     @action(detail=True, methods=['post'])

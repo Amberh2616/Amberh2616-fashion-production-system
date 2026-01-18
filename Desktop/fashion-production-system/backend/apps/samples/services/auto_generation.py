@@ -947,3 +947,182 @@ def generate_documents_for_request(
     documents['sample_quote_cost_sheet_id'] = str(sample_quote_result['cost_sheet_version_id'])
 
     return run, documents
+
+
+# ==================== 多輪 Fit Sample 支援 ====================
+
+@transaction.atomic
+def create_next_run_for_request(
+    sample_request: SampleRequest,
+    run_type: str = None,
+    quantity: int = None,
+    target_due_date=None,
+    notes: str = '',
+    user=None,
+) -> Tuple[SampleRun, Dict[str, Any]]:
+    """
+    為已存在的 SampleRequest 創建下一輪 SampleRun
+
+    用於 Fit Sample 多輪調整場景：
+    - Fit 1st → 客戶評論 → 調整 → Fit 2nd → ...
+
+    功能：
+    1. 自動計算 run_no = max(現有 run_no) + 1
+    2. 複製上一輪的 run_type（如果未指定）
+    3. 快照最新的 BOM/Operations/TechPack
+    4. 生成新的 MWO 和報價單
+
+    Args:
+        sample_request: SampleRequest instance
+        run_type: 可選，覆蓋 run_type（預設繼承上一輪）
+        quantity: 可選，樣衣數量（預設繼承上一輪）
+        target_due_date: 可選，目標交期
+        notes: 可選，備註
+        user: Optional User instance
+
+    Returns:
+        Tuple of (SampleRun, documents_info)
+    """
+    from django.db.models import Max
+
+    revision = sample_request.revision
+
+    # 1. 計算下一個 run_no
+    max_run_no = sample_request.runs.aggregate(Max('run_no'))['run_no__max'] or 0
+    next_run_no = max_run_no + 1
+
+    # 2. 獲取上一輪的設定（如果存在）
+    last_run = sample_request.runs.order_by('-run_no').first()
+
+    # 3. 決定 run_type（優先使用傳入值，否則繼承上一輪，最後使用 request_type）
+    if not run_type:
+        if last_run:
+            run_type = last_run.run_type
+        else:
+            run_type_map = {
+                SampleRequestType.PROTO: SampleRunType.PROTO,
+                SampleRequestType.FIT: SampleRunType.FIT,
+                SampleRequestType.SALES: SampleRunType.SALES,
+                SampleRequestType.PHOTO: SampleRunType.PHOTO,
+            }
+            run_type = run_type_map.get(sample_request.request_type, SampleRunType.OTHER)
+
+    # 4. 決定數量
+    if quantity is None:
+        quantity = last_run.quantity if last_run else sample_request.quantity_requested
+
+    # 5. 決定目標交期
+    if target_due_date is None:
+        target_due_date = sample_request.due_date
+
+    # 6. 生成 source hash
+    source_hash = generate_source_hash(revision)
+
+    # 7. 創建新的 SampleRun
+    run = SampleRun.objects.create(
+        sample_request=sample_request,
+        run_no=next_run_no,
+        run_type=run_type,
+        status=SampleRunStatus.DRAFT,
+        quantity=quantity,
+        target_due_date=target_due_date,
+        source_revision_id=revision.id,
+        source_revision_label=revision.revision_label,
+        source_hash=source_hash,
+        snapshotted_at=timezone.now(),
+        notes=notes,
+        created_by=user,
+    )
+
+    documents = {
+        'run_created': True,
+        'run_no': next_run_no,
+        'previous_run_no': max_run_no,
+        'mwo_id': None,
+        'mwo_no': None,
+        'estimate_id': None,
+        'bom_line_count': 0,
+        'operation_count': 0,
+    }
+
+    # 8. 快照 BOM
+    documents['bom_line_count'] = snapshot_bom_to_run(revision, run)
+
+    # 9. 快照 Operations
+    documents['operation_count'] = snapshot_operations_to_run(revision, run)
+
+    # 10. 快照 Tech Pack
+    techpack_result = snapshot_techpack_to_run(revision, run)
+    documents['techpack_pages_count'] = techpack_result['pages_created']
+    documents['techpack_blocks_count'] = techpack_result['blocks_created']
+
+    # 11. 構建 MWO 快照
+    bom_snapshot = [{
+        'line_no': line.line_no,
+        'material_code': line.material_code or '',
+        'material_name': line.material_name,
+        'material_name_zh': line.material_name_zh or '',
+        'category': line.category,
+        'color': line.color or '',
+        'supplier_name': line.supplier_name,
+        'consumption': str(line.consumption),
+        'total_consumption': str(line.consumption * run.quantity),
+        'uom': line.uom,
+        'unit_price': str(line.unit_price or 0),
+        'leadtime_days': line.leadtime_days or 0,
+    } for line in run.bom_lines.all()]
+
+    construction_snapshot = [{
+        'step_no': op.step_no,
+        'description': op.description,
+        'description_zh': getattr(op, 'description_zh', '') or '',
+        'machine_type': op.machine_type,
+        'machine_type_zh': getattr(op, 'machine_type_zh', '') or '',
+        'std_minutes': op.std_minutes or 0,
+        'special_requirements': op.special_requirements or '',
+    } for op in run.operations.all()]
+
+    qc_snapshot = {
+        'labels': [
+            {'type': 'logo', 'position': 'TBD', 'method': 'Heat transfer / Sewn-in'},
+            {'type': 'care_label', 'position': 'TBD', 'method': 'Sewn-in'}
+        ],
+        'packaging': {
+            'polybag': 'Standard polybag (size TBD)',
+            'carton': 'Standard carton box',
+            'special_requirements': []
+        },
+        'inspections': {
+            'measurement_tolerance': 'Per spec sheet',
+            'visual_inspection': 'Per AQL standard',
+            'functional_tests': []
+        }
+    }
+
+    # 12. 創建 MWO (draft)
+    mwo = SampleMWO.objects.create(
+        sample_run=run,
+        version_no=1,
+        is_latest=True,
+        mwo_no=generate_mwo_no(),
+        factory_name='TBD',
+        status='draft',
+        source_revision_id=revision.id,
+        snapshot_hash=source_hash,
+        bom_snapshot_json=bom_snapshot,
+        construction_snapshot_json=construction_snapshot,
+        qc_snapshot_json=qc_snapshot,
+    )
+    documents['mwo_id'] = str(mwo.id)
+    documents['mwo_no'] = mwo.mwo_no
+
+    # 13. 創建 Sample Quote
+    sample_quote_result = create_sample_quote_from_run(
+        run=run,
+        revision=revision,
+        user=user,
+    )
+    documents['sample_quote_usage_id'] = str(sample_quote_result['usage_scenario_id'])
+    documents['sample_quote_cost_sheet_id'] = str(sample_quote_result['cost_sheet_version_id'])
+
+    return run, documents

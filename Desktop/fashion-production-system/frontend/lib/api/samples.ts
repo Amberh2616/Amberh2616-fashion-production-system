@@ -129,6 +129,76 @@ export async function fetchAllowedActions(id: string): Promise<{ actions: string
 }
 
 // ========================================
+// 多輪 Fit Sample 支援
+// ========================================
+
+export interface CreateNextRunPayload {
+  run_type?: string;
+  quantity?: number;
+  target_due_date?: string;
+  notes?: string;
+}
+
+export interface CreateNextRunResponse {
+  message: string;
+  sample_run: {
+    id: string;
+    run_no: number;
+    run_type: string;
+    status: string;
+    quantity: number;
+  };
+  documents: Record<string, any>;
+}
+
+export interface RunSummaryItem {
+  id: string;
+  run_no: number;
+  run_type: string;
+  run_type_label: string;
+  status: string;
+  status_label: string;
+  quantity: number;
+  target_due_date: string | null;
+  created_at: string | null;
+}
+
+export interface RunsSummaryResponse {
+  request_id: string;
+  request_type: string;
+  total_runs: number;
+  runs: RunSummaryItem[];
+  can_create_next_run: boolean;
+  next_run_no: number | null;
+}
+
+/**
+ * 創建下一輪 SampleRun（支援多輪 Fit Sample）
+ * POST /sample-requests/{id}/create-next-run/
+ *
+ * 用於 Fit Sample 多輪調整場景：
+ * - Fit 1st → 客戶評論 → 調整 → Fit 2nd → ...
+ */
+export async function createNextRun(
+  requestId: string,
+  payload?: CreateNextRunPayload
+): Promise<CreateNextRunResponse> {
+  return apiClient<CreateNextRunResponse>(`/sample-requests/${requestId}/create-next-run/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+/**
+ * 獲取該 SampleRequest 的所有 Run 摘要
+ * GET /sample-requests/{id}/runs-summary/
+ */
+export async function fetchRunsSummary(requestId: string): Promise<RunsSummaryResponse> {
+  return apiClient<RunsSummaryResponse>(`/sample-requests/${requestId}/runs-summary/`);
+}
+
+// ========================================
 // SampleRun APIs
 // ========================================
 

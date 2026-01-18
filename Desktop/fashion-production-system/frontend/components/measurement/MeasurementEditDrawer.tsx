@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { MeasurementItem } from "@/lib/types/measurement";
 import { Sparkles } from "lucide-react";
 
@@ -152,27 +151,24 @@ export function MeasurementEditDrawer({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="basic">基本資訊</TabsTrigger>
-            <TabsTrigger value="values">尺碼數值</TabsTrigger>
-            <TabsTrigger value="translation">翻譯</TabsTrigger>
-          </TabsList>
+        <div className="space-y-6 py-4">
+          {/* Success/Error messages */}
+          {successMessage && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+              {successMessage}
+            </div>
+          )}
+          {errorMessage && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+              {errorMessage}
+            </div>
+          )}
 
-          {/* Basic Info Tab */}
-          <TabsContent value="basic" className="space-y-4 mt-4">
-            {/* Success/Error messages */}
-            {successMessage && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
-                {successMessage}
-              </div>
-            )}
-            {errorMessage && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-                {errorMessage}
-              </div>
-            )}
+          {/* Section 1: 基本資訊 + 翻譯（合併） */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground border-b pb-2">基本資訊</h3>
 
+            {/* 名稱（英文 + 中文並排） */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="point_name">尺寸點名稱（英文）</Label>
@@ -184,17 +180,47 @@ export function MeasurementEditDrawer({
                 />
               </div>
               <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="point_name_zh">中文名稱</Label>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={item.translation_status === "confirmed" ? "default" : "secondary"}
+                      className="text-[10px]"
+                    >
+                      {item.translation_status === "confirmed" ? "已確認" : "待翻譯"}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleAutoTranslate}
+                      disabled={translateMutation.isPending}
+                      className="h-6 px-2 text-xs"
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      {translateMutation.isPending ? "..." : "AI"}
+                    </Button>
+                  </div>
+                </div>
+                <Input
+                  id="point_name_zh"
+                  value={formData.point_name_zh}
+                  onChange={(e) => handleChange("point_name_zh", e.target.value)}
+                  placeholder="輸入中文名稱"
+                />
+              </div>
+            </div>
+
+            {/* 編碼、公差、單位（一排） */}
+            <div className="grid grid-cols-4 gap-3">
+              <div className="space-y-2">
                 <Label htmlFor="point_code">編碼</Label>
                 <Input
                   id="point_code"
                   value={formData.point_code}
                   onChange={(e) => handleChange("point_code", e.target.value)}
-                  placeholder="e.g. A, B, 1, 2"
+                  placeholder="A, B..."
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="tolerance_plus">公差 (+)</Label>
                 <Input
@@ -221,82 +247,45 @@ export function MeasurementEditDrawer({
                   id="unit"
                   value={formData.unit}
                   onChange={(e) => handleChange("unit", e.target.value)}
-                  placeholder="cm / inches"
+                  placeholder="cm"
                 />
               </div>
             </div>
-          </TabsContent>
+          </div>
 
-          {/* Size Values Tab */}
-          <TabsContent value="values" className="space-y-4 mt-4">
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="text-sm font-medium mb-3">各尺碼數值</div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                {sizeKeys.map((size) => (
-                  <div key={size} className="space-y-1">
-                    <Label htmlFor={`size_${size}`} className="text-xs">
-                      {size}
-                    </Label>
-                    <Input
-                      id={`size_${size}`}
-                      type="number"
-                      step="0.01"
-                      value={formData.values[size] ?? ""}
-                      onChange={(e) => handleValueChange(size, e.target.value)}
-                      className="h-9"
-                    />
-                  </div>
-                ))}
+          {/* Section 2: 尺碼數值 */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground border-b pb-2">尺碼數值</h3>
+
+            {sizeKeys.length > 0 ? (
+              <div className="p-4 bg-muted/50 rounded-lg">
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                  {sizeKeys.map((size) => (
+                    <div key={size} className="space-y-1">
+                      <Label htmlFor={`size_${size}`} className="text-xs font-medium">
+                        {size}
+                      </Label>
+                      <Input
+                        id={`size_${size}`}
+                        type="number"
+                        step="0.01"
+                        value={formData.values[size] ?? ""}
+                        onChange={(e) => handleValueChange(size, e.target.value)}
+                        className="h-8 text-center"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-sm text-blue-900">
-                提示：直接輸入數字修改各尺碼的尺寸值，留空表示該尺碼無此尺寸點
+            ) : (
+              <div className="p-4 bg-muted/50 rounded-lg text-sm text-muted-foreground text-center">
+                無尺碼數值
               </div>
-            </div>
-          </TabsContent>
+            )}
+          </div>
+        </div>
 
-          {/* Translation Tab */}
-          <TabsContent value="translation" className="space-y-4 mt-4">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-sm text-muted-foreground">翻譯狀態：</span>
-              <Badge
-                variant={item.translation_status === "confirmed" ? "default" : "secondary"}
-              >
-                {item.translation_status === "confirmed" ? "已確認" : "待翻譯"}
-              </Badge>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="point_name_zh">尺寸點名稱（中文）</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="point_name_zh"
-                  value={formData.point_name_zh}
-                  onChange={(e) => handleChange("point_name_zh", e.target.value)}
-                  placeholder="輸入中文尺寸點名稱..."
-                  className="flex-1"
-                />
-                <Button
-                  variant="outline"
-                  onClick={handleAutoTranslate}
-                  disabled={translateMutation.isPending}
-                >
-                  <Sparkles className="h-4 w-4 mr-1" />
-                  {translateMutation.isPending ? "翻譯中..." : "AI 翻譯"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="text-xs text-muted-foreground mb-2">原始名稱（英文）</div>
-              <div className="text-sm font-medium">{item.point_name}</div>
-            </div>
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter className="mt-6">
+        <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             取消
           </Button>
