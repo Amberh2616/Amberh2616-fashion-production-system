@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-19
-**Version:** 4.31.0
-**Status:** P0-P26 完成 ✅ | P26 UI/UX 優化（跳轉加速）
+**Version:** 4.32.0
+**Status:** P0-P26 完成 ✅ | P26 Documents 文件管理頁面
 
 ---
 
@@ -87,7 +87,10 @@ Dashboard
 ├── Progress              # 進度追蹤儀表板
 ├── Upload                # 單筆 + 批量上傳（Tab 切換）
 ├── Styles                # 款式列表
+├── Documents             # 文件管理（Tech Pack/BOM/Mixed 分類）
 ├── BOM                   # 物料表
+├── Spec                  # 尺寸規格
+├── Costing               # 報價
 ├── Samples               # 樣衣列表
 ├── Kanban                # 看板視圖
 ├── Scheduler             # 甘特圖
@@ -107,6 +110,7 @@ Dashboard
 |------|------|
 | 進度儀表板 | `/dashboard/progress` |
 | 上傳文件（單筆+批量）| `/dashboard/upload` |
+| 文件管理（AI 分類）| `/dashboard/tech-packs?tab=tech_pack` |
 | AI 處理頁面 | `/dashboard/documents/{id}/processing` |
 | 分類審查 | `/dashboard/documents/{id}/review` |
 | 翻譯審校 | `/dashboard/revisions/{id}/review` |
@@ -378,6 +382,22 @@ GET /api/v2/sample-requests/{id}/runs-summary/
 - 文件：
   - `frontend/app/dashboard/documents/[id]/processing/page.tsx`
   - `frontend/app/dashboard/documents/[id]/review/page.tsx`
+
+**7. Documents 文件管理頁面（2026-01-19 新增）：**
+- ✅ 新增 Documents 頁面 - `/dashboard/tech-packs`
+- ✅ AI 分類 Tab 切換 - Tech Pack / BOM / Mixed / 未分類
+- ✅ 使用 `classification_result.file_type` 自動分類（非檔名）
+- ✅ 刪除按鈕 - 每行可刪除重複上傳的文件
+- ✅ 現代化 UI - 灰色系 + 藍色重點設計
+- ✅ Tab 狀態保持 - 使用 URL 參數（`?tab=bom`）
+- ✅ Sidebar 導航 - "Documents" 連結
+- ✅ 分類確認頁導航 - 「所有文件」按鈕
+- ✅ 翻譯審校頁導航 - Header 「Documents」連結
+- 文件：
+  - `frontend/app/dashboard/tech-packs/page.tsx`
+  - `frontend/components/layout/Sidebar.tsx`
+  - `frontend/app/dashboard/documents/[id]/review/page.tsx`
+  - `frontend/app/dashboard/revisions/[id]/review/page.tsx`
 
 **導航佈局：**
 ```

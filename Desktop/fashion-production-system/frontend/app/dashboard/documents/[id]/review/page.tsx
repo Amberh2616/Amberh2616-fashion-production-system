@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react'
+import Link from 'next/link'
 
 interface ClassificationPage {
   page: number
@@ -409,6 +410,13 @@ export default function ReviewPage() {
         >
           {isCompleted ? 'Back to Upload' : 'Cancel'}
         </button>
+        <Link
+          href="/dashboard/tech-packs"
+          className="flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+        >
+          <FolderOpen className="w-4 h-4" />
+          所有文件
+        </Link>
       </div>
 
       {/* Info Box */}

@@ -34,6 +34,7 @@ const navigation = [
   { name: "Progress", href: "/dashboard/progress", icon: Activity },
   { name: "Upload", href: "/dashboard/upload", icon: Upload },
   { name: "Styles", href: "/dashboard/styles", icon: FolderKanban },
+  { name: "Documents", href: "/dashboard/tech-packs", icon: FileText },
   { name: "BOM", href: "/dashboard/bom", icon: Package },
   { name: "Spec", href: "/dashboard/spec", icon: Ruler },
   { name: "Costing", href: "/dashboard/costing", icon: Calculator },

@@ -11,6 +11,7 @@
  */
 
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useDraft, useUpdateDraftBlock } from '@/lib/hooks/useDraft';
 import { useDebouncedPositionSave, useToggleBlockVisibility } from '@/lib/hooks/useDraftBlockPosition';
@@ -360,6 +361,16 @@ export default function DraftReviewPage() {
             >
               {showOriginalPdf ? 'Show Boxes' : 'PDF Only'}
             </button>
+
+            <span className="border-l border-gray-300 h-5 mx-1"></span>
+
+            {/* Documents Link */}
+            <Link
+              href="/dashboard/tech-packs"
+              className="px-2 py-1 text-xs rounded font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              Documents
+            </Link>
 
             {/* Expand Sidebar Button - only when collapsed */}
             {sidebarCollapsed && (
