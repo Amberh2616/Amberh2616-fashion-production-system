@@ -775,6 +775,24 @@ export async function batchTransitionSampleRuns(
   });
 }
 
+/**
+ * P2: 智能批量轉換（支援混合狀態）
+ * POST /sample-runs/batch-transition-smart/
+ *
+ * 不需要指定 action，系統會自動按狀態分組並執行對應的下一步動作
+ */
+export async function batchTransitionSmart(
+  runIds: string[]
+): Promise<BatchTransitionResponse> {
+  return apiClient<BatchTransitionResponse>('/sample-runs/batch-transition-smart/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      run_ids: runIds,
+    }),
+  });
+}
+
 // ========================================
 // P1: Alerts API
 // ========================================
@@ -976,6 +994,46 @@ export async function exportPOPDF(runId: string): Promise<Blob> {
   }
 
   return response.blob();
+}
+
+/**
+ * MWO 匯出準備度檢查結果
+ */
+export interface ExportReadinessCheck {
+  item: string;
+  item_zh: string;
+  status: 'ok' | 'warning' | 'error';
+  message: string;
+  details?: string;
+  action_url?: string;
+}
+
+export interface ExportReadinessResult {
+  checks: ExportReadinessCheck[];
+  completeness: number;
+  can_export: boolean;
+  recommendation: string;
+  first_action_url?: string;
+}
+
+/**
+ * 檢查 MWO 匯出準備度
+ * GET /sample-runs/{id}/export-readiness/
+ *
+ * @param runId - Sample Run ID
+ */
+export async function fetchExportReadiness(runId: string): Promise<ExportReadinessResult> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-readiness/`,
+    { method: 'GET' }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch export readiness');
+  }
+
+  return response.json();
 }
 
 /**
@@ -1195,4 +1253,117 @@ export async function fetchProgressDashboard(params?: {
   const url = `/progress-dashboard/${queryString ? `?${queryString}` : ''}`;
 
   return apiClient<ProgressDashboardResponse>(url);
+}
+
+
+// ==================== P3: Status Rollback API ====================
+
+export interface RollbackTargetsResponse {
+  current_status: string;
+  rollback_targets: string[];
+  can_rollback: boolean;
+}
+
+export interface RollbackResponse {
+  transition: {
+    old_status: string;
+    new_status: string;
+    action: string;
+    changed_at: string;
+    meta: {
+      actor?: string;
+      reason?: string;
+      rollback?: boolean;
+    };
+  };
+  data: SampleRun;
+}
+
+/**
+ * P3: Get allowed rollback targets for a SampleRun
+ * GET /sample-runs/{id}/rollback-targets/
+ */
+export async function fetchRollbackTargets(runId: string): Promise<RollbackTargetsResponse> {
+  return apiClient<RollbackTargetsResponse>(`/sample-runs/${runId}/rollback-targets/`);
+}
+
+/**
+ * P3: Rollback SampleRun to a previous status
+ * POST /sample-runs/{id}/rollback/
+ */
+export async function rollbackSampleRun(
+  runId: string,
+  targetStatus: string,
+  reason?: string
+): Promise<RollbackResponse> {
+  return apiClient<RollbackResponse>(`/sample-runs/${runId}/rollback/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target_status: targetStatus,
+      reason: reason || '',
+    }),
+  });
+}
+
+
+// ==================== P1: MWO Pre-check API ====================
+
+export interface MWOPrecheckIssue {
+  type: 'bom' | 'operations' | 'costing' | 'status' | 'po';
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  message_zh: string;
+}
+
+export interface MWOPrecheckSummary {
+  bom_count: number;
+  operations_count: number;
+  has_costing: boolean;
+  current_status: string;
+  t2po_count?: number;
+}
+
+export interface MWOPrecheckResponse {
+  ready: boolean;
+  current_status: string;
+  issues: MWOPrecheckIssue[];
+  summary: MWOPrecheckSummary;
+}
+
+/**
+ * P1: Pre-check if SampleRun is ready for MWO generation
+ * GET /sample-runs/{id}/precheck-mwo/
+ */
+export async function fetchMWOPrecheck(runId: string): Promise<MWOPrecheckResponse> {
+  return apiClient<MWOPrecheckResponse>(`/sample-runs/${runId}/precheck-mwo/`);
+}
+
+
+// ==================== P4: Gantt Drag API ====================
+
+export interface UpdateDatesPayload {
+  start_date?: string;  // YYYY-MM-DD format
+  target_due_date?: string;  // YYYY-MM-DD format
+}
+
+export interface UpdateDatesResponse {
+  message: string;
+  updated_fields: string[];
+  data: SampleRun;
+}
+
+/**
+ * P4: Update SampleRun dates (for Gantt drag-and-drop)
+ * PATCH /sample-runs/{id}/update-dates/
+ */
+export async function updateSampleRunDates(
+  runId: string,
+  dates: UpdateDatesPayload
+): Promise<UpdateDatesResponse> {
+  return apiClient<UpdateDatesResponse>(`/sample-runs/${runId}/update-dates/`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dates),
+  });
 }

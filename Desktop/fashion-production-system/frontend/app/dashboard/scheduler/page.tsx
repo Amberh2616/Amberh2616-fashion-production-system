@@ -10,18 +10,31 @@
  * - Progress bars with status colors
  * - Expand/collapse styles
  * - Search and pagination
+ * - P4: Click to edit dates (drag-like UX)
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   fetchSchedulerData,
+  updateSampleRunDates,
   type SchedulerFilters,
   type SchedulerStyleItem,
   type SchedulerRunItem,
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,6 +44,8 @@ import {
   Calendar,
   LayoutGrid,
   List,
+  Edit2,
+  Loader2,
 } from 'lucide-react';
 
 // Time granularity options
@@ -119,7 +134,18 @@ function calculateBarPosition(
   };
 }
 
+// P4: Interface for edit dates dialog
+interface EditDatesRun {
+  id: string;
+  runNo: number;
+  styleNumber: string;
+  startDate: string;
+  targetDueDate: string;
+}
+
 export default function SchedulerPage() {
+  const queryClient = useQueryClient();
+
   // State
   const [viewType, setViewType] = useState<'style' | 'run'>('style');
   const [granularity, setGranularity] = useState<TimeGranularity>('day');
@@ -127,6 +153,47 @@ export default function SchedulerPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [expandedStyles, setExpandedStyles] = useState<Set<string>>(new Set());
+
+  // P4: Edit dates dialog state
+  const [editingRun, setEditingRun] = useState<EditDatesRun | null>(null);
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+
+  // P4: Update dates mutation
+  const updateDatesMutation = useMutation({
+    mutationFn: ({ runId, startDate, dueDate }: { runId: string; startDate: string; dueDate: string }) =>
+      updateSampleRunDates(runId, {
+        start_date: startDate || undefined,
+        target_due_date: dueDate || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduler'] });
+      setEditingRun(null);
+    },
+  });
+
+  // P4: Open edit dialog
+  const openEditDialog = useCallback((run: SchedulerRunItem, styleNumber: string) => {
+    setEditingRun({
+      id: run.id,
+      runNo: run.run_no,
+      styleNumber,
+      startDate: run.start_date || '',
+      targetDueDate: run.target_due_date || '',
+    });
+    setEditStartDate(run.start_date || '');
+    setEditDueDate(run.target_due_date || '');
+  }, []);
+
+  // P4: Handle save dates
+  const handleSaveDates = useCallback(() => {
+    if (!editingRun) return;
+    updateDatesMutation.mutate({
+      runId: editingRun.id,
+      startDate: editStartDate,
+      dueDate: editDueDate,
+    });
+  }, [editingRun, editStartDate, editDueDate, updateDatesMutation]);
 
   // Date range state (default: 2 weeks back to 2 weeks ahead)
   const [dateOffset, setDateOffset] = useState(0);
@@ -433,6 +500,7 @@ export default function SchedulerPage() {
                 dateRange={dateRange}
                 totalDays={totalDays}
                 statusColors={data.status_colors}
+                onEditDates={openEditDialog}
               />
             ))}
 
@@ -445,6 +513,7 @@ export default function SchedulerPage() {
                 dateRange={dateRange}
                 totalDays={totalDays}
                 statusColors={data.status_colors}
+                onEditDates={(r) => openEditDialog(r, run.style?.style_number || 'Unknown')}
               />
             ))}
 
@@ -475,6 +544,90 @@ export default function SchedulerPage() {
           ))}
         </div>
       </div>
+
+      {/* P4: Edit Dates Dialog */}
+      <Dialog open={!!editingRun} onOpenChange={(open) => !open && setEditingRun(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit2 className="w-5 h-5" />
+              調整日期
+            </DialogTitle>
+            <DialogDescription>
+              {editingRun?.styleNumber} Run #{editingRun?.runNo}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="start_date">開始日期</Label>
+              <Input
+                id="start_date"
+                type="date"
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="due_date">截止日期</Label>
+              <Input
+                id="due_date"
+                type="date"
+                value={editDueDate}
+                onChange={(e) => setEditDueDate(e.target.value)}
+              />
+            </div>
+
+            {/* Quick shift buttons */}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <span className="text-xs text-gray-500 w-full">快速調整：</span>
+              {[-7, -3, -1, 1, 3, 7].map((days) => (
+                <button
+                  key={days}
+                  onClick={() => {
+                    if (editStartDate) {
+                      const newStart = new Date(editStartDate);
+                      newStart.setDate(newStart.getDate() + days);
+                      setEditStartDate(newStart.toISOString().split('T')[0]);
+                    }
+                    if (editDueDate) {
+                      const newDue = new Date(editDueDate);
+                      newDue.setDate(newDue.getDate() + days);
+                      setEditDueDate(newDue.toISOString().split('T')[0]);
+                    }
+                  }}
+                  className={cn(
+                    'px-3 py-1 text-xs rounded border transition-colors',
+                    days < 0 ? 'hover:bg-red-50 hover:border-red-200' : 'hover:bg-green-50 hover:border-green-200'
+                  )}
+                >
+                  {days > 0 ? `+${days}` : days} 天
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingRun(null)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleSaveDates}
+              disabled={updateDatesMutation.isPending || (!editStartDate && !editDueDate)}
+            >
+              {updateDatesMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  儲存中...
+                </>
+              ) : (
+                '儲存'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -488,6 +641,7 @@ function StyleRow({
   dateRange,
   totalDays,
   statusColors,
+  onEditDates,
 }: {
   style: SchedulerStyleItem;
   isExpanded: boolean;
@@ -496,6 +650,7 @@ function StyleRow({
   dateRange: { start: Date; end: Date };
   totalDays: number;
   statusColors: Record<string, string>;
+  onEditDates: (run: SchedulerRunItem, styleNumber: string) => void;
 }) {
   return (
     <>
@@ -550,6 +705,7 @@ function StyleRow({
           dateRange={dateRange}
           totalDays={totalDays}
           statusColors={statusColors}
+          onEditDates={(r) => onEditDates(r, style.style_number)}
         />
       ))}
     </>
@@ -565,6 +721,7 @@ function RunRow({
   dateRange,
   totalDays,
   statusColors,
+  onEditDates,
 }: {
   run: SchedulerRunItem;
   styleNumber?: string | null;
@@ -573,6 +730,7 @@ function RunRow({
   dateRange: { start: Date; end: Date };
   totalDays: number;
   statusColors: Record<string, string>;
+  onEditDates?: (run: SchedulerRunItem) => void;
 }) {
   const barPosition = calculateBarPosition(
     run.start_date,
@@ -617,6 +775,16 @@ function RunRow({
               )}
             </div>
           </div>
+          {/* P4: Edit button */}
+          {onEditDates && (
+            <button
+              onClick={() => onEditDates(run)}
+              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              title="調整日期"
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -638,17 +806,21 @@ function RunRow({
           })}
         </div>
 
-        {/* Task Bar */}
+        {/* Task Bar (clickable to edit dates) */}
         {barPosition && (
           <div
-            className="absolute h-5 rounded shadow-sm flex items-center justify-center text-xs text-white font-medium"
+            onClick={onEditDates ? () => onEditDates(run) : undefined}
+            className={cn(
+              "absolute h-5 rounded shadow-sm flex items-center justify-center text-xs text-white font-medium transition-all",
+              onEditDates && "cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400"
+            )}
             style={{
               left: `${barPosition.left}%`,
               width: `${barPosition.width}%`,
               backgroundColor: run.color,
               minWidth: '40px',
             }}
-            title={`${run.status_label} - ${run.progress}%`}
+            title={onEditDates ? `${run.status_label} - ${run.progress}% (點擊調整日期)` : `${run.status_label} - ${run.progress}%`}
           >
             {barPosition.width > 8 && `${run.progress}%`}
           </div>

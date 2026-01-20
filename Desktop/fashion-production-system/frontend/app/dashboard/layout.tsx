@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopNav } from "@/components/layout/TopNav";
+import { AssistantButton } from "@/components/assistant";
 
 export default function DashboardLayout({
   children,
@@ -21,6 +22,9 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* Assistant Floating Button */}
+      <AssistantButton />
     </div>
   );
 }

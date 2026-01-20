@@ -33,7 +33,11 @@ import {
 } from '@/lib/api/samples';
 import { cn } from '@/lib/utils';
 import { AlertsPanel } from '@/components/alerts/AlertsPanel';
-import { FileText, DollarSign, ShoppingCart, Download, Package } from 'lucide-react';
+import { ExportReadinessDialog } from '@/components/samples/ExportReadinessDialog';
+import { BatchTransitionDialog } from '@/components/samples/BatchTransitionDialog';
+import { RollbackDialog } from '@/components/samples/RollbackDialog';
+import { MWOPrecheckDialog } from '@/components/samples/MWOPrecheckDialog';
+import { FileText, DollarSign, ShoppingCart, Download, Package, RotateCcw, ClipboardCheck } from 'lucide-react';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -118,6 +122,18 @@ export default function KanbanPage() {
 
   // Complete MWO export loading state
   const [exportingMwoRunId, setExportingMwoRunId] = useState<string | null>(null);
+
+  // P1: Export readiness dialog state
+  const [readinessDialogRun, setReadinessDialogRun] = useState<KanbanRunItem | null>(null);
+
+  // P2: Batch transition dialog state
+  const [showBatchDialog, setShowBatchDialog] = useState(false);
+
+  // P3: Rollback dialog state
+  const [rollbackDialogRun, setRollbackDialogRun] = useState<KanbanRunItem | null>(null);
+
+  // P1: MWO Precheck dialog state
+  const [precheckDialogRun, setPrecheckDialogRun] = useState<KanbanRunItem | null>(null);
 
   // Build filters
   const filters: KanbanFilters = useMemo(() => {
@@ -327,7 +343,12 @@ export default function KanbanPage() {
                 </button>
               )}
               {!batchAction && selectedRuns.size > 0 && (
-                <span className="text-xs text-amber-600">Mixed status</span>
+                <button
+                  onClick={() => setShowBatchDialog(true)}
+                  className="px-3 py-1 text-xs font-medium bg-amber-500 text-white rounded hover:bg-amber-600"
+                >
+                  智能批量轉換
+                </button>
               )}
 
               {/* P3: Batch Export Buttons */}
@@ -527,9 +548,53 @@ export default function KanbanPage() {
             onToggleSelect={toggleRunSelection}
             exportingMwoRunId={exportingMwoRunId}
             setExportingMwoRunId={setExportingMwoRunId}
+            onOpenReadinessDialog={(run) => setReadinessDialogRun(run)}
+            onOpenRollbackDialog={(run) => setRollbackDialogRun(run)}
+            onOpenPrecheckDialog={(run) => setPrecheckDialogRun(run)}
           />
         ))}
       </div>
+
+      {/* MWO Export Readiness Dialog */}
+      {readinessDialogRun && (
+        <ExportReadinessDialog
+          runId={readinessDialogRun.id}
+          runLabel={`${readinessDialogRun.style?.style_number || 'Unknown'}_Run${readinessDialogRun.run_no}`}
+          open={!!readinessDialogRun}
+          onOpenChange={(open) => {
+            if (!open) setReadinessDialogRun(null);
+          }}
+        />
+      )}
+
+      {/* P2: Batch Transition Dialog (Mixed Status) */}
+      {showBatchDialog && runsData?.runs && (
+        <BatchTransitionDialog
+          selectedRuns={runsData.runs.filter((r) => selectedRuns.has(r.id))}
+          open={showBatchDialog}
+          onOpenChange={setShowBatchDialog}
+          onSuccess={() => setSelectedRuns(new Set())}
+        />
+      )}
+
+      {/* P3: Rollback Dialog */}
+      <RollbackDialog
+        run={rollbackDialogRun}
+        open={!!rollbackDialogRun}
+        onOpenChange={(open) => {
+          if (!open) setRollbackDialogRun(null);
+        }}
+        onSuccess={() => setRollbackDialogRun(null)}
+      />
+
+      {/* P1: MWO Precheck Dialog */}
+      <MWOPrecheckDialog
+        run={precheckDialogRun}
+        open={!!precheckDialogRun}
+        onOpenChange={(open) => {
+          if (!open) setPrecheckDialogRun(null);
+        }}
+      />
     </div>
   );
 }
@@ -546,6 +611,9 @@ function KanbanLaneComponent({
   onToggleSelect,
   exportingMwoRunId,
   setExportingMwoRunId,
+  onOpenReadinessDialog,
+  onOpenRollbackDialog,
+  onOpenPrecheckDialog,
 }: {
   lane: KanbanLane;
   runs: KanbanRunItem[];
@@ -557,6 +625,9 @@ function KanbanLaneComponent({
   onToggleSelect: (runId: string) => void;
   exportingMwoRunId: string | null;
   setExportingMwoRunId: (id: string | null) => void;
+  onOpenReadinessDialog: (run: KanbanRunItem) => void;
+  onOpenRollbackDialog: (run: KanbanRunItem) => void;
+  onOpenPrecheckDialog: (run: KanbanRunItem) => void;
 }) {
   return (
     <div
@@ -624,6 +695,9 @@ function KanbanLaneComponent({
                 onToggleSelect={() => onToggleSelect(run.id)}
                 exportingMwoRunId={exportingMwoRunId}
                 setExportingMwoRunId={setExportingMwoRunId}
+                onOpenReadinessDialog={onOpenReadinessDialog}
+                onOpenRollbackDialog={onOpenRollbackDialog}
+                onOpenPrecheckDialog={onOpenPrecheckDialog}
               />
             ))
           )}
@@ -642,6 +716,9 @@ function KanbanCard({
   onToggleSelect,
   exportingMwoRunId,
   setExportingMwoRunId,
+  onOpenReadinessDialog,
+  onOpenRollbackDialog,
+  onOpenPrecheckDialog,
 }: {
   run: KanbanRunItem;
   onNextAction: (run: KanbanRunItem) => void;
@@ -650,6 +727,9 @@ function KanbanCard({
   onToggleSelect: () => void;
   exportingMwoRunId: string | null;
   setExportingMwoRunId: (id: string | null) => void;
+  onOpenReadinessDialog: (run: KanbanRunItem) => void;
+  onOpenRollbackDialog: (run: KanbanRunItem) => void;
+  onOpenPrecheckDialog: (run: KanbanRunItem) => void;
 }) {
   const runTypeBadge = RUN_TYPE_BADGES[run.run_type] || RUN_TYPE_BADGES.other;
   const priorityColor = PRIORITY_COLORS[run.sample_request.priority] || PRIORITY_COLORS.normal;
@@ -728,23 +808,60 @@ function KanbanCard({
         </div>
       )}
 
-      {/* Action Button */}
-      {nextAction && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onNextAction(run);
-          }}
-          disabled={isTransitioning}
-          className={cn(
-            'w-full mt-2 py-1 text-xs font-medium rounded transition-colors',
-            'bg-blue-600 text-white hover:bg-blue-700',
-            'disabled:opacity-50 disabled:cursor-not-allowed'
-          )}
-        >
-          {isTransitioning ? '...' : `→ ${nextAction.label}`}
-        </button>
-      )}
+      {/* Action Buttons */}
+      <div className="flex gap-1 mt-2">
+        {/* MWO Precheck Button - show for statuses before MWO generation */}
+        {['draft', 'materials_planning', 'po_drafted', 'po_issued'].includes(run.status) && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPrecheckDialog(run);
+            }}
+            className={cn(
+              'px-2 py-1 text-xs font-medium rounded transition-colors',
+              'bg-blue-100 text-blue-700 hover:bg-blue-200'
+            )}
+            title="MWO 預檢"
+          >
+            <ClipboardCheck className="h-3 w-3" />
+          </button>
+        )}
+
+        {/* Rollback Button */}
+        {run.status !== 'draft' && run.status !== 'accepted' && run.status !== 'cancelled' && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenRollbackDialog(run);
+            }}
+            className={cn(
+              'px-2 py-1 text-xs font-medium rounded transition-colors',
+              'bg-amber-100 text-amber-700 hover:bg-amber-200'
+            )}
+            title="回退狀態"
+          >
+            <RotateCcw className="h-3 w-3" />
+          </button>
+        )}
+
+        {/* Next Action Button */}
+        {nextAction && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onNextAction(run);
+            }}
+            disabled={isTransitioning}
+            className={cn(
+              'flex-1 py-1 text-xs font-medium rounded transition-colors',
+              'bg-blue-600 text-white hover:bg-blue-700',
+              'disabled:opacity-50 disabled:cursor-not-allowed'
+            )}
+          >
+            {isTransitioning ? '...' : `→ ${nextAction.label}`}
+          </button>
+        )}
+      </div>
 
       {/* P2: Excel Export Buttons */}
       <div className="flex gap-1 mt-2 pt-2 border-t border-gray-100">
@@ -809,7 +926,7 @@ function KanbanCard({
           onClick={async (e) => {
             e.stopPropagation();
             try {
-              const blob = await exportMWOPDF(run.id);
+              const blob = await exportMWOCompletePDF(run.id, false);  // 不含 Tech Pack，快速匯出
               downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
             } catch (error) {
               console.error('Export MWO PDF failed:', error);
@@ -817,7 +934,7 @@ function KanbanCard({
             }
           }}
           className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-blue-100 hover:bg-blue-200 rounded transition-colors"
-          title="Download MWO as PDF"
+          title="Download MWO as PDF (支援中文)"
         >
           <FileText className="h-3 w-3" />
           <span>PDF</span>
@@ -860,46 +977,18 @@ function KanbanCard({
         </button>
       </div>
 
-      {/* Complete MWO Export (Tech Pack + BOM + Spec) */}
+      {/* Complete MWO Export (Tech Pack + BOM + Spec) - Now opens readiness dialog */}
       <div className="mt-2">
         <button
-          onClick={async (e) => {
+          onClick={(e) => {
             e.stopPropagation();
-            if (exportingMwoRunId === run.id) return; // Prevent double-click
-            setExportingMwoRunId(run.id);
-            try {
-              const blob = await exportMWOCompletePDF(run.id);
-              downloadBlob(blob, `MWO_Complete_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
-            } catch (error) {
-              console.error('Export Complete MWO failed:', error);
-              alert('Failed to export Complete MWO. Please try again.');
-            } finally {
-              setExportingMwoRunId(null);
-            }
+            onOpenReadinessDialog(run);
           }}
-          disabled={exportingMwoRunId === run.id}
-          className={cn(
-            "w-full flex items-center justify-center gap-1 py-1.5 text-xs rounded transition-colors font-medium",
-            exportingMwoRunId === run.id
-              ? "bg-indigo-300 cursor-wait"
-              : "bg-indigo-100 hover:bg-indigo-200"
-          )}
-          title="Download Complete MWO (Tech Pack + BOM + Spec with translations)"
+          className="w-full flex items-center justify-center gap-1 py-1.5 text-xs rounded transition-colors font-medium bg-indigo-100 hover:bg-indigo-200"
+          title="檢查並匯出完整 MWO (Tech Pack + BOM + Spec)"
         >
-          {exportingMwoRunId === run.id ? (
-            <>
-              <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>Generating...</span>
-            </>
-          ) : (
-            <>
-              <Package className="h-3 w-3" />
-              <span>Complete MWO</span>
-            </>
-          )}
+          <Package className="h-3 w-3" />
+          <span>Complete MWO</span>
         </button>
       </div>
     </div>

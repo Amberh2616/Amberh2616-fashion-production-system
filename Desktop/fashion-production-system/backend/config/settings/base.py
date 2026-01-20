@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.manufacturing",
     "apps.costing",
     "apps.samples",  # Phase 3
+    "apps.assistant",  # Assistant feature
 ]
 
 MIDDLEWARE = [

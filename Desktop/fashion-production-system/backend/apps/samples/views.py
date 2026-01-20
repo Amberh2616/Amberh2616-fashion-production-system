@@ -49,6 +49,9 @@ from .services.run_transitions import (
     can_transition as can_transition_run,
     get_allowed_actions as get_allowed_actions_run,
     batch_transition_sample_runs,
+    # P3: Rollback
+    rollback_sample_run,
+    get_rollback_targets,
 )
 from .services.excel_export import (
     MWOExcelExporter,
@@ -611,6 +614,164 @@ class SampleRunViewSet(viewsets.ModelViewSet):
         """Cancel sample run (any → cancelled)"""
         return self._handle_transition(request, pk, "cancel")
 
+    # P3: Rollback Actions
+    @action(detail=True, methods=["get"], url_path="rollback-targets")
+    def rollback_targets(self, request, pk=None):
+        """
+        Get list of allowed rollback targets for current status.
+        GET /api/v2/sample-runs/{id}/rollback-targets/
+        """
+        obj = self.get_object()
+        targets = get_rollback_targets(obj)
+
+        return Response({
+            "current_status": obj.status,
+            "rollback_targets": targets,
+            "can_rollback": len(targets) > 0,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="rollback")
+    def rollback(self, request, pk=None):
+        """
+        Roll back to a previous status.
+        POST /api/v2/sample-runs/{id}/rollback/
+        Body: { "target_status": "draft", "reason": "Optional reason" }
+        """
+        obj = self.get_object()
+
+        target_status = request.data.get("target_status")
+        reason = request.data.get("reason", "")
+
+        if not target_status:
+            return Response(
+                {"detail": "target_status is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = rollback_sample_run(
+                sample_run=obj,
+                target_status=target_status,
+                actor=request.user,
+                reason=reason,
+            )
+        except (ValueError, DjangoValidationError) as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Re-serialize the updated object
+        serializer = self.get_serializer(obj)
+
+        return Response({
+            "transition": {
+                "old_status": result.old_status,
+                "new_status": result.new_status,
+                "action": result.action,
+                "changed_at": result.changed_at.isoformat(),
+                "meta": result.meta,
+            },
+            "data": serializer.data,
+        }, status=status.HTTP_200_OK)
+
+    # P1: MWO Pre-check
+    @action(detail=True, methods=["get"], url_path="precheck-mwo")
+    def precheck_mwo(self, request, pk=None):
+        """
+        Pre-check if SampleRun is ready for MWO generation.
+        GET /api/v2/sample-runs/{id}/precheck-mwo/
+
+        Returns:
+        {
+            "ready": true/false,
+            "current_status": "po_issued",
+            "issues": [
+                {"type": "bom", "severity": "error", "message": "No BOM items found"},
+                {"type": "operations", "severity": "warning", "message": "No operations defined"}
+            ],
+            "summary": {
+                "bom_count": 5,
+                "operations_count": 3,
+                "has_costing": true
+            }
+        }
+        """
+        obj = self.get_object()
+
+        issues = []
+        summary = {
+            "bom_count": 0,
+            "operations_count": 0,
+            "has_costing": False,
+            "po_status": None,
+        }
+
+        # Check BOM items
+        bom_count = obj.bom_lines.count()
+        summary["bom_count"] = bom_count
+        if bom_count == 0:
+            issues.append({
+                "type": "bom",
+                "severity": "error",
+                "message": "No BOM items - MWO requires at least one material",
+                "message_zh": "無物料表項目 - MWO 需要至少一個物料",
+            })
+
+        # Check Operations
+        ops_count = obj.operations.count()
+        summary["operations_count"] = ops_count
+        if ops_count == 0:
+            issues.append({
+                "type": "operations",
+                "severity": "warning",
+                "message": "No operations defined - MWO will have empty process list",
+                "message_zh": "未定義工序 - MWO 工序列表將為空",
+            })
+
+        # Check costing
+        has_costing = hasattr(obj, 'costing_version') and obj.costing_version is not None
+        summary["has_costing"] = has_costing
+        if not has_costing:
+            issues.append({
+                "type": "costing",
+                "severity": "info",
+                "message": "No cost sheet generated yet",
+                "message_zh": "尚未生成報價單",
+            })
+
+        # Check current status - should be po_issued to generate MWO
+        summary["current_status"] = obj.status
+        if obj.status != "po_issued":
+            issues.append({
+                "type": "status",
+                "severity": "error",
+                "message": f"Current status is '{obj.status}', must be 'po_issued' to generate MWO",
+                "message_zh": f"當前狀態為 '{obj.status}'，需為 'po_issued' 才能生成 MWO",
+            })
+
+        # Check if T2 POs exist
+        t2po_count = obj.t2pos.count() if hasattr(obj, 't2pos') else 0
+        summary["t2po_count"] = t2po_count
+        if t2po_count == 0 and obj.status in ['po_drafted', 'po_issued']:
+            issues.append({
+                "type": "po",
+                "severity": "warning",
+                "message": "No T2 Purchase Orders found",
+                "message_zh": "未找到 T2 採購單",
+            })
+
+        # Determine if ready (no error-level issues)
+        has_errors = any(issue["severity"] == "error" for issue in issues)
+        ready = not has_errors
+
+        return Response({
+            "ready": ready,
+            "current_status": obj.status,
+            "issues": issues,
+            "summary": summary,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["get"], url_path="allowed-actions")
     def allowed_actions(self, request, pk=None):
         """Get list of allowed actions for current status"""
@@ -626,6 +787,67 @@ class SampleRunViewSet(viewsets.ModelViewSet):
             "current_status": obj.status,
             "allowed_actions": actions,
             **can_flags,
+        }, status=status.HTTP_200_OK)
+
+    # P4: Update Dates (for Gantt drag-and-drop)
+    @action(detail=True, methods=["patch"], url_path="update-dates")
+    def update_dates(self, request, pk=None):
+        """
+        Update start_date and/or target_due_date for Gantt drag.
+        PATCH /api/v2/sample-runs/{id}/update-dates/
+        Body: { "start_date": "2026-01-20", "target_due_date": "2026-02-15" }
+        """
+        from datetime import date
+
+        obj = self.get_object()
+
+        start_date = request.data.get("start_date")
+        target_due_date = request.data.get("target_due_date")
+
+        if not start_date and not target_due_date:
+            return Response(
+                {"detail": "At least one of start_date or target_due_date must be provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        update_fields = []
+
+        # Parse and validate dates
+        try:
+            if start_date:
+                if isinstance(start_date, str):
+                    obj.start_date = date.fromisoformat(start_date)
+                else:
+                    obj.start_date = start_date
+                update_fields.append('start_date')
+
+            if target_due_date:
+                if isinstance(target_due_date, str):
+                    obj.target_due_date = date.fromisoformat(target_due_date)
+                else:
+                    obj.target_due_date = target_due_date
+                update_fields.append('target_due_date')
+        except (ValueError, TypeError) as e:
+            return Response(
+                {"detail": f"Invalid date format: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate: start_date should be before target_due_date
+        if obj.start_date and obj.target_due_date:
+            if obj.start_date > obj.target_due_date:
+                return Response(
+                    {"detail": "start_date must be before or equal to target_due_date"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        obj.save(update_fields=update_fields)
+
+        serializer = self.get_serializer(obj)
+        return Response({
+            "message": "Dates updated successfully",
+            "updated_fields": update_fields,
+            "data": serializer.data,
         }, status=status.HTTP_200_OK)
 
     # P2: Excel Export Actions
@@ -762,6 +984,134 @@ class SampleRunViewSet(viewsets.ModelViewSet):
 
         exporter = T2POPDFExporter()
         return exporter.export(po)
+
+    @action(detail=True, methods=["get"], url_path="export-readiness")
+    def export_readiness(self, request, pk=None):
+        """
+        檢查 MWO 匯出準備度
+        GET /api/v2/sample-runs/{id}/export-readiness/
+
+        Response:
+        {
+            "checks": [...],
+            "completeness": 75,
+            "can_export": true,
+            "recommendation": "建議先補全 BOM"
+        }
+        """
+        from apps.styles.models import BOMItem, Measurement
+        from apps.parsing.models import UploadedDocument
+        from .models import RunTechPackPage
+
+        run = self.get_object()
+        revision = run.revision or (run.sample_request.revision if run.sample_request else None)
+
+        checks = []
+
+        # 1. Tech Pack 檢查
+        techpack_pages = 0
+        if run:
+            techpack_pages = RunTechPackPage.objects.filter(run=run).count()
+
+        if techpack_pages == 0 and revision:
+            # Fallback: 檢查 TechPackRevision
+            uploaded_doc = UploadedDocument.objects.filter(
+                style_revision=revision,
+                tech_pack_revision__isnull=False
+            ).first()
+            if uploaded_doc and uploaded_doc.tech_pack_revision:
+                techpack_pages = uploaded_doc.tech_pack_revision.draft_blocks.count()
+
+        checks.append({
+            'item': 'Tech Pack',
+            'item_zh': '技術包',
+            'status': 'ok' if techpack_pages > 0 else 'error',
+            'message': f'已上傳（{techpack_pages} 頁）' if techpack_pages > 0 else '未上傳',
+            'action_url': '/dashboard/upload' if techpack_pages == 0 else None,
+        })
+
+        # 2. BOM 檢查
+        bom_total = 0
+        bom_complete = 0
+        bom_translated = 0
+        missing_bom = []
+
+        if revision:
+            bom_items = list(BOMItem.objects.filter(revision=revision))
+            bom_total = len(bom_items)
+            for item in bom_items:
+                consumption = getattr(item, 'confirmed_consumption', None) or getattr(item, 'consumption', None)
+                if consumption:
+                    bom_complete += 1
+                else:
+                    if len(missing_bom) < 4:
+                        missing_bom.append(item.material_name or f'Item #{item.item_number}')
+                if getattr(item, 'material_name_zh', None):
+                    bom_translated += 1
+
+        bom_status = 'ok' if bom_total > 0 and bom_complete == bom_total else (
+            'warning' if bom_complete > 0 else 'error'
+        )
+
+        checks.append({
+            'item': 'BOM',
+            'item_zh': '物料清單',
+            'status': bom_status,
+            'message': f'{bom_complete}/{bom_total} 項已填寫' if bom_total > 0 else '無物料資料',
+            'details': f'缺少：{", ".join(missing_bom)}' if missing_bom else None,
+            'action_url': f'/dashboard/revisions/{revision.id}/bom' if revision else None,
+        })
+
+        # 3. Spec 檢查
+        spec_total = 0
+        spec_translated = 0
+
+        if revision:
+            measurements = list(Measurement.objects.filter(revision=revision))
+            spec_total = len(measurements)
+            for m in measurements:
+                if getattr(m, 'point_name_zh', None):
+                    spec_translated += 1
+
+        spec_status = 'ok' if spec_total > 0 else 'error'
+
+        checks.append({
+            'item': 'Spec',
+            'item_zh': '尺寸規格',
+            'status': spec_status,
+            'message': f'{spec_total} 項尺寸' if spec_total > 0 else '無尺寸資料',
+            'action_url': f'/dashboard/revisions/{revision.id}/spec' if revision else None,
+        })
+
+        # 4. 中文翻譯檢查
+        translation_complete = (
+            (bom_total == 0 or bom_translated == bom_total) and
+            (spec_total == 0 or spec_translated == spec_total)
+        )
+
+        checks.append({
+            'item': 'Translation',
+            'item_zh': '中文翻譯',
+            'status': 'ok' if translation_complete else 'warning',
+            'message': '已完成' if translation_complete else f'BOM {bom_translated}/{bom_total}, Spec {spec_translated}/{spec_total}',
+        })
+
+        # 計算完整度
+        weights = {'ok': 1, 'warning': 0.5, 'error': 0}
+        completeness = sum(weights.get(c['status'], 0) for c in checks) / len(checks) * 100 if checks else 0
+
+        # 找出第一個需要補全的項目
+        first_incomplete = next((c for c in checks if c['status'] in ['error', 'warning'] and c.get('action_url')), None)
+
+        return Response({
+            'checks': checks,
+            'completeness': round(completeness),
+            'can_export': completeness >= 25,  # 至少 25% 才允許匯出
+            'recommendation': '準備就緒，可以匯出' if completeness >= 75 else (
+                '建議先補全資料再匯出' if completeness >= 25 else '資料不足，請先填寫 BOM 和 Spec'
+            ),
+            'first_action_url': first_incomplete.get('action_url') if first_incomplete else None,
+        })
 
     @action(detail=True, methods=["get"], url_path="export-mwo-complete-pdf")
     def export_mwo_complete_pdf(self, request, pk=None):
@@ -1440,6 +1790,89 @@ def batch_transition(request):
         status_code = status.HTTP_207_MULTI_STATUS
     else:
         # All succeeded
+        status_code = status.HTTP_200_OK
+
+    return Response({
+        'total': result.total,
+        'succeeded': result.succeeded,
+        'failed': result.failed,
+        'results': result.results,
+        'errors': result.errors,
+    }, status=status_code)
+
+
+# ==================== P2: Smart Batch Transition (Mixed Status) ====================
+
+@api_view(['POST'])
+@perm_classes([AllowAny])  # TODO: Change to IsAuthenticated in production
+def batch_transition_smart(request):
+    """
+    P2: 智能批量轉換（支援混合狀態）
+
+    POST /api/v2/sample-runs/batch-transition-smart/
+
+    Request body:
+    {
+        "run_ids": ["uuid1", "uuid2", ...]
+    }
+
+    Response:
+    {
+        "total": 5,
+        "succeeded": 4,
+        "failed": 1,
+        "results": [
+            {"run_id": "uuid1", "old_status": "draft", "new_status": "materials_planning", "action": "start_materials_planning", "success": true},
+            {"run_id": "uuid2", "old_status": "po_drafted", "new_status": "po_issued", "action": "issue_t2po", "success": true}
+        ],
+        "errors": [...]
+    }
+
+    Notes:
+    - 不要求所有 Run 在同一狀態
+    - 自動按狀態分組，每組執行對應的下一步動作
+    - 終態（accepted, cancelled）會標記為失敗
+    """
+    from .services.run_transitions import batch_transition_smart as do_batch_transition_smart
+
+    # Extract request data
+    run_ids = request.data.get('run_ids', [])
+
+    # Validate inputs
+    if not run_ids:
+        return Response(
+            {'detail': 'run_ids is required and must be non-empty'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not isinstance(run_ids, list):
+        return Response(
+            {'detail': 'run_ids must be an array'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if len(run_ids) > 100:
+        return Response(
+            {'detail': 'Maximum 100 runs per batch operation'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # SaaS-Ready: Get organization for tenant filtering
+    org = _get_user_organization(request)
+
+    # Execute smart batch transition
+    result = do_batch_transition_smart(
+        run_ids=run_ids,
+        organization=org,
+        actor=request.user if request.user.is_authenticated else None,
+    )
+
+    # Return appropriate status code
+    if result.failed == result.total:
+        status_code = status.HTTP_400_BAD_REQUEST
+    elif result.failed > 0:
+        status_code = status.HTTP_207_MULTI_STATUS
+    else:
         status_code = status.HTTP_200_OK
 
     return Response({

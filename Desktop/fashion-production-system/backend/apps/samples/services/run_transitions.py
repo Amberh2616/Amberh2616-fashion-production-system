@@ -471,3 +471,255 @@ def batch_transition_sample_runs(
         results=results,
         errors=errors,
     )
+
+
+# ==================== P2: Smart Batch Transition (Mixed Status) ====================
+
+def get_default_action_for_status(status: str) -> Optional[str]:
+    """獲取狀態的預設下一步動作"""
+    transitions = STATE_TRANSITIONS.get(status, {})
+    if transitions:
+        # 取第一個可用動作（通常只有一個）
+        return list(transitions.keys())[0]
+    return None
+
+
+def batch_transition_smart(
+    run_ids: list[str],
+    organization=None,
+    actor: Optional[Any] = None,
+) -> BatchTransitionResult:
+    """
+    智能批量轉換：自動按狀態分組，每組執行對應的下一步動作。
+
+    與 batch_transition_sample_runs 的區別：
+    - 不要求所有 Run 在同一狀態
+    - 自動推斷每個狀態的下一步動作
+    - 適合批量處理混合狀態的卡片
+
+    Args:
+        run_ids: List of SampleRun UUIDs
+        organization: Organization for tenant filtering (SaaS)
+        actor: User performing the action
+
+    Returns:
+        BatchTransitionResult with grouped results
+    """
+    from collections import defaultdict
+
+    results = []
+    errors = []
+    succeeded = 0
+    failed = 0
+
+    # Fetch all runs with tenant filter
+    queryset = SampleRun.objects.filter(id__in=run_ids)
+    if organization is not None:
+        queryset = queryset.filter(organization=organization)
+
+    runs = list(queryset)
+
+    # Check missing runs
+    found_ids = {str(run.id) for run in runs}
+    missing_ids = set(run_ids) - found_ids
+    for missing_id in missing_ids:
+        failed += 1
+        errors.append({
+            'run_id': missing_id,
+            'error': 'Run not found or access denied',
+        })
+
+    # Group runs by status
+    grouped: Dict[str, list] = defaultdict(list)
+    for run in runs:
+        grouped[run.status].append(run)
+
+    # Process each status group
+    for status, status_runs in grouped.items():
+        action = get_default_action_for_status(status)
+
+        if not action:
+            # 終態，無法轉換
+            for run in status_runs:
+                failed += 1
+                error_msg = f'No available action for status "{status}" (terminal state)'
+                errors.append({
+                    'run_id': str(run.id),
+                    'status': status,
+                    'error': error_msg,
+                })
+                results.append({
+                    'run_id': str(run.id),
+                    'status': status,
+                    'action': None,
+                    'success': False,
+                    'error': error_msg,
+                })
+            continue
+
+        # 執行該組的轉換
+        for run in status_runs:
+            try:
+                result = transition_sample_run(
+                    sample_run=run,
+                    action=action,
+                    actor=actor,
+                    payload={},
+                )
+                succeeded += 1
+                results.append({
+                    'run_id': str(run.id),
+                    'old_status': result.old_status,
+                    'new_status': result.new_status,
+                    'action': result.action,
+                    'success': True,
+                })
+            except (ValidationError, ValueError) as e:
+                failed += 1
+                errors.append({
+                    'run_id': str(run.id),
+                    'status': status,
+                    'action': action,
+                    'error': str(e),
+                })
+                results.append({
+                    'run_id': str(run.id),
+                    'status': status,
+                    'action': action,
+                    'success': False,
+                    'error': str(e),
+                })
+
+    return BatchTransitionResult(
+        total=len(run_ids),
+        succeeded=succeeded,
+        failed=failed,
+        results=results,
+        errors=errors,
+    )
+
+
+# ==================== P3: Status Rollback ====================
+
+# 回退允許的狀態映射（目標狀態列表）
+ROLLBACK_TRANSITIONS = {
+    # materials_planning 可以退回 draft
+    SampleRunStatus.MATERIALS_PLANNING: [SampleRunStatus.DRAFT],
+
+    # po_drafted 可以退回 materials_planning
+    SampleRunStatus.PO_DRAFTED: [SampleRunStatus.MATERIALS_PLANNING],
+
+    # po_issued 可以退回 po_drafted（取消發出）
+    SampleRunStatus.PO_ISSUED: [SampleRunStatus.PO_DRAFTED],
+
+    # mwo_drafted 可以退回 po_issued
+    SampleRunStatus.MWO_DRAFTED: [SampleRunStatus.PO_ISSUED],
+
+    # mwo_issued 可以退回 mwo_drafted（取消發出）
+    SampleRunStatus.MWO_ISSUED: [SampleRunStatus.MWO_DRAFTED],
+
+    # in_progress 可以退回 mwo_issued（尚未完成樣衣）
+    SampleRunStatus.IN_PROGRESS: [SampleRunStatus.MWO_ISSUED],
+
+    # sample_done 可以退回 in_progress（樣衣需重做）
+    SampleRunStatus.SAMPLE_DONE: [SampleRunStatus.IN_PROGRESS],
+
+    # actuals_recorded 可以退回 sample_done（重新記錄實際值）
+    SampleRunStatus.ACTUALS_RECORDED: [SampleRunStatus.SAMPLE_DONE],
+
+    # costing_generated 可以退回 actuals_recorded（重算報價）
+    SampleRunStatus.COSTING_GENERATED: [SampleRunStatus.ACTUALS_RECORDED],
+
+    # quoted 可以退回 costing_generated（修改報價）
+    SampleRunStatus.QUOTED: [SampleRunStatus.COSTING_GENERATED],
+
+    # revise_needed 可以退回多個狀態
+    SampleRunStatus.REVISE_NEEDED: [
+        SampleRunStatus.DRAFT,  # 重新開始
+        SampleRunStatus.ACTUALS_RECORDED,  # 重做報價
+    ],
+}
+
+
+def can_rollback(run: SampleRun, target_status: str) -> bool:
+    """
+    Check if rollback to target status is allowed.
+
+    Args:
+        run: SampleRun instance
+        target_status: Target status to roll back to
+
+    Returns:
+        bool: True if rollback is allowed
+    """
+    allowed_targets = ROLLBACK_TRANSITIONS.get(run.status, [])
+    return target_status in allowed_targets
+
+
+def get_rollback_targets(run: SampleRun) -> list[str]:
+    """
+    Get list of allowed rollback targets for current status.
+
+    Args:
+        run: SampleRun instance
+
+    Returns:
+        List of status names that can be rolled back to
+    """
+    return list(ROLLBACK_TRANSITIONS.get(run.status, []))
+
+
+def rollback_sample_run(
+    sample_run: SampleRun,
+    target_status: str,
+    actor: Optional[Any] = None,
+    reason: str = '',
+) -> TransitionResult:
+    """
+    Roll back a SampleRun to a previous status.
+
+    Args:
+        sample_run: SampleRun instance
+        target_status: Target status to roll back to
+        actor: User performing the rollback
+        reason: Reason for rollback (required for audit trail)
+
+    Returns:
+        TransitionResult
+
+    Raises:
+        ValidationError: If rollback is not allowed
+    """
+    old_status = sample_run.status
+
+    # Check if rollback is allowed
+    if not can_rollback(sample_run, target_status):
+        allowed = get_rollback_targets(sample_run)
+        raise ValidationError(
+            f"Cannot rollback from '{old_status}' to '{target_status}'. "
+            f"Allowed targets: {allowed if allowed else 'none (terminal state)'}"
+        )
+
+    # Execute rollback
+    sample_run.status = target_status
+    sample_run.status_updated_at = timezone.now()
+
+    # Append rollback note
+    notes_entry = f"\n[{timezone.now().isoformat()}] ROLLBACK: {old_status} → {target_status}"
+    if reason:
+        notes_entry += f" | Reason: {reason}"
+    sample_run.notes = (sample_run.notes or '') + notes_entry
+
+    sample_run.save(update_fields=['status', 'status_updated_at', 'notes'])
+
+    return TransitionResult(
+        old_status=old_status,
+        new_status=target_status,
+        action='rollback',
+        changed_at=sample_run.status_updated_at,
+        meta={
+            'actor': str(actor) if actor else None,
+            'reason': reason,
+            'rollback': True,
+        }
+    )

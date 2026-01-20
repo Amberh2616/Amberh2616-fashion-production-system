@@ -388,7 +388,15 @@ class MWOCompletePDFExporter:
                 # 資料列
                 y += 40
                 for idx, item in enumerate(page_items):
-                    row_bg = self.COLOR_YELLOW_BG if not getattr(item, 'material_name_zh', None) else self.COLOR_WHITE
+                    # 取得中文名稱：優先使用 material_name_zh，如果空白則使用 material_name
+                    zh_name = getattr(item, 'material_name_zh', '') or ''
+                    # 檢查是否有真正的中文字符
+                    has_real_chinese = any('\u4e00' <= c <= '\u9fff' for c in zh_name)
+                    # 如果 zh_name 是空白、沒有中文、或像 AI 垃圾回應，則使用原始名稱
+                    if not zh_name or not has_real_chinese or zh_name.startswith('The text') or zh_name.startswith('This appears'):
+                        zh_name = item.material_name or '-'
+
+                    row_bg = self.COLOR_WHITE  # 不再標黃，因為會 fallback 到 material_name
 
                     x = self.MARGIN
                     draw.rectangle([(x, y), (self.PAGE_WIDTH - self.MARGIN, y + 45)], fill=row_bg, outline=self.COLOR_LIGHT_GRAY)
@@ -398,7 +406,7 @@ class MWOCompletePDFExporter:
                         str(start_idx + idx + 1),
                         (item.supplier_article_no or '-')[:12],
                         (item.material_name or '-')[:35],
-                        (getattr(item, 'material_name_zh', '') or '-')[:30],
+                        zh_name[:30],
                         (item.category or '-')[:10],
                         (item.color or '-')[:12],
                         item.unit or '-',

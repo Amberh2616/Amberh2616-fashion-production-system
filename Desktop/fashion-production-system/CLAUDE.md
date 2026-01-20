@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-19
-**Version:** 4.32.0
-**Status:** P0-P26 完成 ✅ | P26 Documents 文件管理頁面
+**Last Updated:** 2026-01-20
+**Version:** 4.34.0
+**Status:** P0-P28 完成 ✅ | FIX-MWO 中文 PDF 修復
 
 ---
 
@@ -223,6 +223,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | P24 | PO 寄送供應商（Email + PDF 附件）| 2026-01-17 |
 | P25 | 多輪 Fit Sample 支援 | 2026-01-18 |
 | P26 | UI/UX 優化（導航、編輯介面、提取流程）| 2026-01-18 |
+| P27 | Kanban 四大改善（MWO預檢/批量轉換/狀態回退/甘特拖曳）| 2026-01-20 |
+| P28 | 小助理 Assistant（指令式對話）| 2026-01-20 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -241,11 +243,13 @@ draft → confirmed → materials_ordered → in_production → completed
 | **P24** | PO 寄送供應商（Email 功能）| ✅ 完成 (2026-01-17) |
 | **P25** | 多輪 Fit Sample 支援 | ✅ 完成 (2026-01-18) |
 | **P26** | UI/UX 優化 | ✅ 完成 (2026-01-18) |
+| **P27** | Kanban 四大改善（MWO預檢/批量轉換/回退/甘特拖曳）| ✅ 完成 (2026-01-20) |
+| **P28** | 小助理 Assistant（指令式對話）| ✅ 完成 (2026-01-20) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | **P23** | 採購優化 (Procurement Enhancement) | 規劃中 |
 | DA-2 | Celery 異步處理 | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
-| **SaaS-MVP** | 認證 + 數據隔離 + 前端登入 (11-16h) | 計劃中 |
+| **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
 | SaaS-RBAC | 權限控制 + 用戶管理 (10-14h) | 計劃中 |
 | Phase B | Supplier Portal | 計劃中 |
 
@@ -405,3 +409,109 @@ GET /api/v2/sample-requests/{id}/runs-summary/
 │ [← 返回列表] | [📦 BOM 物料] | [📏 Spec 尺寸] | [$ 報價]   │
 └────────────────────────────────────────────────────────────┘
 ```
+
+### P27 Kanban 四大改善 ✅ 完成 (2026-01-20)
+
+**1. MWO 預檢 (Pre-check)：**
+- ✅ 轉換前驗證 BOM/Operations 是否完整
+- ✅ 預檢 API - `POST /api/v2/sample-runs/{id}/precheck-transition/`
+- ✅ 前端預檢對話框 - 顯示缺失項目清單
+- 文件：
+  - `backend/apps/samples/services/run_transitions.py`
+  - `frontend/components/samples/TransitionPrecheckDialog.tsx`
+
+**2. 智能批量轉換 (Smart Batch Transition)：**
+- ✅ 多選 Run 批量轉換狀態
+- ✅ 自動跳過不符合條件的 Run
+- ✅ 顯示成功/失敗/跳過統計
+- ✅ API - `POST /api/v2/sample-runs/batch-transition/`
+- 文件：
+  - `backend/apps/samples/views.py`
+  - `frontend/app/dashboard/samples/kanban/page.tsx`
+
+**3. 狀態回退 (Rollback)：**
+- ✅ 支援回退到前一狀態
+- ✅ 回退原因記錄
+- ✅ 回退目標 API - `GET /api/v2/sample-runs/{id}/rollback-targets/`
+- ✅ 執行回退 API - `POST /api/v2/sample-runs/{id}/rollback/`
+- ✅ 前端回退對話框 - `RollbackDialog.tsx`
+- 文件：
+  - `backend/apps/samples/services/run_transitions.py`
+  - `frontend/components/samples/RollbackDialog.tsx`
+
+**4. 甘特圖日期拖曳編輯：**
+- ✅ 點擊甘特條可編輯開始/結束日期
+- ✅ 日期選擇對話框
+- ✅ API - `POST /api/v2/sample-runs/{id}/update-dates/`
+- 文件：
+  - `backend/apps/samples/views.py`
+  - `frontend/app/dashboard/scheduler/page.tsx`
+
+### P28 小助理 Assistant ✅ 完成 (2026-01-20)
+
+**功能概述：**
+- ✅ 指令式對話（Method A - 無 ChatGPT）
+- ✅ 英文介面
+- ✅ 浮動按鈕 ✨ 於右下角
+- ✅ 對話框介面
+
+**支援指令：**
+| 指令 | 功能 |
+|------|------|
+| `help` | 查看所有指令 |
+| `overdue` | 顯示逾期樣衣 |
+| `this week` | 顯示本週待辦 |
+| `tasks` | 顯示任務清單 |
+| `summary` | 顯示生產總覽 |
+| `recent` | 顯示最近更新 |
+| `pending po` | 顯示待處理採購單 |
+| `check [款號]` | 查詢款式狀態 |
+| `add task [內容]` | 新增任務 |
+| `add note [內容]` | 新增筆記 |
+| `draft email [款號]` | 生成 PO 郵件草稿 |
+
+**後端文件：**
+- `backend/apps/assistant/models.py` - 資料模型
+- `backend/apps/assistant/services/command_parser.py` - 指令解析器
+- `backend/apps/assistant/views.py` - API 視圖
+- `backend/apps/assistant/urls.py` - 路由
+
+**前端文件：**
+- `frontend/components/assistant/AssistantButton.tsx` - 浮動按鈕
+- `frontend/components/assistant/AssistantDialog.tsx` - 對話框
+- `frontend/lib/api/assistant.ts` - API 函數
+
+**API 端點：**
+- `POST /api/v2/assistant/chat/` - 發送訊息
+- `GET /api/v2/assistant/chat/history/` - 取得對話記錄
+- `DELETE /api/v2/assistant/chat/history/` - 清除記錄
+- `GET/POST/PATCH/DELETE /api/v2/assistant/tasks/` - 任務 CRUD
+- `GET/POST /api/v2/assistant/notes/` - 筆記 CRUD
+- `GET /api/v2/assistant/notifications/` - 通知列表
+
+### FIX-MWO 中文 PDF 修復 ✅ 完成 (2026-01-20)
+
+**問題描述：**
+- MWO PDF 匯出時中文顯示為亂碼或空白
+- 藍色 PDF 按鈕使用 ReportLab（不支援中文）
+
+**修復內容：**
+
+1. **MWO 匯出中文欄位 Fallback 邏輯**
+   - 如果 `material_name_zh` 是空白或無中文，自動使用 `material_name`
+   - 過濾 AI 垃圾回應（如 "This appears to be..."）
+   - 文件：`backend/apps/samples/services/mwo_complete_export.py`
+
+2. **藍色 PDF 按鈕改用完整匯出**
+   - 從 `exportMWOPDF`（ReportLab）改為 `exportMWOCompletePDF`（Pillow + PyMuPDF）
+   - 支援中文字體渲染
+   - 文件：`frontend/app/dashboard/samples/kanban/page.tsx`
+
+3. **BOM translation_status 修復**
+   - 修復 LM7B24S、LW1DKES-WI24 等款式的 BOM 項目
+   - 將 `translation_status` 從 `pending` 更新為 `confirmed`
+
+**技術說明：**
+- 完整 MWO PDF 使用 Pillow 在圖片上繪製中文，再用 PyMuPDF 合併成 PDF
+- 字體：微軟雅黑（msyh.ttc）
+- 簡易 PDF 使用 ReportLab，不支援中文（已棄用）
