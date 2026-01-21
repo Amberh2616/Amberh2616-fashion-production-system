@@ -14,6 +14,9 @@ import {
   confirmPO,
   receivePO,
   cancelPO,
+  startProduction,
+  shipPO,
+  getOverduePOs,
   listPOLines,
   createPOLine,
   updatePOLine,
@@ -169,6 +172,44 @@ export function useCancelPO() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
     },
+  });
+}
+
+/**
+ * P23: Start production mutation
+ */
+export function useStartProduction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => startProduction(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+  });
+}
+
+/**
+ * P23: Ship PO mutation
+ */
+export function useShipPO() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => shipPO(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+  });
+}
+
+/**
+ * P23: Fetch overdue POs
+ */
+export function useOverduePOs() {
+  return useQuery({
+    queryKey: ['purchase-orders', 'overdue'],
+    queryFn: () => getOverduePOs(),
   });
 }
 

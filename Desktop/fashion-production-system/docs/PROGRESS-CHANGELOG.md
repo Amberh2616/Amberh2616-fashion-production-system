@@ -1,6 +1,6 @@
 # Fashion Production System - Progress Changelog
 
-**Last Updated:** 2026-01-17
+**Last Updated:** 2026-01-21
 
 此文檔記錄所有功能開發的詳細進度和技術實現細節。
 
@@ -48,6 +48,7 @@
 | **DA-1** | 批量上傳 Tech Pack（ZIP）| 2026-01-11 |
 | **P19** | BOM 用量四階段管理 | 2026-01-13 → 01-17 |
 | **P20-A** | Sample Request 兩步確認流程 | 2026-01-14 |
+| **P23** | 採購優化（交期追蹤 + 狀態改善）| 2026-01-21 |
 | **QA-1** | 系統驗收報告 + 觸發點交叉比對 | 2026-01-16 |
 | **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| 2026-01-17 |
 | **FIX-0117** | 完整工作流程跳轉路徑修復 | 2026-01-17 |
@@ -1322,15 +1323,90 @@ Response:
 |------|------|------|
 | **P19** | BOM 用量四階段管理 | ✅ 完成 (2026-01-13 → 01-17) |
 | **P20-A** | Sample Request 兩步確認流程 | ✅ 完成 (2026-01-14) |
-| **P20** | 庫存管理 (Inventory) | 規劃中 |
-| **P21** | 採購優化 (Procurement Enhancement) | 規劃中 |
-| DA-2 | Celery 異步處理（批量上傳/匯出）| 規劃中 |
+| **P23** | 採購優化（交期追蹤 + 狀態改善）| ✅ 完成 (2026-01-21) |
+| **P22** | 庫存管理 (Inventory) | 規劃中 |
+| DA-2 | Celery 異步處理（批量上傳/匯出）| ✅ 完成 (2026-01-21) |
 | P11-3 | 添加 Sample Status 字段 | 待做 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | Phase B | 多人協作 + RBAC | 計劃中 |
 | Phase B | Supplier Portal（品牌端查看）| 計劃中 |
 
-### P20: 庫存管理 (Inventory) - 規劃
+---
+
+## P23: 採購優化（交期追蹤 + 狀態改善）- ✅ 完成 (2026-01-21)
+
+**目標：** 強化 PO 交期管理與狀態追蹤
+
+### 功能 A: 交期追蹤
+
+**後端實現：**
+- `PurchaseOrder` 新增 `is_overdue`, `days_overdue`, `overdue_lines_count` 屬性
+- `POLine` 新增 `is_overdue`, `days_overdue` 屬性
+- 逾期判斷邏輯：
+  - PO 級別：`expected_delivery < today` AND `status not in ['received', 'cancelled']`
+  - POLine 級別：`(expected_delivery or required_date) < today` AND `delivery_status != 'received'`
+
+**API 端點：**
+- `GET /api/v2/purchase-orders/overdue/` - 列出所有逾期 PO
+
+**前端顯示：**
+- 列表頁 Expected Delivery 欄位：逾期顯示紅色 + `Overdue Xd` 標籤
+- 詳情頁：逾期警告橫幅 + Expected Delivery 卡片紅色高亮
+
+### 功能 D: PO 狀態改善
+
+**新增狀態：**
+```
+confirmed → in_production → shipped → received
+              (生產中)       (已出貨)
+```
+
+**狀態流程圖：**
+```
+      draft ──► sent ──► confirmed ──► in_production ──► shipped ──► received
+                             │              │              │
+                             └──────────────┴──────────────┘
+                                    (可跳過中間狀態)
+```
+
+**API 端點：**
+- `POST /api/v2/purchase-orders/{id}/start_production/` - confirmed → in_production
+- `POST /api/v2/purchase-orders/{id}/ship/` - in_production/confirmed → shipped
+
+**前端功能：**
+- 列表頁統計卡片：新增 In Production、Shipped 計數
+- 列表頁下拉選單：新增「開始生產」「已出貨」按鈕
+- 詳情頁：新增狀態轉換按鈕（紫色 Start Production、靛藍色 Mark Shipped）
+
+### Assistant 整合
+
+**新增指令：** `overdue po` / `late po` / `delayed po`
+
+**返回內容：**
+- PO 編號
+- 供應商名稱
+- 逾期天數
+- 金額
+
+### 文件變更清單
+
+**後端：**
+- `backend/apps/procurement/models.py` - 新增狀態 + 逾期屬性
+- `backend/apps/procurement/serializers.py` - 添加逾期字段到序列化器
+- `backend/apps/procurement/views.py` - 新增 overdue、start_production、ship actions
+- `backend/apps/procurement/migrations/0009_add_po_production_shipped_status.py` - 資料庫遷移
+- `backend/apps/assistant/services/command_parser.py` - overdue_po 指令
+
+**前端：**
+- `frontend/lib/types/purchase-order.ts` - 類型定義更新
+- `frontend/lib/api/purchase-orders.ts` - API 函數
+- `frontend/lib/hooks/usePurchaseOrders.ts` - React Query hooks
+- `frontend/app/dashboard/purchase-orders/page.tsx` - 列表頁更新
+- `frontend/app/dashboard/purchase-orders/[id]/page.tsx` - 詳情頁更新
+
+---
+
+### P22: 庫存管理 (Inventory) - 規劃
 
 **目標：** 物料庫存追蹤與管理
 
@@ -1339,13 +1415,3 @@ Response:
 - 入庫/出庫記錄
 - 庫存預警（低於安全庫存）
 - 與 MaterialRequirement 整合（扣除庫存計算採購量）
-
-### P21: 採購優化 (Procurement Enhancement) - 規劃
-
-**目標：** 強化採購流程與效率
-
-**功能：**
-- 採購單合併（跨訂單合併同供應商採購）
-- 採購歷史價格分析
-- 供應商評價系統
-- 交期追蹤與預警

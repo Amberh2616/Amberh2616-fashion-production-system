@@ -20,6 +20,7 @@ class CommandParser:
     # Command patterns (regex)
     COMMANDS = {
         'overdue': r'^(overdue|expired|late|past due)$',
+        'overdue_po': r'^(overdue po|late po|delayed po)$',  # P23: Overdue PO command
         'this_week': r'^(this week|weekly|week tasks?)$',
         'all_tasks': r'^(tasks?|my tasks?|show tasks?|list tasks?)$',
         'check_style': r'^(check|status|info)\s+(.+)$',
@@ -78,6 +79,7 @@ def parse_and_execute(user_input: str) -> Dict[str, Any]:
             'message': 'Here are the commands I understand:',
             'commands': [
                 {'cmd': 'overdue', 'desc': 'Show overdue sample runs'},
+                {'cmd': 'overdue po', 'desc': 'Show overdue purchase orders'},
                 {'cmd': 'this week', 'desc': 'Show tasks due this week'},
                 {'cmd': 'tasks', 'desc': 'Show all your tasks'},
                 {'cmd': 'check [style#]', 'desc': 'Check status of a style'},
@@ -114,6 +116,34 @@ def parse_and_execute(user_input: str) -> Dict[str, Any]:
         return {
             'type': 'overdue',
             'message': f'Found {len(items)} overdue sample runs:' if items else 'No overdue items found!',
+            'items': items,
+            'count': len(items),
+        }
+
+    elif command == 'overdue_po':
+        # P23: Find overdue purchase orders
+        overdue_pos = PurchaseOrder.objects.filter(
+            expected_delivery__lt=today
+        ).exclude(
+            status__in=['received', 'cancelled']
+        ).select_related('supplier').order_by('expected_delivery')[:15]
+
+        items = []
+        for po in overdue_pos:
+            days_overdue = (today - po.expected_delivery).days if po.expected_delivery else 0
+            items.append({
+                'id': str(po.id),
+                'po_number': po.po_number,
+                'status': po.status,
+                'supplier': po.supplier.name if po.supplier else 'N/A',
+                'expected_delivery': str(po.expected_delivery) if po.expected_delivery else None,
+                'days_overdue': days_overdue,
+                'total_amount': float(po.total_amount) if po.total_amount else 0,
+            })
+
+        return {
+            'type': 'overdue_po',
+            'message': f'Found {len(items)} overdue purchase orders:' if items else 'No overdue POs found!',
             'items': items,
             'count': len(items),
         }

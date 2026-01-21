@@ -22,6 +22,9 @@ import {
   XCircle,
   FileText,
   Eye,
+  Factory,
+  Truck,
+  AlertTriangle,
 } from "lucide-react";
 
 import {
@@ -31,6 +34,8 @@ import {
   useConfirmPO,
   useReceivePO,
   useCancelPO,
+  useStartProduction,
+  useShipPO,
   usePOStats,
 } from "@/lib/hooks/usePurchaseOrders";
 import { useSuppliers } from "@/lib/hooks/useSuppliers";
@@ -126,6 +131,8 @@ export default function PurchaseOrdersPage() {
   const confirmPOMutation = useConfirmPO();
   const receivePOMutation = useReceivePO();
   const cancelPOMutation = useCancelPO();
+  const startProductionMutation = useStartProduction();
+  const shipPOMutation = useShipPO();
 
   // Table columns
   const columns: ColumnDef<PurchaseOrder>[] = [
@@ -164,7 +171,23 @@ export default function PurchaseOrdersPage() {
     {
       accessorKey: "expected_delivery",
       header: "Expected Delivery",
-      cell: ({ row }) => formatDate(row.getValue("expected_delivery")),
+      cell: ({ row }) => {
+        const po = row.original;
+        const isOverdue = po.is_overdue;
+        const daysOverdue = po.days_overdue || 0;
+        return (
+          <div className="flex items-center gap-2">
+            <span className={isOverdue ? "text-red-600 font-medium" : ""}>
+              {formatDate(row.getValue("expected_delivery"))}
+            </span>
+            {isOverdue && (
+              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                Overdue {daysOverdue}d
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "total_amount",
@@ -225,7 +248,35 @@ export default function PurchaseOrdersPage() {
                   Confirm
                 </DropdownMenuItem>
               )}
-              {(po.status === 'confirmed' || po.status === 'partial_received') && (
+              {/* P23: New status transitions */}
+              {po.status === 'confirmed' && (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => startProductionMutation.mutate(po.id)}
+                    disabled={startProductionMutation.isPending}
+                  >
+                    <Factory className="h-4 w-4 mr-2" />
+                    Start Production
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => shipPOMutation.mutate(po.id)}
+                    disabled={shipPOMutation.isPending}
+                  >
+                    <Truck className="h-4 w-4 mr-2" />
+                    Mark as Shipped
+                  </DropdownMenuItem>
+                </>
+              )}
+              {po.status === 'in_production' && (
+                <DropdownMenuItem
+                  onClick={() => shipPOMutation.mutate(po.id)}
+                  disabled={shipPOMutation.isPending}
+                >
+                  <Truck className="h-4 w-4 mr-2" />
+                  Mark as Shipped
+                </DropdownMenuItem>
+              )}
+              {(po.status === 'confirmed' || po.status === 'in_production' || po.status === 'shipped' || po.status === 'partial_received') && (
                 <DropdownMenuItem
                   onClick={() => receivePOMutation.mutate(po.id)}
                   disabled={receivePOMutation.isPending}
@@ -309,7 +360,7 @@ export default function PurchaseOrdersPage() {
 
       {/* Stats Cards */}
       {statsData && (
-        <div className="grid grid-cols-6 gap-4">
+        <div className="grid grid-cols-4 lg:grid-cols-8 gap-4">
           <div className="bg-white rounded-lg border p-4">
             <div className="text-2xl font-bold text-slate-900">{statsData.total}</div>
             <div className="text-sm text-slate-500">Total POs</div>
@@ -325,6 +376,15 @@ export default function PurchaseOrdersPage() {
           <div className="bg-white rounded-lg border p-4">
             <div className="text-2xl font-bold text-green-600">{statsData.by_status?.confirmed || 0}</div>
             <div className="text-sm text-slate-500">Confirmed</div>
+          </div>
+          {/* P23: New status cards */}
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-2xl font-bold text-purple-600">{statsData.by_status?.in_production || 0}</div>
+            <div className="text-sm text-slate-500">In Production</div>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <div className="text-2xl font-bold text-indigo-600">{statsData.by_status?.shipped || 0}</div>
+            <div className="text-sm text-slate-500">Shipped</div>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <div className="text-2xl font-bold text-emerald-600">{statsData.by_status?.received || 0}</div>

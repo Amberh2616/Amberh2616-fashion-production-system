@@ -210,6 +210,8 @@ class PurchaseOrder(models.Model):
         ('ready', 'Ready to Send'),  # 審核完成可發送
         ('sent', 'Sent'),
         ('confirmed', 'Confirmed'),
+        ('in_production', 'In Production'),  # P23: 生產中
+        ('shipped', 'Shipped'),  # P23: 已出貨
         ('partial_received', 'Partial Received'),
         ('received', 'Received'),
         ('cancelled', 'Cancelled'),
@@ -318,6 +320,47 @@ class PurchaseOrder(models.Model):
         """Total number of lines"""
         return self.lines.count()
 
+    # P23: Overdue detection properties
+    @property
+    def is_overdue(self) -> bool:
+        """
+        判斷 PO 是否逾期：
+        - expected_delivery < today
+        - status not in ['received', 'cancelled']
+        """
+        from datetime import date
+        if self.status in ['received', 'cancelled']:
+            return False
+        if not self.expected_delivery:
+            return False
+        return self.expected_delivery < date.today()
+
+    @property
+    def days_overdue(self) -> int:
+        """
+        計算逾期天數（若未逾期返回 0）
+        """
+        from datetime import date
+        if not self.is_overdue:
+            return 0
+        return (date.today() - self.expected_delivery).days
+
+    @property
+    def overdue_lines_count(self) -> int:
+        """
+        計算逾期行數（基於 POLine.expected_delivery 或 required_date）
+        """
+        from datetime import date
+        today = date.today()
+        count = 0
+        for line in self.lines.all():
+            # Check line-level expected_delivery first, then required_date
+            check_date = line.expected_delivery or line.required_date
+            if check_date and check_date < today:
+                if line.delivery_status not in ['received']:
+                    count += 1
+        return count
+
 
 class POLine(models.Model):
     """
@@ -406,6 +449,35 @@ class POLine(models.Model):
 
     def __str__(self):
         return f"{self.purchase_order.po_number} - {self.material_name}"
+
+    # P23: Overdue detection properties
+    @property
+    def is_overdue(self) -> bool:
+        """
+        判斷行項目是否逾期：
+        - expected_delivery 或 required_date < today
+        - delivery_status not in ['received']
+        """
+        from datetime import date
+        if self.delivery_status in ['received']:
+            return False
+        check_date = self.expected_delivery or self.required_date
+        if not check_date:
+            return False
+        return check_date < date.today()
+
+    @property
+    def days_overdue(self) -> int:
+        """
+        計算行項目逾期天數（若未逾期返回 0）
+        """
+        from datetime import date
+        if not self.is_overdue:
+            return 0
+        check_date = self.expected_delivery or self.required_date
+        if not check_date:
+            return 0
+        return (date.today() - check_date).days
 
     def sync_material_requirements(self):
         """

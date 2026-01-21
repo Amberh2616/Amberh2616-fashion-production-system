@@ -38,6 +38,9 @@ class MaterialSimpleSerializer(serializers.ModelSerializer):
 
 class POLineSerializer(serializers.ModelSerializer):
     material_article_no = serializers.CharField(source='material.article_no', read_only=True)
+    # P23: Overdue fields
+    is_overdue = serializers.BooleanField(read_only=True)
+    days_overdue = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = POLine
@@ -48,6 +51,10 @@ class POLineDetailSerializer(serializers.ModelSerializer):
     """Detailed line serializer with material info and source traceability"""
     material_article_no = serializers.CharField(source='material.article_no', read_only=True)
     material_name_zh = serializers.CharField(source='material.name_zh', read_only=True)
+
+    # P23: Overdue fields
+    is_overdue = serializers.BooleanField(read_only=True)
+    days_overdue = serializers.IntegerField(read_only=True)
 
     # Source traceability (from MaterialRequirement → BOMItem)
     source_info = serializers.SerializerMethodField()
@@ -102,6 +109,11 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     po_type_display = serializers.CharField(source='get_po_type_display', read_only=True)
     lines_count = serializers.IntegerField(source='lines.count', read_only=True)
 
+    # P23: Overdue fields
+    is_overdue = serializers.BooleanField(read_only=True)
+    days_overdue = serializers.IntegerField(read_only=True)
+    overdue_lines_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = PurchaseOrder
         fields = '__all__'
@@ -120,6 +132,11 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
     all_lines_confirmed = serializers.BooleanField(read_only=True)
     confirmed_lines_count = serializers.IntegerField(read_only=True)
     total_lines_count = serializers.IntegerField(read_only=True)
+
+    # P23: Overdue fields
+    is_overdue = serializers.BooleanField(read_only=True)
+    days_overdue = serializers.IntegerField(read_only=True)
+    overdue_lines_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = PurchaseOrder

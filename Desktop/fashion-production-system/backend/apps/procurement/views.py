@@ -102,6 +102,28 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    # P23: List all overdue POs
+    @action(detail=False, methods=['get'])
+    def overdue(self, request):
+        """
+        列出所有逾期的 PO
+        逾期條件：expected_delivery < today AND status not in ['received', 'cancelled']
+        """
+        from datetime import date
+        today = date.today()
+
+        overdue_pos = self.get_queryset().filter(
+            expected_delivery__lt=today
+        ).exclude(
+            status__in=['received', 'cancelled']
+        ).order_by('expected_delivery')[:50]
+
+        serializer = self.get_serializer(overdue_pos, many=True)
+        return Response({
+            'count': overdue_pos.count(),
+            'results': serializer.data
+        })
+
     # Status transition: sent → confirmed
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
@@ -115,13 +137,47 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         po.save()
         return Response({'status': 'confirmed', 'message': 'PO confirmed by supplier'})
 
-    # Status transition: confirmed → partial_received / received
+    # P23: Status transition: confirmed → in_production
+    @action(detail=True, methods=['post'])
+    def start_production(self, request, pk=None):
+        """
+        標記 PO 開始生產（confirmed → in_production）
+        """
+        po = self.get_object()
+        if po.status != 'confirmed':
+            return Response(
+                {'error': 'Can only start production for PO in confirmed status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        po.status = 'in_production'
+        po.save()
+        return Response({'status': 'in_production', 'message': 'PO marked as in production'})
+
+    # P23: Status transition: in_production/confirmed → shipped
+    @action(detail=True, methods=['post'])
+    def ship(self, request, pk=None):
+        """
+        標記 PO 已出貨（in_production/confirmed → shipped）
+        允許跳過 in_production 直接從 confirmed 轉到 shipped
+        """
+        po = self.get_object()
+        if po.status not in ['confirmed', 'in_production']:
+            return Response(
+                {'error': 'Can only ship PO in confirmed or in_production status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        po.status = 'shipped'
+        po.save()
+        return Response({'status': 'shipped', 'message': 'PO marked as shipped'})
+
+    # Status transition: confirmed/in_production/shipped → partial_received / received
     @action(detail=True, methods=['post'])
     def receive(self, request, pk=None):
         po = self.get_object()
-        if po.status not in ['confirmed', 'partial_received']:
+        # P23: Allow receive from shipped status as well
+        if po.status not in ['confirmed', 'in_production', 'shipped', 'partial_received']:
             return Response(
-                {'error': 'Can only receive PO in confirmed or partial_received status'},
+                {'error': 'Can only receive PO in confirmed, in_production, shipped, or partial_received status'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

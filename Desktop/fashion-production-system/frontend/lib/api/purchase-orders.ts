@@ -142,6 +142,31 @@ export async function cancelPO(id: string): Promise<{ status: string; message: s
   });
 }
 
+/**
+ * P23: Start production (confirmed → in_production)
+ */
+export async function startProduction(id: string): Promise<{ status: string; message: string }> {
+  return apiClient<{ status: string; message: string }>(`/purchase-orders/${id}/start_production/`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * P23: Ship PO (confirmed/in_production → shipped)
+ */
+export async function shipPO(id: string): Promise<{ status: string; message: string }> {
+  return apiClient<{ status: string; message: string }>(`/purchase-orders/${id}/ship/`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * P23: Get overdue POs
+ */
+export async function getOverduePOs(): Promise<POListResponse> {
+  return apiClient<POListResponse>('/purchase-orders/overdue/');
+}
+
 // ============ PO Lines ============
 
 /**

@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-20
-**Version:** 4.34.0
-**Status:** P0-P28 完成 ✅ | FIX-MWO 中文 PDF 修復
+**Last Updated:** 2026-01-21
+**Version:** 4.37.0
+**Status:** P0-P29 + DA-2 + P23 完成 ✅ | P23 採購優化（交期追蹤 + 狀態改善）
 
 ---
 
@@ -42,6 +42,12 @@ cd backend && python manage.py runserver 8000
 
 # 啟動前端
 cd frontend && npm run dev
+
+# 啟動 Redis（異步處理需要）
+redis-server
+
+# 啟動 Celery Worker（異步處理需要，Windows 用 --pool=solo）
+cd backend && celery -A config worker -l info --pool=solo
 
 # 測試
 cd backend && pytest
@@ -86,8 +92,12 @@ cd frontend && npm run lint
 Dashboard
 ├── Progress              # 進度追蹤儀表板
 ├── Upload                # 單筆 + 批量上傳（Tab 切換）
-├── Styles                # 款式列表
-├── Documents             # 文件管理（Tech Pack/BOM/Mixed 分類）
+├── Documents             # 文件管理（含款式 Tab）
+│   ├── Tech Pack Tab     # Tech Pack 文件
+│   ├── BOM Tab           # BOM 文件
+│   ├── Mixed Tab         # 混合文件
+│   ├── 未分類 Tab        # 未分類文件
+│   └── 款式 Tab          # 款式列表（原 Styles 頁面）
 ├── BOM                   # 物料表
 ├── Spec                  # 尺寸規格
 ├── Costing               # 報價
@@ -225,6 +235,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | P26 | UI/UX 優化（導航、編輯介面、提取流程）| 2026-01-18 |
 | P27 | Kanban 四大改善（MWO預檢/批量轉換/狀態回退/甘特拖曳）| 2026-01-20 |
 | P28 | 小助理 Assistant（指令式對話）| 2026-01-20 |
+| P29 | Documents 款式整合（Styles Tab）| 2026-01-20 |
+| DA-2 | Celery 異步處理（分類+提取 async mode）| 2026-01-21 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -245,9 +257,10 @@ draft → confirmed → materials_ordered → in_production → completed
 | **P26** | UI/UX 優化 | ✅ 完成 (2026-01-18) |
 | **P27** | Kanban 四大改善（MWO預檢/批量轉換/回退/甘特拖曳）| ✅ 完成 (2026-01-20) |
 | **P28** | 小助理 Assistant（指令式對話）| ✅ 完成 (2026-01-20) |
+| **P29** | Documents 款式整合（Styles Tab）| ✅ 完成 (2026-01-20) |
+| **DA-2** | Celery 異步處理（分類+提取 async mode）| ✅ 完成 (2026-01-21) |
+| **P23** | 採購優化（交期追蹤 + 狀態改善）| ✅ 完成 (2026-01-21) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
-| **P23** | 採購優化 (Procurement Enhancement) | 規劃中 |
-| DA-2 | Celery 異步處理 | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
 | SaaS-RBAC | 權限控制 + 用戶管理 (10-14h) | 計劃中 |
@@ -515,3 +528,168 @@ GET /api/v2/sample-requests/{id}/runs-summary/
 - 完整 MWO PDF 使用 Pillow 在圖片上繪製中文，再用 PyMuPDF 合併成 PDF
 - 字體：微軟雅黑（msyh.ttc）
 - 簡易 PDF 使用 ReportLab，不支援中文（已棄用）
+
+### P29 Documents 款式整合 ✅ 完成 (2026-01-20)
+
+**功能概述：**
+- ✅ 將獨立的「Styles」頁面整合進 Documents 頁面
+- ✅ 新增「款式」Tab 於 Documents 頁面
+- ✅ 支援款號、品牌、季節搜尋
+- ✅ 簡化 Sidebar 導航
+
+**變更內容：**
+
+1. **Documents 頁面新增 Styles Tab**
+   - Tab 結構：`[ Tech Pack | BOM | Mixed | 未分類 | 款式 ]`
+   - 款式表格欄位：款號、品牌、季節、建立時間、操作
+   - 搜尋支援：款號、品牌、季節
+   - 款式 Tab 隱藏狀態篩選器（僅文件需要）
+   - 文件：`frontend/app/dashboard/tech-packs/page.tsx`
+
+2. **Sidebar 導航簡化**
+   - 移除獨立的「Styles」連結
+   - 用戶透過 Documents → 款式 Tab 查看款式
+   - 文件：`frontend/components/layout/Sidebar.tsx`
+
+**API 使用：**
+- `GET /api/v2/styles/` - 獲取款式列表
+- 使用 TanStack Query 條件查詢（`enabled: activeTab === 'styles'`）
+
+### DA-2 Celery 異步處理 ✅ 完成 (2026-01-21)
+
+**功能概述：**
+- ✅ 將耗時的 AI 分類和提取操作從同步改為異步
+- ✅ 提升多人使用體驗（API 立即返回，後台處理）
+- ✅ 支持任務狀態查詢和前端輪詢
+- ✅ 向後兼容（默認同步，加 `?async=true` 才是異步）
+
+**架構設計：**
+```
+用戶點擊「AI 提取」
+      ↓
+Django API 返回 task_id（立即）
+      ↓
+Celery Worker 在後台處理（60-150秒）
+      ↓
+前端輪詢任務狀態（每 2.5 秒）
+      ↓
+完成後自動跳轉
+```
+
+**後端文件：**
+- `backend/apps/parsing/models.py` - 添加 task_id 字段
+- `backend/apps/parsing/tasks/_main.py` - 異步任務定義
+- `backend/apps/parsing/services/extraction_service.py` - 提取邏輯服務
+- `backend/apps/parsing/views.py` - TaskStatusViewSet + async 參數支持
+- `backend/apps/parsing/urls.py` - tasks 路由
+
+**前端文件：**
+- `frontend/app/dashboard/documents/[id]/processing/page.tsx` - 分類輪詢
+- `frontend/app/dashboard/documents/[id]/review/page.tsx` - 提取輪詢
+
+**API 端點：**
+| 端點 | 方法 | 說明 |
+|------|------|------|
+| `/api/v2/uploaded-documents/{id}/classify/?async=true` | POST | 異步分類，返回 task_id |
+| `/api/v2/uploaded-documents/{id}/extract/?async=true` | POST | 異步提取，返回 task_id |
+| `/api/v2/tasks/{task_id}/` | GET | 查詢 Celery 任務狀態 |
+
+**任務狀態：**
+- `PENDING`: 任務等待中
+- `STARTED`: 任務已開始執行
+- `SUCCESS`: 任務成功完成
+- `FAILURE`: 任務失敗
+
+**使用方式：**
+```bash
+# 1. 啟動 Redis
+redis-server
+
+# 2. 啟動 Celery Worker（Windows 需要 --pool=solo）
+cd backend && celery -A config worker -l info --pool=solo
+
+# 3. 啟動 Django
+cd backend && python manage.py runserver 8000
+
+# 4. 啟動前端
+cd frontend && npm run dev
+
+# 5. 測試 API
+curl -X POST "http://localhost:8000/api/v2/uploaded-documents/{id}/classify/?async=true"
+# 返回: {"task_id": "abc123...", "status": "pending"}
+
+curl "http://localhost:8000/api/v2/tasks/abc123.../"
+# 返回: {"task_id": "...", "status": "SUCCESS", "result": {...}}
+```
+
+**測試結果（2026-01-21）：**
+| 測試項目 | 結果 |
+|---------|------|
+| Redis 服務器 | ✅ 運行中 (端口 6379) |
+| Celery Worker | ✅ 2 個進程運行中 |
+| 異步分類 | ✅ 成功測試 (LM7BPSS_BOM.pdf → bom_only) |
+| 任務狀態 API | ✅ 正常返回 JSON |
+| 同步提取 | ✅ 成功 (22 BOM items) |
+
+**開關配置：**
+- 前端 `USE_ASYNC_MODE = true`（默認啟用）
+- 後端通過 `?async=true` 參數控制
+
+### P23 採購優化（交期追蹤 + 狀態改善）✅ 完成 (2026-01-21)
+
+**功能概述：**
+- ✅ PO/POLine 級別逾期檢測
+- ✅ 前端顯示逾期標記和天數
+- ✅ Assistant 新增「overdue po」查詢指令
+- ✅ 新增兩個中間狀態：`in_production`（生產中）、`shipped`（已出貨）
+
+**狀態流程圖：**
+```
+         ┌─────────────────────────────────────────────────────────┐
+         │                                                         │
+         ▼                                                         │
+      draft ──► sent ──► confirmed ──► in_production ──► shipped ──┼──► received
+                             │              │              │       │
+                             │              │              │       │
+                             └──────────────┴──────────────┴───────┘
+                                      (可跳過中間狀態)
+
+         任何狀態 ──► cancelled（除了 received）
+```
+
+**後端文件：**
+- `backend/apps/procurement/models.py` - 新增狀態 + 逾期 properties
+- `backend/apps/procurement/serializers.py` - 添加逾期字段
+- `backend/apps/procurement/views.py` - 新增 API actions
+- `backend/apps/procurement/migrations/0009_add_po_production_shipped_status.py` - 資料庫遷移
+- `backend/apps/assistant/services/command_parser.py` - overdue po 指令
+
+**前端文件：**
+- `frontend/lib/types/purchase-order.ts` - 類型定義更新
+- `frontend/lib/api/purchase-orders.ts` - API 函數
+- `frontend/lib/hooks/usePurchaseOrders.ts` - React Query hooks
+- `frontend/app/dashboard/purchase-orders/page.tsx` - 列表頁
+- `frontend/app/dashboard/purchase-orders/[id]/page.tsx` - 詳情頁
+
+**API 端點：**
+| 端點 | 方法 | 說明 |
+|------|------|------|
+| `/api/v2/purchase-orders/overdue/` | GET | 列出所有逾期 PO |
+| `/api/v2/purchase-orders/{id}/start_production/` | POST | confirmed → in_production |
+| `/api/v2/purchase-orders/{id}/ship/` | POST | in_production/confirmed → shipped |
+
+**逾期判斷邏輯：**
+- PO 級別：`expected_delivery < today` AND `status not in ['received', 'cancelled']`
+- POLine 級別：`(expected_delivery or required_date) < today` AND `delivery_status != 'received'`
+
+**前端功能：**
+- ✅ 列表頁：Expected Delivery 欄位顯示逾期標籤 `Overdue Xd`
+- ✅ 列表頁：統計卡片新增 In Production、Shipped 計數
+- ✅ 列表頁：下拉選單新增 Start Production、Mark Shipped 按鈕
+- ✅ 詳情頁：逾期警告橫幅
+- ✅ 詳情頁：Expected Delivery 卡片紅色高亮
+- ✅ 詳情頁：新增狀態轉換按鈕
+
+**Assistant 指令：**
+- `overdue po` / `late po` / `delayed po` - 返回逾期 PO 清單（最多 15 筆）
+- 顯示：PO 編號、供應商、逾期天數、金額

@@ -19,6 +19,9 @@ import {
   ChevronRight,
   AlertCircle,
   Edit2,
+  Factory,
+  Truck,
+  AlertTriangle,
 } from "lucide-react";
 
 import {
@@ -26,6 +29,8 @@ import {
   useConfirmPO,
   useReceivePO,
   useCancelPO,
+  useStartProduction,
+  useShipPO,
   useConfirmAllLines,
   useConfirmPOLine,
   useUnconfirmPOLine,
@@ -109,6 +114,8 @@ export default function PurchaseOrderDetailPage({
   const confirmPO = useConfirmPO();
   const receivePO = useReceivePO();
   const cancelPO = useCancelPO();
+  const startProductionMutation = useStartProduction();
+  const shipPOMutation = useShipPO();
   const confirmAllLinesMutation = useConfirmAllLines();
   const confirmLineMutation = useConfirmPOLine(id);
   const unconfirmLineMutation = useUnconfirmPOLine(id);
@@ -197,9 +204,23 @@ export default function PurchaseOrderDetailPage({
   const confirmedCount = po.confirmed_lines_count || 0;
   const totalCount = po.total_lines_count || 0;
   const allConfirmed = po.all_lines_confirmed || false;
+  // P23: Overdue info
+  const isOverdue = po.is_overdue || false;
+  const daysOverdue = po.days_overdue || 0;
 
   return (
     <div className="p-6 space-y-6">
+      {/* P23: Overdue Warning Banner */}
+      {isOverdue && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0" />
+          <div>
+            <div className="font-medium text-red-800">This PO is overdue by {daysOverdue} day{daysOverdue !== 1 ? 's' : ''}</div>
+            <div className="text-sm text-red-600">Expected delivery was {formatDate(po.expected_delivery)}</div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -213,6 +234,11 @@ export default function PurchaseOrderDetailPage({
             <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
               <FileText className="h-8 w-8" />
               {po.po_number}
+              {isOverdue && (
+                <span className="px-2 py-1 rounded text-sm font-medium bg-red-100 text-red-700">
+                  Overdue {daysOverdue}d
+                </span>
+              )}
             </h1>
             <div className="flex items-center gap-3 mt-2">
               <POTypeBadge poType={po.po_type} />
@@ -260,7 +286,38 @@ export default function PurchaseOrderDetailPage({
               Confirm
             </Button>
           )}
-          {(po.status === 'confirmed' || po.status === 'partial_received') && (
+          {/* P23: New status transition buttons */}
+          {po.status === 'confirmed' && (
+            <>
+              <Button
+                onClick={() => startProductionMutation.mutate(id)}
+                disabled={startProductionMutation.isPending}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                <Factory className="h-4 w-4 mr-2" />
+                Start Production
+              </Button>
+              <Button
+                onClick={() => shipPOMutation.mutate(id)}
+                disabled={shipPOMutation.isPending}
+                className="bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Truck className="h-4 w-4 mr-2" />
+                Mark Shipped
+              </Button>
+            </>
+          )}
+          {po.status === 'in_production' && (
+            <Button
+              onClick={() => shipPOMutation.mutate(id)}
+              disabled={shipPOMutation.isPending}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              <Truck className="h-4 w-4 mr-2" />
+              Mark Shipped
+            </Button>
+          )}
+          {(po.status === 'confirmed' || po.status === 'in_production' || po.status === 'shipped' || po.status === 'partial_received') && (
             <Button
               onClick={() => receivePO.mutate(id)}
               disabled={receivePO.isPending}
@@ -300,12 +357,19 @@ export default function PurchaseOrderDetailPage({
           </div>
           <div className="font-medium text-slate-900">{formatDate(po.po_date)}</div>
         </div>
-        <div className="bg-white rounded-lg border p-4">
+        <div className={`rounded-lg border p-4 ${isOverdue ? 'bg-red-50 border-red-200' : 'bg-white'}`}>
           <div className="flex items-center gap-2 text-slate-500 mb-2">
             <Calendar className="h-4 w-4" />
             <span className="text-sm">Expected Delivery</span>
           </div>
-          <div className="font-medium text-slate-900">{formatDate(po.expected_delivery)}</div>
+          <div className={`font-medium ${isOverdue ? 'text-red-600' : 'text-slate-900'}`}>
+            {formatDate(po.expected_delivery)}
+            {isOverdue && (
+              <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                Overdue {daysOverdue}d
+              </span>
+            )}
+          </div>
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 mb-2">
