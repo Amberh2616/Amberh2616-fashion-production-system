@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-21
-**Version:** 4.37.0
-**Status:** P0-P29 + DA-2 + P23 完成 ✅ | P23 採購優化（交期追蹤 + 狀態改善）
+**Last Updated:** 2026-01-22
+**Version:** 4.38.0
+**Status:** P0-P29 + DA-2 + P23 + GLO-1 完成 ✅ | GLO-1 成衣詞彙庫整合翻譯
 
 ---
 
@@ -260,6 +260,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | **P29** | Documents 款式整合（Styles Tab）| ✅ 完成 (2026-01-20) |
 | **DA-2** | Celery 異步處理（分類+提取 async mode）| ✅ 完成 (2026-01-21) |
 | **P23** | 採購優化（交期追蹤 + 狀態改善）| ✅ 完成 (2026-01-21) |
+| **GLO-1** | 成衣詞彙庫整合翻譯（1252 條術語）| ✅ 完成 (2026-01-22) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
@@ -693,3 +694,51 @@ curl "http://localhost:8000/api/v2/tasks/abc123.../"
 **Assistant 指令：**
 - `overdue po` / `late po` / `delayed po` - 返回逾期 PO 清單（最多 15 筆）
 - 顯示：PO 編號、供應商、逾期天數、金額
+
+### GLO-1 成衣詞彙庫整合翻譯 ✅ 完成 (2026-01-22)
+
+**功能概述：**
+- ✅ 從 Excel 專業術語表提取 1252 條成衣英中對照詞彙
+- ✅ 建立 JSON 格式詞彙庫，涵蓋 34 個分類
+- ✅ 翻譯服務整合詞彙庫查詢（精確匹配優先）
+- ✅ LLM 翻譯時附帶相關詞彙參考，提升專業術語準確度
+
+**詞彙庫分類（部分）：**
+| 分類 | 條目數 | 範例 |
+|------|--------|------|
+| 縮寫 | 180 | ARMHOLE 夾圈、AQL 驗收合格標準 |
+| 顏色 | 144 | Amber 琥珀色、Navy 海軍藍 |
+| 車縫裁床 | 85 | BARTACK 打棗、BINDING 包邊 |
+| 服裝部位 | 38 | COLLAR 領子、SLEEVE 袖子 |
+| 副料 | 57+ | VELCRO 魔術貼、SNAP 撳鈕 |
+| 常用單詞 | 28 | THREAD 線、ZIPPER 拉鏈 |
+
+**翻譯策略：**
+```
+1. 詞彙庫精確匹配 → 直接使用（0 API 調用）
+2. 無精確匹配 → LLM 翻譯 + 相關詞彙參考（提升準確度）
+```
+
+**文件：**
+- `backend/apps/parsing/data/garment_glossary.json` - 詞彙庫 JSON (1252 條)
+- `backend/apps/parsing/utils/translate.py` - 翻譯工具（含詞彙庫整合）
+- `docs/成衣業專業英文 全部彙整(保護檔案).xls` - 原始 Excel 詞彙表
+
+**函數 API：**
+```python
+from apps.parsing.utils.translate import (
+    load_glossary,           # 載入詞彙庫
+    lookup_glossary,         # 精確查詢
+    get_relevant_glossary_terms,  # 取得相關詞彙
+    machine_translate,       # 單筆翻譯（整合詞彙庫）
+    batch_translate,         # 批量翻譯（整合詞彙庫）
+)
+
+# 範例
+lookup_glossary('LINING')  # → '裏布'
+lookup_glossary('ZIPPER')  # → '拉鏈'
+```
+
+**效能提升：**
+- BOM 項目翻譯：約 60% 可直接從詞彙庫匹配（0 API 調用）
+- LLM 翻譯：附帶相關詞彙參考，專業術語更準確
