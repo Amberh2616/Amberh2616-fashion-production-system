@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BE 76 - Habbo 正確版</title>
+    <script src="https://pixijs.download/v7.3.2/pixi.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #1a1a2e; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        #game { position: fixed; top: 0; left: 0; }
+
+        .ui { position: fixed; z-index: 100; }
+        .header {
+            top: 0; left: 0; right: 0; height: 44px;
+            background: rgba(20,20,40,0.95);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 16px; border-bottom: 2px solid #3a3a5c;
+        }
+        .logo { font-size: 1.2rem; font-weight: 800; color: #a855f7; }
+        .room-name { color: #ccc; font-size: 0.9rem; }
+        .badge { background: #22c55e; color: white; padding: 3px 8px; border-radius: 8px; font-size: 0.7rem; font-weight: 600; margin-left: 10px; }
+
+        .panel {
+            top: 54px; left: 10px;
+            background: rgba(20,20,40,0.95);
+            padding: 8px; border-radius: 8px; border: 1px solid #3a3a5c;
+        }
+        .rbtn {
+            display: block; width: 100%;
+            background: transparent; border: 1px solid #6366f1; color: #a5b4fc;
+            padding: 6px 12px; margin-bottom: 4px; border-radius: 5px;
+            cursor: pointer; font-size: 11px; font-weight: 600; transition: 0.2s;
+        }
+        .rbtn:last-child { margin: 0; }
+        .rbtn:hover, .rbtn.on { background: #6366f1; color: white; }
+
+        .chat {
+            bottom: 0; right: 10px; width: 280px;
+            background: rgba(20,20,40,0.98);
+            border-radius: 10px 10px 0 0; border: 1px solid #3a3a5c; border-bottom: none;
+        }
+        .chat-head {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white; padding: 8px 12px; border-radius: 9px 9px 0 0;
+            font-size: 12px; font-weight: 600;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .chat-head button { background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 9px; }
+        .chat-body { height: 140px; overflow-y: auto; padding: 8px; }
+        .chat-body::-webkit-scrollbar { width: 3px; }
+        .chat-body::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 2px; }
+        .cmsg { margin-bottom: 6px; padding: 6px 8px; border-radius: 6px; font-size: 11px; line-height: 1.3; }
+        .cmsg.ai { background: rgba(99,102,241,0.15); border-left: 2px solid #6366f1; color: #ddd; }
+        .cmsg.user { background: rgba(255,255,255,0.08); color: #ddd; }
+        .cmsg b { color: #a5b4fc; }
+        .chat-in { padding: 6px 8px; border-top: 1px solid #3a3a5c; display: flex; gap: 5px; }
+        .chat-in input { flex: 1; padding: 6px 10px; border: 1px solid #3a3a5c; border-radius: 12px; background: rgba(255,255,255,0.05); color: white; font-size: 10px; outline: none; }
+        .chat-in input:focus { border-color: #6366f1; }
+        .chat-in input::placeholder { color: #555; }
+        .chat-in button { background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 11px; }
+
+        .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 200; }
+        .modal { background: #252540; border-radius: 12px; width: 90%; max-width: 320px; border: 1px solid #3a3a5c; }
+        .modal-head { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 12px 14px; border-radius: 11px 11px 0 0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-head h3 { margin: 0; font-size: 1rem; }
+        .modal-head button { background: rgba(255,255,255,0.2); border: none; color: white; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; }
+        .modal-body { padding: 14px; text-align: center; }
+        .modal-ava { width: 50px; height: 50px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin: 0 auto 10px; }
+        .modal-stats { display: flex; justify-content: center; gap: 14px; margin-bottom: 10px; }
+        .modal-stat { text-align: center; }
+        .modal-stat small { font-size: 8px; color: #666; text-transform: uppercase; display: block; }
+        .modal-stat span { font-size: 11px; font-weight: 600; color: #a5b4fc; }
+        .modal-desc { color: #999; font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
+        .modal-btn { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; padding: 7px 18px; border-radius: 12px; font-weight: 600; font-size: 11px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="game"></div>
+
+    <header class="ui header">
+        <div class="logo">BE 76</div>
+        <div style="display:flex;align-items:center;">
+            <span class="room-name" id="rName">🎀 時尚穿搭房</span>
+            <span class="badge">👥 12</span>
+        </div>
+    </header>
+
+    <div class="ui panel">
+        <button class="rbtn on" onclick="chgRoom('fashion',this)">🎀 時尚</button>
+        <button class="rbtn" onclick="chgRoom('beauty',this)">💄 美妝</button>
+        <button class="rbtn" onclick="chgRoom('travel',this)">✈️ 旅行</button>
+        <button class="rbtn" onclick="chgRoom('music',this)">🎵 音樂</button>
+    </div>
+
+    <div class="ui chat">
+        <div class="chat-head">💬 聊天 <button onclick="toggleChat()">▼</button></div>
+        <div class="chat-body" id="cBody"><div class="cmsg ai"><b>Amber:</b> 歡迎！點地板讓我走過去～</div></div>
+        <div class="chat-in">
+            <input id="cIn" placeholder="輸入..." onkeypress="if(event.key==='Enter')sendC()">
+            <button onclick="sendC()">➤</button>
+        </div>
+    </div>
+
+    <div class="modal-bg" id="mBg" onclick="closeM(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-head"><h3 id="mN">Amber</h3><button onclick="closeM()">✕</button></div>
+            <div class="modal-body">
+                <div class="modal-ava" id="mE">👗</div>
+                <div class="modal-stats">
+                    <div class="modal-stat"><small>專長</small><span id="mS">時尚</span></div>
+                    <div class="modal-stat"><small>個性</small><span id="mP">友善</span></div>
+                    <div class="modal-stat"><small>EXP</small><span id="mX">2560</span></div>
+                </div>
+                <p class="modal-desc" id="mD">我是 Amber！</p>
+                <button class="modal-btn" onclick="startC()">聊天</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ============ HABBO 正確結構 ============
+//
+//  Habbo 房間俯視圖:
+//
+//       後牆 (wall1)
+//     ┌─────────────┐
+//     │             │ 右牆 (wall2)
+//     │   地板      │
+//     │  (floor)    │
+//     └─────────────┘
+//
+//  等距視角 (從左下角往右上角看):
+//
+//            ╱╲
+//           ╱  ╲
+//    後牆  ╱    ╲ 右牆
+//         ╱      ╲
+//        ╱   地板  ╲
+//       ╱__________╲
+//
+
+const TW = 32;  // 地磚寬 (等距後)
+const TH = 16;  // 地磚高 (等距後)
+const TD = 8;   // 地磚厚度
+const RW = 12;  // 房間寬 (格數)
+const RH = 10;  // 房間深 (格數)
+const WH = 120; // 牆高
+const WT = 8;   // 牆厚
+
+const ROOMS = {
+    fashion: { n: '🎀 時尚穿搭房', f1: 0xb89060, f2: 0xa07848, w1: 0x88a8c8, w2: 0x6888a8 },
+    beauty:  { n: '💄 美妝保養房', f1: 0xc8a090, f2: 0xb08878, w1: 0xb888a8, w2: 0x986888 },
+    travel:  { n: '✈️ 旅行探索房', f1: 0x90b8a0, f2: 0x78a088, w1: 0x78a8b8, w2: 0x588898 },
+    music:   { n: '🎵 音樂聊天房', f1: 0xa898b8, f2: 0x9080a0, w1: 0x9878a8, w2: 0x785888 }
+};
+
+const CHARS = {
+    amber: { n:'Amber', c:0xff6b9d, h:0xf4a460, e:'👗', s:'時尚', p:'友善', x:'2560', d:'我是 Amber，時尚顧問！' },
+    bella: { n:'Bella', c:0x4cc9f0, h:0x3a3a3a, e:'💄', s:'美妝', p:'開朗', x:'1890', d:'我是 Bella，美妝達人！' },
+    emma:  { n:'Emma',  c:0xa855f7, h:0xd4a574, e:'✈️', s:'旅行', p:'冒險', x:'3200', d:'我是 Emma，旅行專家！' },
+    luna:  { n:'Luna',  c:0xec4899, h:0x2a2a2a, e:'🎵', s:'音樂', p:'藝術', x:'2100', d:'我是 Luna，音樂愛好者！' }
+};
+
+let app, mainC;
+let chars = {};
+let curRoom = 'fashion';
+let curMC = null;
+
+// 等距轉換
+function iso(gx, gy) {
+    return {
+        x: (gx - gy) * TW,
+        y: (gx + gy) * TH
+    };
+}
+
+// 顏色處理
+function dk(c, f) {
+    return ((Math.floor(((c>>16)&0xff)*f)<<16) | (Math.floor(((c>>8)&0xff)*f)<<8) | Math.floor((c&0xff)*f));
+}
+function lt(c, f) {
+    return ((Math.min(255,Math.floor(((c>>16)&0xff)*f))<<16) | (Math.min(255,Math.floor(((c>>8)&0xff)*f))<<8) | Math.min(255,Math.floor((c&0xff)*f)));
+}
+
+// ============ 初始化 ============
+function init() {
+    app = new PIXI.Application({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        backgroundColor: 0x1a1a2e,
+        antialias: true,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true
+    });
+    document.getElementById('game').appendChild(app.view);
+
+    mainC = new PIXI.Container();
+    mainC.sortableChildren = true;
+    app.stage.addChild(mainC);
+
+    center();
+    build();
+    makeChars();
+
+    window.addEventListener('resize', () => {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+        center();
+    });
+
+    app.ticker.add(loop);
+}
+
+function center() {
+    // 房間中心點
+    const cx = iso(RW/2, RH/2);
+    mainC.x = app.screen.width / 2 - cx.x;
+    mainC.y = app.screen.height / 2 - cx.y + 50;
+}
+
+// ============ 建造房間 ============
+function build() {
+    mainC.removeChildren();
+    const t = ROOMS[curRoom];
+
+    // === 1. 後牆 (沿著 gy=0 那條邊) ===
+    const wall1 = new PIXI.Graphics();
+    wall1.zIndex = 0;
+
+    // 後牆的四個角 (等距座標)
+    const w1_bl = iso(0, 0);        // 左下
+    const w1_br = iso(RW, 0);       // 右下
+    const w1_tl = { x: w1_bl.x, y: w1_bl.y - WH };  // 左上
+    const w1_tr = { x: w1_br.x, y: w1_br.y - WH };  // 右上
+
+    // 牆面
+    wall1.beginFill(t.w1);
+    wall1.moveTo(w1_bl.x, w1_bl.y);
+    wall1.lineTo(w1_br.x, w1_br.y);
+    wall1.lineTo(w1_tr.x, w1_tr.y);
+    wall1.lineTo(w1_tl.x, w1_tl.y);
+    wall1.closePath();
+    wall1.endFill();
+
+    // 牆頂 (厚度)
+    wall1.beginFill(lt(t.w1, 1.2));
+    wall1.moveTo(w1_tl.x, w1_tl.y);
+    wall1.lineTo(w1_tr.x, w1_tr.y);
+    wall1.lineTo(w1_tr.x + WT, w1_tr.y + WT/2);
+    wall1.lineTo(w1_tl.x + WT, w1_tl.y + WT/2);
+    wall1.closePath();
+    wall1.endFill();
+
+    // 橫線裝飾
+    wall1.lineStyle(1, 0xffffff, 0.08);
+    for (let i = 20; i < WH; i += 18) {
+        wall1.moveTo(w1_bl.x, w1_bl.y - i);
+        wall1.lineTo(w1_br.x, w1_br.y - i);
+    }
+
+    // 窗戶
+    for (let wx = 2; wx < RW - 1; wx += 3) {
+        const wp = iso(wx, 0);
+        drawWin(wall1, wp.x, wp.y - WH + 25, 28, 50);
+    }
+
+    mainC.addChild(wall1);
+
+    // === 2. 右牆 (沿著 gx=RW 那條邊) ===
+    const wall2 = new PIXI.Graphics();
+    wall2.zIndex = 0;
+
+    const w2_bl = iso(RW, 0);       // 左下 (也是後牆的右下)
+    const w2_br = iso(RW, RH);      // 右下
+    const w2_tl = { x: w2_bl.x, y: w2_bl.y - WH };
+    const w2_tr = { x: w2_br.x, y: w2_br.y - WH };
+
+    // 牆面 (較暗)
+    wall2.beginFill(t.w2);
+    wall2.moveTo(w2_bl.x, w2_bl.y);
+    wall2.lineTo(w2_br.x, w2_br.y);
+    wall2.lineTo(w2_tr.x, w2_tr.y);
+    wall2.lineTo(w2_tl.x, w2_tl.y);
+    wall2.closePath();
+    wall2.endFill();
+
+    // 牆頂
+    wall2.beginFill(lt(t.w2, 1.15));
+    wall2.moveTo(w2_tl.x, w2_tl.y);
+    wall2.lineTo(w2_tr.x, w2_tr.y);
+    wall2.lineTo(w2_tr.x - WT, w2_tr.y + WT/2);
+    wall2.lineTo(w2_tl.x - WT, w2_tl.y + WT/2);
+    wall2.closePath();
+    wall2.endFill();
+
+    // 角落邊線
+    wall2.lineStyle(2, dk(t.w2, 0.6));
+    wall2.moveTo(w2_tl.x, w2_tl.y);
+    wall2.lineTo(w2_bl.x, w2_bl.y);
+
+    // 窗戶
+    const swp = iso(RW, Math.floor(RH/2));
+    drawWin(wall2, swp.x - 20, swp.y - WH + 25, 24, 45);
+
+    mainC.addChild(wall2);
+
+    // === 3. 地板 ===
+    for (let gx = 0; gx < RW; gx++) {
+        for (let gy = 0; gy < RH; gy++) {
+            drawTile(gx, gy, t);
+        }
+    }
+
+    // === 4. 傢俱 ===
+    drawSofa(1, 2);
+    drawTable(5, 5);
+    drawPlant(9, 1);
+    drawRug(4, 4, 3, 2);
+}
+
+function drawWin(g, x, y, w, h) {
+    g.lineStyle(0);
+    // 玻璃
+    g.beginFill(0x90c8e8);
+    g.drawRect(x - w/2, y, w, h);
+    g.endFill();
+    // 高光
+    g.beginFill(0xc0e8ff, 0.5);
+    g.drawRect(x - w/2 + 2, y + 2, w - 4, h * 0.35);
+    g.endFill();
+    // 框
+    g.lineStyle(2, 0x4a6a8a);
+    g.drawRect(x - w/2, y, w, h);
+    // 十字
+    g.moveTo(x, y);
+    g.lineTo(x, y + h);
+    g.moveTo(x - w/2, y + h/2);
+    g.lineTo(x + w/2, y + h/2);
+}
+
+function drawTile(gx, gy, t) {
+    const p = iso(gx, gy);
+    const tile = new PIXI.Graphics();
+    tile.zIndex = 10 + gx + gy;
+
+    const light = (gx + gy) % 2 === 0;
+    const top = light ? t.f1 : t.f2;
+    const left = dk(top, 0.65);
+    const right = dk(top, 0.45);
+
+    // 頂面 (菱形)
+    tile.beginFill(top);
+    tile.moveTo(p.x, p.y - TD);
+    tile.lineTo(p.x + TW, p.y + TH - TD);
+    tile.lineTo(p.x, p.y + TH * 2 - TD);
+    tile.lineTo(p.x - TW, p.y + TH - TD);
+    tile.closePath();
+    tile.endFill();
+
+    // 左側面
+    tile.beginFill(left);
+    tile.moveTo(p.x - TW, p.y + TH - TD);
+    tile.lineTo(p.x, p.y + TH * 2 - TD);
+    tile.lineTo(p.x, p.y + TH * 2);
+    tile.lineTo(p.x - TW, p.y + TH);
+    tile.closePath();
+    tile.endFill();
+
+    // 右側面
+    tile.beginFill(right);
+    tile.moveTo(p.x + TW, p.y + TH - TD);
+    tile.lineTo(p.x, p.y + TH * 2 - TD);
+    tile.lineTo(p.x, p.y + TH * 2);
+    tile.lineTo(p.x + TW, p.y + TH);
+    tile.closePath();
+    tile.endFill();
+
+    // 頂面高光
+    tile.beginFill(0xffffff, 0.1);
+    tile.moveTo(p.x, p.y - TD);
+    tile.lineTo(p.x + TW * 0.4, p.y + TH * 0.4 - TD);
+    tile.lineTo(p.x, p.y + TH - TD);
+    tile.lineTo(p.x - TW * 0.4, p.y + TH * 0.4 - TD);
+    tile.closePath();
+    tile.endFill();
+
+    // 互動
+    tile.eventMode = 'static';
+    tile.cursor = 'pointer';
+    tile.hitArea = new PIXI.Polygon([
+        p.x, p.y - TD,
+        p.x + TW, p.y + TH - TD,
+        p.x, p.y + TH * 2 - TD,
+        p.x - TW, p.y + TH - TD
+    ]);
+    tile.on('pointerdown', () => moveC('amber', gx, gy));
+    tile.on('pointerover', () => tile.alpha = 0.85);
+    tile.on('pointerout', () => tile.alpha = 1);
+
+    mainC.addChild(tile);
+}
+
+// 等距方塊
+function cube(g, x, y, w, h, d, tc, lc, rc) {
+    // 頂
+    g.beginFill(tc);
+    g.moveTo(x, y - d);
+    g.lineTo(x + w, y + h - d);
+    g.lineTo(x, y + h * 2 - d);
+    g.lineTo(x - w, y + h - d);
+    g.closePath();
+    g.endFill();
+    // 左
+    g.beginFill(lc);
+    g.moveTo(x - w, y + h - d);
+    g.lineTo(x, y + h * 2 - d);
+    g.lineTo(x, y + h * 2);
+    g.lineTo(x - w, y + h);
+    g.closePath();
+    g.endFill();
+    // 右
+    g.beginFill(rc);
+    g.moveTo(x + w, y + h - d);
+    g.lineTo(x, y + h * 2 - d);
+    g.lineTo(x, y + h * 2);
+    g.lineTo(x + w, y + h);
+    g.closePath();
+    g.endFill();
+}
+
+function drawSofa(gx, gy) {
+    const p = iso(gx, gy);
+    const g = new PIXI.Graphics();
+    g.zIndex = 100 + gx + gy;
+    // 陰影
+    g.beginFill(0, 0.25);
+    g.drawEllipse(p.x + TW, p.y + TH * 2 + 5, 40, 12);
+    g.endFill();
+    // 座墊
+    cube(g, p.x + TW, p.y + TH, 38, 20, 12, 0xef4444, 0xdc2626, 0xb91c1c);
+    // 靠背
+    cube(g, p.x + TW - 25, p.y + TH - 10, 15, 25, 25, 0xdc2626, 0xb91c1c, 0x991b1b);
+    // 扶手
+    cube(g, p.x + TW + 28, p.y + TH + 5, 12, 12, 10, 0xdc2626, 0xb91c1c, 0x991b1b);
+    mainC.addChild(g);
+}
+
+function drawTable(gx, gy) {
+    const p = iso(gx, gy);
+    const g = new PIXI.Graphics();
+    g.zIndex = 100 + gx + gy;
+    // 陰影
+    g.beginFill(0, 0.25);
+    g.drawEllipse(p.x + TW, p.y + TH * 2 + 3, 30, 10);
+    g.endFill();
+    // 腿
+    cube(g, p.x + TW - 18, p.y + TH + 8, 4, 4, 20, 0x78350f, 0x5c2a0c, 0x451a03);
+    cube(g, p.x + TW + 18, p.y + TH + 8, 4, 4, 20, 0x78350f, 0x5c2a0c, 0x451a03);
+    cube(g, p.x + TW - 10, p.y + TH + 20, 4, 4, 20, 0x78350f, 0x5c2a0c, 0x451a03);
+    cube(g, p.x + TW + 10, p.y + TH + 20, 4, 4, 20, 0x78350f, 0x5c2a0c, 0x451a03);
+    // 桌面
+    cube(g, p.x + TW, p.y + TH - 5, 28, 18, 5, 0x92400e, 0x78350f, 0x5c2a0c);
+    mainC.addChild(g);
+}
+
+function drawPlant(gx, gy) {
+    const p = iso(gx, gy);
+    const g = new PIXI.Graphics();
+    g.zIndex = 100 + gx + gy;
+    // 陰影
+    g.beginFill(0, 0.25);
+    g.drawEllipse(p.x + TW, p.y + TH * 2 + 2, 14, 5);
+    g.endFill();
+    // 花盆
+    cube(g, p.x + TW, p.y + TH + 5, 14, 10, 20, 0xea580c, 0xc2410c, 0x9a3412);
+    // 泥土
+    g.beginFill(0x4a3728);
+    g.drawEllipse(p.x + TW, p.y + TH - 14, 10, 4);
+    g.endFill();
+    // 葉子
+    [[0,-35],[-8,-28],[8,-28],[-5,-22],[5,-22]].forEach(([dx,dy]) => {
+        g.beginFill(0x22c55e);
+        g.drawEllipse(p.x + TW + dx, p.y + TH + dy, 6, 14);
+        g.endFill();
+    });
+    mainC.addChild(g);
+}
+
+function drawRug(gx, gy, w, h) {
+    const c0 = iso(gx, gy);
+    const c1 = iso(gx + w, gy);
+    const c2 = iso(gx + w, gy + h);
+    const c3 = iso(gx, gy + h);
+    const g = new PIXI.Graphics();
+    g.zIndex = 15;
+    g.beginFill(0x7c3aed, 0.8);
+    g.moveTo(c0.x, c0.y + TH);
+    g.lineTo(c1.x, c1.y + TH);
+    g.lineTo(c2.x, c2.y + TH);
+    g.lineTo(c3.x, c3.y + TH);
+    g.closePath();
+    g.endFill();
+    g.beginFill(0x9b5de5, 0.9);
+    g.moveTo(c0.x + 10, c0.y + TH);
+    g.lineTo(c1.x - 5, c1.y + TH + 5);
+    g.lineTo(c2.x - 10, c2.y + TH);
+    g.lineTo(c3.x + 5, c3.y + TH - 5);
+    g.closePath();
+    g.endFill();
+    mainC.addChild(g);
+}
+
+// ============ 角色 ============
+function makeChars() {
+    const pos = [{id:'amber',x:2,y:4},{id:'bella',x:5,y:6},{id:'emma',x:8,y:3},{id:'luna',x:7,y:7}];
+    pos.forEach(({id,x,y}) => {
+        chars[id] = makeChar(id, x, y);
+        mainC.addChild(chars[id].c);
+    });
+}
+
+function makeChar(id, gx, gy) {
+    const d = CHARS[id];
+    const p = iso(gx, gy);
+    const c = new PIXI.Container();
+    c.x = p.x + TW;
+    c.y = p.y + TH - TD;
+    c.zIndex = 200 + gx + gy;
+    c.sortableChildren = true;
+
+    const g = new PIXI.Graphics();
+    g.zIndex = 1;
+
+    // 陰影
+    g.beginFill(0, 0.35);
+    g.drawEllipse(0, TH + 5, 12, 4);
+    g.endFill();
+
+    // 腿
+    cube(g, -4, TH - 8, 4, 3, 12, 0x3d5a80, 0x2d4a70, 0x1d3a60);
+    cube(g, 4, TH - 8, 4, 3, 12, 0x3d5a80, 0x2d4a70, 0x1d3a60);
+
+    // 身體
+    cube(g, 0, TH - 22, 10, 8, 16, d.c, dk(d.c, 0.8), dk(d.c, 0.6));
+
+    // 頭
+    cube(g, 0, TH - 45, 12, 8, 18, 0xffdcb8, 0xe8c8a0, 0xd4b090);
+
+    // 頭髮 (頂)
+    g.beginFill(d.h);
+    g.moveTo(0, TH - 63 - 5);
+    g.lineTo(14, TH - 55 - 5);
+    g.lineTo(0, TH - 47 - 5);
+    g.lineTo(-14, TH - 55 - 5);
+    g.closePath();
+    g.endFill();
+    // 頭髮 (左)
+    g.beginFill(dk(d.h, 0.8));
+    g.moveTo(-14, TH - 55 - 5);
+    g.lineTo(0, TH - 47 - 5);
+    g.lineTo(0, TH - 45);
+    g.lineTo(-12, TH - 53);
+    g.closePath();
+    g.endFill();
+    // 頭髮 (右)
+    g.beginFill(dk(d.h, 0.6));
+    g.moveTo(14, TH - 55 - 5);
+    g.lineTo(0, TH - 47 - 5);
+    g.lineTo(0, TH - 45);
+    g.lineTo(12, TH - 53);
+    g.closePath();
+    g.endFill();
+
+    // 眼
+    g.beginFill(0x2a2a2a);
+    g.drawCircle(-4, TH - 50, 2.5);
+    g.drawCircle(4, TH - 50, 2.5);
+    g.endFill();
+    g.beginFill(0xffffff);
+    g.drawCircle(-3, TH - 51, 1);
+    g.drawCircle(5, TH - 51, 1);
+    g.endFill();
+
+    // 腮紅
+    g.beginFill(0xffb0b0, 0.5);
+    g.drawEllipse(-9, TH - 46, 3, 1.5);
+    g.drawEllipse(9, TH - 46, 3, 1.5);
+    g.endFill();
+
+    // 嘴
+    g.beginFill(0xd08080);
+    g.drawEllipse(0, TH - 43, 3, 1.5);
+    g.endFill();
+
+    c.addChild(g);
+
+    // 名牌
+    const nt = new PIXI.Text(d.n, { fontFamily:'Segoe UI', fontSize:9, fontWeight:'bold', fill:0xffffff });
+    nt.anchor.set(0.5);
+    nt.y = TH + 15;
+    const nb = new PIXI.Graphics();
+    nb.beginFill(0, 0.8);
+    nb.drawRoundedRect(-nt.width/2 - 4, TH + 8, nt.width + 8, 14, 7);
+    nb.endFill();
+    c.addChild(nb);
+    c.addChild(nt);
+
+    // 對話泡
+    const bub = new PIXI.Container();
+    bub.visible = false;
+    const bubG = new PIXI.Graphics();
+    const bubT = new PIXI.Text('', { fontFamily:'Segoe UI', fontSize:9, fill:0x333 });
+    bubT.anchor.set(0.5);
+    bub.addChild(bubG);
+    bub.addChild(bubT);
+    bub.zIndex = 10;
+    c.addChild(bub);
+    bub.show = t => {
+        bubT.text = t;
+        bubT.y = -70;
+        bubG.clear();
+        bubG.beginFill(0xffffff);
+        bubG.drawRoundedRect(-bubT.width/2 - 6, -82, bubT.width + 12, 22, 8);
+        bubG.moveTo(-3, -60);
+        bubG.lineTo(3, -60);
+        bubG.lineTo(0, -54);
+        bubG.closePath();
+        bubG.endFill();
+        bub.visible = true;
+    };
+    bub.hide = () => bub.visible = false;
+
+    // 互動
+    c.eventMode = 'static';
+    c.cursor = 'pointer';
+    c.hitArea = new PIXI.Rectangle(-14, -70, 28, 95);
+    c.on('pointerdown', e => { e.stopPropagation(); showM(id); });
+    c.on('pointerover', () => { c.scale.set(1.06); bub.show(rndG()); });
+    c.on('pointerout', () => { c.scale.set(1); bub.hide(); });
+
+    // 呼吸動畫
+    let t = Math.random() * 100;
+    app.ticker.add(() => {
+        t += 0.025;
+        c.y = p.y + TH - TD + Math.sin(t) * 1.5;
+    });
+
+    return { c, bub, gx, gy, tx: gx, ty: gy, mv: false, d, bp: p };
+}
+
+function rndG() {
+    const gs = ['嗨！','你好！','歡迎～','需要幫忙？','來聊！'];
+    return gs[Math.floor(Math.random()*gs.length)];
+}
+
+function moveC(id, tx, ty) {
+    const ch = chars[id];
+    if (!ch || ch.mv) return;
+    tx = Math.max(0, Math.min(RW-1, tx));
+    ty = Math.max(0, Math.min(RH-1, ty));
+    ch.tx = tx; ch.ty = ty; ch.mv = true;
+
+    const tp = iso(tx, ty);
+    const sx = ch.c.x, sy = ch.c.y;
+    const dur = 600;
+    let el = 0;
+
+    const an = dt => {
+        el += dt * 16.67;
+        const t = Math.min(el / dur, 1);
+        const e = 1 - Math.pow(1-t, 3);
+        ch.c.x = sx + (tp.x + TW - sx) * e;
+        ch.c.y = sy + (tp.y + TH - TD - sy) * e;
+        ch.c.zIndex = 200 + Math.round(ch.gx + (tx-ch.gx)*t) + Math.round(ch.gy + (ty-ch.gy)*t);
+        if (t >= 1) {
+            app.ticker.remove(an);
+            ch.gx = tx; ch.gy = ty; ch.bp = tp; ch.mv = false;
+            addC(`${ch.d.n} 到了！`, 'ai', ch.d.n);
+        }
+    };
+    app.ticker.add(an);
+}
+
+// ============ 遊戲循環 ============
+function loop() {
+    if (Math.random() < 0.002) {
+        const ids = Object.keys(chars);
+        const r = ids[Math.floor(Math.random()*ids.length)];
+        chars[r].bub.show(rndG());
+        setTimeout(() => chars[r].bub.hide(), 2000);
+    }
+}
+
+// ============ UI ============
+function addC(txt, type, who='You') {
+    const b = document.getElementById('cBody');
+    const d = document.createElement('div');
+    d.className = 'cmsg ' + type;
+    d.innerHTML = `<b>${who}:</b> ${txt}`;
+    b.appendChild(d);
+    b.scrollTop = b.scrollHeight;
+}
+
+function sendC() {
+    const i = document.getElementById('cIn');
+    const t = i.value.trim();
+    if (!t) return;
+    addC(t, 'user');
+    i.value = '';
+    setTimeout(() => {
+        const r = [['Amber','好主意！✨'],['Bella','讚！💖'],['Emma','同意！🌟'],['Luna','好的～🎵']];
+        const [n,m] = r[Math.floor(Math.random()*r.length)];
+        addC(m, 'ai', n);
+    }, 600);
+}
+
+function toggleChat() {
+    const b = document.getElementById('cBody');
+    b.style.display = b.style.display === 'none' ? 'block' : 'none';
+}
+
+function chgRoom(id, btn) {
+    curRoom = id;
+    document.getElementById('rName').textContent = ROOMS[id].n;
+    document.querySelectorAll('.rbtn').forEach(b => b.classList.remove('on'));
+    if (btn) btn.classList.add('on');
+    build();
+    // 重新加角色
+    Object.values(chars).forEach(ch => mainC.addChild(ch.c));
+    addC(`歡迎來到${ROOMS[id].n}！`, 'ai', 'Amber');
+}
+
+function showM(id) {
+    const d = CHARS[id];
+    curMC = d;
+    document.getElementById('mN').textContent = d.n;
+    document.getElementById('mE').textContent = d.e;
+    document.getElementById('mS').textContent = d.s;
+    document.getElementById('mP').textContent = d.p;
+    document.getElementById('mX').textContent = d.x;
+    document.getElementById('mD').textContent = d.d;
+    document.getElementById('mBg').style.display = 'flex';
+}
+
+function closeM(e) {
+    if (!e || e.target.id === 'mBg') document.getElementById('mBg').style.display = 'none';
+}
+
+function startC() {
+    if (curMC) addC(`嗨！我是 ${curMC.n}！`, 'ai', curMC.n);
+    closeM();
+}
+
+window.chgRoom = chgRoom;
+window.sendC = sendC;
+window.toggleChat = toggleChat;
+window.showM = showM;
+window.closeM = closeM;
+window.startC = startC;
+
+init();
+</script>
+</body>
+</html>

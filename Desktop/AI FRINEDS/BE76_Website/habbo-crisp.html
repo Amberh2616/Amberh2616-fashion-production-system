@@ -1,0 +1,549 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>BE 76 - Habbo Crisp Pixels</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { background: #0d0d1a; overflow: hidden; }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      -ms-interpolation-mode: nearest-neighbor;
+    }
+    .ui { position: fixed; z-index: 100; font-family: Arial, sans-serif; }
+    .header {
+      top: 0; left: 0; right: 0; height: 36px;
+      background: #1a1a30; border-bottom: 2px solid #333355;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px;
+    }
+    .logo { color: #6699ff; font-weight: bold; font-size: 16px; }
+    .room-name { color: #9999bb; font-size: 12px; }
+    .chat {
+      bottom: 10px; right: 10px; width: 240px;
+      background: #1a1a30; border: 2px solid #333355;
+    }
+    .chat-head { background: #5566dd; color: #fff; padding: 6px 10px; font-size: 11px; font-weight: bold; }
+    .chat-body { height: 100px; overflow-y: auto; padding: 6px; background: #0d0d1a; }
+    .chat-msg { margin-bottom: 4px; font-size: 10px; color: #aaaacc; }
+    .chat-msg b { color: #6699ff; }
+    .chat-input { display: flex; border-top: 1px solid #333355; }
+    .chat-input input {
+      flex: 1; background: #0d0d1a; border: none; color: #fff;
+      padding: 6px 8px; font-size: 10px; outline: none;
+    }
+    .chat-input button {
+      background: #5566dd; border: none; color: #fff;
+      padding: 6px 12px; cursor: pointer; font-size: 10px;
+    }
+    .hint {
+      bottom: 10px; left: 10px; color: #555577; font-size: 10px;
+      background: rgba(0,0,0,0.5); padding: 6px 10px;
+    }
+    .hint b { color: #6699ff; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <header class="ui header">
+    <span class="logo">BE 76</span>
+    <span class="room-name" id="roomName">Fashion Room</span>
+  </header>
+
+  <div class="ui chat">
+    <div class="chat-head">Chat</div>
+    <div class="chat-body" id="chatBody">
+      <div class="chat-msg"><b>Amber:</b> Welcome! Click to walk~</div>
+    </div>
+    <div class="chat-input">
+      <input id="chatIn" placeholder="Type..." onkeypress="if(event.key==='Enter')sendMsg()">
+      <button onclick="sendMsg()">Send</button>
+    </div>
+  </div>
+
+  <div class="ui hint">
+    <b>Click</b> floor to move
+  </div>
+
+<script>
+// =============================================
+// BE 76 - 純像素版（無抗鋸齒）
+// =============================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+// 禁用所有平滑
+ctx.imageSmoothingEnabled = false;
+ctx.webkitImageSmoothingEnabled = false;
+ctx.mozImageSmoothingEnabled = false;
+ctx.msImageSmoothingEnabled = false;
+
+// 設定
+const SCALE = 2;  // 放大倍數（讓像素更明顯）
+const TILE_W = 32;
+const TILE_H = 16;
+const GRID_W = 10;
+const GRID_H = 8;
+const WALL_H = 64;
+
+let originX = 0;
+let originY = 0;
+
+// 角色
+const avatars = {
+  amber: { name: 'Amber', x: 3, y: 4, color: '#ff6090', hair: '#c06030' },
+  bella: { name: 'Bella', x: 6, y: 3, color: '#40b0e0', hair: '#202020' },
+  emma: { name: 'Emma', x: 7, y: 5, color: '#40d070', hair: '#e0a040' },
+  luna: { name: 'Luna', x: 4, y: 6, color: '#9050e0', hair: '#101018' }
+};
+
+let playerMoving = false;
+const blocked = new Set();
+
+// ===== 等距轉換 =====
+function toIso(gx, gy) {
+  return {
+    x: Math.floor(originX + (gx - gy) * TILE_W),
+    y: Math.floor(originY + (gx + gy) * TILE_H)
+  };
+}
+
+function fromIso(sx, sy) {
+  const dx = (sx / SCALE) - originX;
+  const dy = (sy / SCALE) - originY;
+  return {
+    x: Math.floor((dx / TILE_W + dy / TILE_H) / 2),
+    y: Math.floor((dy / TILE_H - dx / TILE_W) / 2)
+  };
+}
+
+// ===== 像素繪圖（無平滑）=====
+function px(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+}
+
+function line(x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(Math.floor(x1) + 0.5, Math.floor(y1) + 0.5);
+  ctx.lineTo(Math.floor(x2) + 0.5, Math.floor(y2) + 0.5);
+  ctx.stroke();
+}
+
+function diamond(cx, cy, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - h);
+  ctx.lineTo(cx + w, cy);
+  ctx.lineTo(cx, cy + h);
+  ctx.lineTo(cx - w, cy);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function diamondStroke(cx, cy, w, h, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx + 0.5, cy - h + 0.5);
+  ctx.lineTo(cx + w + 0.5, cy + 0.5);
+  ctx.lineTo(cx + 0.5, cy + h + 0.5);
+  ctx.lineTo(cx - w + 0.5, cy + 0.5);
+  ctx.closePath();
+  ctx.stroke();
+}
+
+// ===== 顏色工具 =====
+function shade(hex, amt) {
+  let c = hex.replace('#', '');
+  let num = parseInt(c, 16);
+  let r = Math.max(0, Math.min(255, ((num >> 16) & 0xff) + amt));
+  let g = Math.max(0, Math.min(255, ((num >> 8) & 0xff) + amt));
+  let b = Math.max(0, Math.min(255, (num & 0xff) + amt));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+// ===== 繪製房間 =====
+function drawRoom() {
+  // 清空
+  ctx.fillStyle = '#0d0d1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const floorColor = '#b89060';
+  const floorDark = '#a08050';
+  const wallColor = '#70a8b8';
+  const wallDark = '#508898';
+
+  // === 後牆 ===
+  const w0 = toIso(0, 0);
+  const w1 = toIso(GRID_W, 0);
+
+  ctx.fillStyle = wallColor;
+  ctx.beginPath();
+  ctx.moveTo(w0.x, w0.y);
+  ctx.lineTo(w1.x, w1.y);
+  ctx.lineTo(w1.x, w1.y - WALL_H);
+  ctx.lineTo(w0.x, w0.y - WALL_H);
+  ctx.closePath();
+  ctx.fill();
+
+  // 牆線條
+  ctx.strokeStyle = shade(wallColor, -20);
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const ly = w0.y - WALL_H * i / 4;
+    ctx.beginPath();
+    ctx.moveTo(w0.x, ly);
+    ctx.lineTo(w1.x, ly + (w1.y - w0.y));
+    ctx.stroke();
+  }
+
+  // 窗戶
+  drawWindow(w0.x + (w1.x - w0.x) * 0.3, w0.y - WALL_H + 16);
+  drawWindow(w0.x + (w1.x - w0.x) * 0.7, w0.y - WALL_H + 16 + (w1.y - w0.y) * 0.4);
+
+  // 後牆輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w0.x, w0.y);
+  ctx.lineTo(w1.x, w1.y);
+  ctx.lineTo(w1.x, w1.y - WALL_H);
+  ctx.lineTo(w0.x, w0.y - WALL_H);
+  ctx.closePath();
+  ctx.stroke();
+
+  // === 右牆 ===
+  const s0 = toIso(GRID_W, 0);
+  const s1 = toIso(GRID_W, GRID_H);
+
+  ctx.fillStyle = wallDark;
+  ctx.beginPath();
+  ctx.moveTo(s0.x, s0.y);
+  ctx.lineTo(s1.x, s1.y);
+  ctx.lineTo(s1.x, s1.y - WALL_H);
+  ctx.lineTo(s0.x, s0.y - WALL_H);
+  ctx.closePath();
+  ctx.fill();
+
+  // 右牆輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(s0.x, s0.y);
+  ctx.lineTo(s1.x, s1.y);
+  ctx.lineTo(s1.x, s1.y - WALL_H);
+  ctx.lineTo(s0.x, s0.y - WALL_H);
+  ctx.closePath();
+  ctx.stroke();
+
+  // 角落
+  ctx.beginPath();
+  ctx.moveTo(s0.x, s0.y);
+  ctx.lineTo(s0.x, s0.y - WALL_H);
+  ctx.stroke();
+
+  // === 地板 ===
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      drawTile(x, y, floorColor, floorDark);
+    }
+  }
+
+  // === 家具 ===
+  drawSofa(1, 2);
+  drawTable(5, 4);
+  drawPlant(8, 1);
+
+  // === 角色（按深度排序）===
+  const sorted = Object.values(avatars).sort((a, b) => (a.x + a.y) - (b.x + b.y));
+  sorted.forEach(av => drawAvatar(av));
+}
+
+function drawWindow(x, y) {
+  const w = 20, h = 28;
+  // 框
+  px(x - w/2 - 2, y - 2, w + 4, h + 4, '#405060');
+  // 玻璃
+  px(x - w/2, y, w, h, '#80c8e0');
+  // 反光
+  px(x - w/2 + 2, y + 2, w * 0.4, h * 0.3, 'rgba(255,255,255,0.4)');
+  // 十字
+  px(x - 1, y, 2, h, '#304050');
+  px(x - w/2, y + h/2 - 1, w, 2, '#304050');
+  // 輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - w/2 - 2, y - 2, w + 4, h + 4);
+}
+
+function drawTile(gx, gy, c1, c2) {
+  const p = toIso(gx, gy);
+  const isLight = (gx + gy) % 2 === 0;
+  const top = isLight ? c1 : c2;
+
+  // 頂面
+  diamond(p.x, p.y + TILE_H/2, TILE_W/2, TILE_H/2, top);
+
+  // 左側
+  ctx.fillStyle = shade(top, -30);
+  ctx.beginPath();
+  ctx.moveTo(p.x - TILE_W/2, p.y + TILE_H/2);
+  ctx.lineTo(p.x, p.y + TILE_H);
+  ctx.lineTo(p.x, p.y + TILE_H + 4);
+  ctx.lineTo(p.x - TILE_W/2, p.y + TILE_H/2 + 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // 右側
+  ctx.fillStyle = shade(top, -50);
+  ctx.beginPath();
+  ctx.moveTo(p.x + TILE_W/2, p.y + TILE_H/2);
+  ctx.lineTo(p.x, p.y + TILE_H);
+  ctx.lineTo(p.x, p.y + TILE_H + 4);
+  ctx.lineTo(p.x + TILE_W/2, p.y + TILE_H/2 + 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // 輪廓
+  diamondStroke(p.x, p.y + TILE_H/2, TILE_W/2, TILE_H/2, 'rgba(0,0,0,0.3)');
+}
+
+// ===== 家具（純方塊）=====
+function drawSofa(gx, gy) {
+  const p = toIso(gx, gy);
+  const x = p.x, y = p.y;
+
+  // 陰影
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + TILE_H + 4, 28, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 靠背
+  px(x - 24, y - 20, 48, 16, '#c02020');
+  px(x - 22, y - 18, 44, 12, '#e03030');
+
+  // 座墊
+  px(x - 22, y - 2, 44, 14, '#e03030');
+  px(x - 20, y, 18, 10, '#f04040');
+  px(x + 2, y, 18, 10, '#f04040');
+
+  // 扶手
+  px(x - 26, y - 8, 6, 20, '#c02020');
+  px(x + 20, y - 8, 6, 20, '#c02020');
+
+  // 輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x - 26, y - 20, 52, 34);
+
+  blocked.add(`${gx},${gy}`);
+}
+
+function drawTable(gx, gy) {
+  const p = toIso(gx, gy);
+  const x = p.x, y = p.y;
+
+  // 陰影
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + TILE_H + 3, 20, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 桌腳
+  px(x - 12, y + 2, 4, 12, '#604020');
+  px(x + 8, y + 2, 4, 12, '#604020');
+
+  // 桌面
+  px(x - 16, y - 4, 32, 8, '#805030');
+  px(x - 14, y - 2, 28, 4, '#906040');
+
+  // 輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - 16, y - 4, 32, 8);
+
+  blocked.add(`${gx},${gy}`);
+}
+
+function drawPlant(gx, gy) {
+  const p = toIso(gx, gy);
+  const x = p.x, y = p.y;
+
+  // 陰影
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + TILE_H + 2, 12, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 花盆
+  px(x - 8, y, 16, 14, '#c06020');
+  px(x - 6, y + 2, 12, 10, '#d07030');
+
+  // 葉子（用方塊模擬）
+  px(x - 2, y - 24, 4, 20, '#208030');
+  px(x - 10, y - 16, 4, 16, '#208030');
+  px(x + 6, y - 16, 4, 16, '#208030');
+  px(x - 6, y - 10, 4, 12, '#30a040');
+  px(x + 2, y - 10, 4, 12, '#30a040');
+
+  // 輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - 8, y, 16, 14);
+
+  blocked.add(`${gx},${gy}`);
+}
+
+// ===== 角色（像素風格）=====
+function drawAvatar(av) {
+  const p = toIso(av.x, av.y);
+  const x = p.x, y = p.y - 4;
+
+  // 陰影
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + TILE_H + 4, 10, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 腿
+  px(x - 5, y + 6, 4, 10, '#304060');
+  px(x + 1, y + 6, 4, 10, '#304060');
+
+  // 腳
+  px(x - 6, y + 15, 5, 3, '#222');
+  px(x + 1, y + 15, 5, 3, '#222');
+
+  // 身體
+  px(x - 7, y - 6, 14, 14, av.color);
+
+  // 手
+  px(x - 10, y - 4, 4, 10, '#ffc8b0');
+  px(x + 6, y - 4, 4, 10, '#ffc8b0');
+
+  // 頭
+  px(x - 8, y - 24, 16, 20, '#ffc8b0');
+
+  // 頭髮
+  px(x - 9, y - 28, 18, 8, av.hair);
+  px(x - 10, y - 24, 5, 10, av.hair);
+  px(x + 5, y - 24, 5, 10, av.hair);
+
+  // 眼睛
+  px(x - 5, y - 18, 3, 4, '#fff');
+  px(x + 2, y - 18, 3, 4, '#fff');
+  px(x - 4, y - 17, 2, 2, '#222');
+  px(x + 3, y - 17, 2, 2, '#222');
+
+  // 嘴
+  px(x - 2, y - 10, 4, 2, '#d08080');
+
+  // 輪廓
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - 8, y - 24, 16, 20);
+  ctx.strokeRect(x - 7, y - 6, 14, 14);
+
+  // 名牌
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  const nameW = av.name.length * 5 + 6;
+  px(x - nameW/2, y + 20, nameW, 10, 'rgba(0,0,0,0.7)');
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(av.name, x, y + 28);
+}
+
+// ===== 輸入處理 =====
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const g = fromIso(e.clientX - rect.left, e.clientY - rect.top);
+
+  if (g.x >= 0 && g.x < GRID_W && g.y >= 0 && g.y < GRID_H) {
+    if (!blocked.has(`${g.x},${g.y}`) && !playerMoving) {
+      movePlayer(g.x, g.y);
+    }
+  }
+});
+
+function movePlayer(tx, ty) {
+  const av = avatars.amber;
+  if (playerMoving) return;
+
+  const path = [];
+  let x = av.x, y = av.y;
+  while (x !== tx || y !== ty) {
+    if (x < tx) x++;
+    else if (x > tx) x--;
+    else if (y < ty) y++;
+    else if (y > ty) y--;
+    if (blocked.has(`${x},${y}`)) return;
+    path.push({ x, y });
+  }
+
+  if (path.length === 0) return;
+  playerMoving = true;
+
+  let i = 0;
+  const step = () => {
+    if (i >= path.length) {
+      playerMoving = false;
+      return;
+    }
+    av.x = path[i].x;
+    av.y = path[i].y;
+    i++;
+    drawRoom();
+    setTimeout(step, 80);
+  };
+  step();
+}
+
+// ===== UI =====
+function sendMsg() {
+  const input = document.getElementById('chatIn');
+  if (input.value.trim()) {
+    addMsg('You', input.value);
+    input.value = '';
+    setTimeout(() => addMsg('Amber', ['Nice!', 'Cool!', 'Great!'][Math.floor(Math.random()*3)]), 400);
+  }
+}
+
+function addMsg(name, text) {
+  const body = document.getElementById('chatBody');
+  body.innerHTML += `<div class="chat-msg"><b>${name}:</b> ${text}</div>`;
+  body.scrollTop = body.scrollHeight;
+}
+
+// ===== 初始化 =====
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  // 重新禁用平滑
+  ctx.imageSmoothingEnabled = false;
+
+  // 計算原點
+  originX = Math.floor(canvas.width / 2 / SCALE);
+  originY = Math.floor(canvas.height * 0.22 / SCALE);
+
+  // 設定縮放
+  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+
+  drawRoom();
+}
+
+window.addEventListener('resize', resize);
+window.sendMsg = sendMsg;
+
+resize();
+</script>
+</body>
+</html>

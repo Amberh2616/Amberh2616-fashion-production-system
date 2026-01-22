@@ -1,0 +1,947 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>BE 76 - Habbo Style Room</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #0f1220; overflow: hidden; }
+    #game { width: 100vw; height: 100vh; }
+
+    .brand {
+      position: fixed; left: 26px; top: 20px;
+      font-family: Arial, sans-serif;
+      font-weight: 700; font-size: 28px;
+      color: #7dd3fc; letter-spacing: 1px;
+      z-index: 100;
+    }
+    .room-title {
+      position: fixed; right: 22px; top: 20px;
+      font-family: Arial, sans-serif;
+      font-size: 18px; color: rgba(255,255,255,0.65);
+      z-index: 100;
+    }
+    .ui-panel {
+      position: fixed; left: 26px; top: 70px;
+      width: 200px; padding: 16px;
+      background: rgba(9,12,22,0.7);
+      border: 1px solid rgba(90,110,170,0.35);
+      border-radius: 14px;
+      backdrop-filter: blur(6px);
+      z-index: 100;
+    }
+    .ui-panel .hint {
+      color: rgba(255,255,255,0.7);
+      font-family: Arial, sans-serif;
+      font-size: 12px; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="brand">BE 76</div>
+  <div class="room-title">Fashion Lounge</div>
+
+  <div class="ui-panel">
+    <div class="hint">
+      Click floor to walk<br>
+      Scroll to zoom<br>
+      Drag to pan view
+    </div>
+  </div>
+
+  <div id="game"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script>
+    // ================================
+    // Habbo-like Room with Textures
+    // ================================
+
+    const TILE_W = 64;
+    const TILE_H = 32;
+
+    function gridToScreen(gx, gy, originX, originY) {
+      return {
+        x: originX + (gx - gy) * (TILE_W / 2),
+        y: originY + (gx + gy) * (TILE_H / 2),
+      };
+    }
+
+    function screenToGrid(sx, sy, originX, originY) {
+      const dx = sx - originX;
+      const dy = sy - originY;
+      const gx = (dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2;
+      const gy = (dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2;
+      return { x: Math.round(gx), y: Math.round(gy) };
+    }
+
+    // A* Pathfinding
+    function astar(start, goal, isBlocked, w, h) {
+      const key = (x, y) => `${x},${y}`;
+      const inBounds = (x, y) => x >= 0 && y >= 0 && x < w && y < h;
+      const hCost = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+
+      const open = new Map();
+      const cameFrom = new Map();
+      const gScore = new Map();
+      const fScore = new Map();
+
+      const startK = key(start.x, start.y);
+      open.set(startK, { ...start });
+      gScore.set(startK, 0);
+      fScore.set(startK, hCost(start, goal));
+
+      const dirs = [
+        { x: 1, y: 0 }, { x: -1, y: 0 },
+        { x: 0, y: 1 }, { x: 0, y: -1 },
+      ];
+
+      while (open.size > 0) {
+        let currentKey = null;
+        let current = null;
+        let bestF = Infinity;
+
+        for (const [k, node] of open.entries()) {
+          const f = fScore.get(k) ?? Infinity;
+          if (f < bestF) { bestF = f; currentKey = k; current = node; }
+        }
+
+        if (!current) break;
+
+        if (current.x === goal.x && current.y === goal.y) {
+          const path = [];
+          let ck = currentKey;
+          while (ck && ck !== startK) {
+            const [x, y] = ck.split(",").map(Number);
+            path.push({ x, y });
+            ck = cameFrom.get(ck);
+          }
+          path.reverse();
+          return path;
+        }
+
+        open.delete(currentKey);
+
+        for (const d of dirs) {
+          const nx = current.x + d.x;
+          const ny = current.y + d.y;
+          if (!inBounds(nx, ny)) continue;
+          if (isBlocked(nx, ny)) continue;
+
+          const nk = key(nx, ny);
+          const tentativeG = (gScore.get(currentKey) ?? Infinity) + 1;
+
+          if (tentativeG < (gScore.get(nk) ?? Infinity)) {
+            cameFrom.set(nk, currentKey);
+            gScore.set(nk, tentativeG);
+            fScore.set(nk, tentativeG + hCost({ x: nx, y: ny }, goal));
+            if (!open.has(nk)) open.set(nk, { x: nx, y: ny });
+          }
+        }
+      }
+      return [];
+    }
+
+    // ================================
+    // HabboRoomScene
+    // ================================
+    class HabboRoomScene extends Phaser.Scene {
+      constructor() {
+        super("HabboRoomScene");
+
+        this.roomW = 12;
+        this.roomH = 9;
+
+        // Room shape (1=floor, 0=empty) - Habbo style cut corners
+        this.shape = [
+          [0,0,1,1,1,1,1,1,1,1,0,0],
+          [0,1,1,1,1,1,1,1,1,1,1,0],
+          [1,1,1,1,1,1,1,1,1,1,1,1],
+          [1,1,1,1,1,1,1,1,1,1,1,1],
+          [1,1,1,1,1,1,1,1,1,1,1,1],
+          [1,1,1,1,1,1,1,1,1,1,1,1],
+          [1,1,1,1,1,1,1,1,1,1,1,0],
+          [0,1,1,1,1,1,1,1,1,1,0,0],
+          [0,0,1,1,1,1,1,1,1,0,0,0],
+        ];
+
+        this.originX = 0;
+        this.originY = 0;
+        this.blocked = new Set();
+        this.furni = [];
+        this.players = new Map();
+        this.meId = "me";
+      }
+
+      preload() {
+        // Generate textures dynamically (no external files needed!)
+        this.generateTextures();
+
+        // ✅ Habbo Avatar API - 載入真正的 Habbo 風格人物
+        const avatars = {
+          me:   { figure: "hd-180-1.hr-170-61.ch-210-62.lg-280-110.sh-905-66", name: "Amber" },
+          p1:   { figure: "hd-195-14.hr-893-61.ch-215-82.lg-285-110.sh-295-62", name: "Sophie" },
+          p2:   { figure: "hd-180-2.hr-830-37.ch-255-82.lg-280-110.sh-300-62", name: "Luna" },
+          p3:   { figure: "hd-190-7.hr-836-45.ch-220-66.lg-275-110.sh-290-62", name: "Bella" },
+        };
+
+        // 設定允許跨域載入
+        this.load.setCORS('anonymous');
+
+        // 載入 8 方向（0-7）的每個角色
+        for (const [id, data] of Object.entries(avatars)) {
+          for (let dir = 0; dir < 8; dir++) {
+            const url = `https://www.habbo.com/habbo-imaging/avatarimage?figure=${data.figure}&direction=${dir}&head_direction=${dir}&gesture=sml&size=l&action=wlk`;
+            this.load.image(`avatar_${id}_${dir}`, url);
+          }
+          // 站立姿勢
+          const standUrl = `https://www.habbo.com/habbo-imaging/avatarimage?figure=${data.figure}&direction=2&head_direction=2&gesture=sml&size=l&action=std`;
+          this.load.image(`avatar_${id}_stand`, standUrl);
+        }
+
+        this.avatarData = avatars;
+
+        // 載入失敗時不要中斷
+        this.load.on('loaderror', (file) => {
+          console.warn('Failed to load:', file.key);
+        });
+      }
+
+      generateTextures() {
+        // Floor tile - wood pattern
+        const floorG = this.make.graphics({ x: 0, y: 0, add: false });
+        floorG.fillStyle(0x8b7355, 1);
+        floorG.beginPath();
+        floorG.moveTo(32, 0); floorG.lineTo(64, 16); floorG.lineTo(32, 32); floorG.lineTo(0, 16);
+        floorG.closePath(); floorG.fillPath();
+        // Wood grain lines
+        floorG.lineStyle(1, 0x7a6548, 0.4);
+        floorG.lineBetween(10, 12, 54, 12);
+        floorG.lineBetween(8, 16, 56, 16);
+        floorG.lineBetween(10, 20, 54, 20);
+        // Border
+        floorG.lineStyle(1, 0x5c4a3d, 0.8);
+        floorG.strokePoints([{x:32,y:0},{x:64,y:16},{x:32,y:32},{x:0,y:16},{x:32,y:0}], false);
+        floorG.generateTexture("floor", 64, 32);
+
+        // Floor tile alternate
+        const floor2G = this.make.graphics({ x: 0, y: 0, add: false });
+        floor2G.fillStyle(0x7a6548, 1);
+        floor2G.beginPath();
+        floor2G.moveTo(32, 0); floor2G.lineTo(64, 16); floor2G.lineTo(32, 32); floor2G.lineTo(0, 16);
+        floor2G.closePath(); floor2G.fillPath();
+        floor2G.lineStyle(1, 0x6b5840, 0.4);
+        floor2G.lineBetween(10, 12, 54, 12);
+        floor2G.lineBetween(8, 16, 56, 16);
+        floor2G.lineBetween(10, 20, 54, 20);
+        floor2G.lineStyle(1, 0x5c4a3d, 0.8);
+        floor2G.strokePoints([{x:32,y:0},{x:64,y:16},{x:32,y:32},{x:0,y:16},{x:32,y:0}], false);
+        floor2G.generateTexture("floor2", 64, 32);
+
+        // Sofa base
+        const sofaBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        // Seat
+        sofaBaseG.fillStyle(0xc94444, 1);
+        sofaBaseG.fillRoundedRect(4, 20, 56, 20, 4);
+        // Cushions
+        sofaBaseG.fillStyle(0xdd5555, 1);
+        sofaBaseG.fillRoundedRect(8, 22, 22, 14, 3);
+        sofaBaseG.fillRoundedRect(34, 22, 22, 14, 3);
+        // Shadow
+        sofaBaseG.fillStyle(0x000000, 0.2);
+        sofaBaseG.fillEllipse(32, 44, 50, 8);
+        sofaBaseG.generateTexture("sofa_base", 64, 48);
+
+        // Sofa top (backrest - will occlude player)
+        const sofaTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        sofaTopG.fillStyle(0xb83838, 1);
+        sofaTopG.fillRoundedRect(2, 0, 60, 22, 4);
+        sofaTopG.fillStyle(0xc94444, 1);
+        sofaTopG.fillRoundedRect(4, 2, 56, 16, 3);
+        sofaTopG.generateTexture("sofa_top", 64, 24);
+
+        // Table base
+        const tableBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        // Legs
+        tableBaseG.fillStyle(0x5c4033, 1);
+        tableBaseG.fillRect(8, 24, 6, 16);
+        tableBaseG.fillRect(50, 24, 6, 16);
+        // Shadow
+        tableBaseG.fillStyle(0x000000, 0.2);
+        tableBaseG.fillEllipse(32, 42, 40, 6);
+        tableBaseG.generateTexture("table_base", 64, 44);
+
+        // Table top
+        const tableTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        // Tabletop surface
+        tableTopG.fillStyle(0x8b6914, 1);
+        tableTopG.beginPath();
+        tableTopG.moveTo(32, 0); tableTopG.lineTo(60, 14); tableTopG.lineTo(32, 28); tableTopG.lineTo(4, 14);
+        tableTopG.closePath(); tableTopG.fillPath();
+        // Highlight
+        tableTopG.fillStyle(0xa67c1a, 1);
+        tableTopG.beginPath();
+        tableTopG.moveTo(32, 4); tableTopG.lineTo(52, 14); tableTopG.lineTo(32, 24); tableTopG.lineTo(12, 14);
+        tableTopG.closePath(); tableTopG.fillPath();
+        tableTopG.lineStyle(2, 0x5c4a0f, 0.8);
+        tableTopG.strokePoints([{x:32,y:0},{x:60,y:14},{x:32,y:28},{x:4,y:14},{x:32,y:0}], false);
+        tableTopG.generateTexture("table_top", 64, 32);
+
+        // Plant base (pot)
+        const plantBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        plantBaseG.fillStyle(0xc9784a, 1);
+        plantBaseG.beginPath();
+        plantBaseG.moveTo(20, 30); plantBaseG.lineTo(44, 30); plantBaseG.lineTo(40, 48); plantBaseG.lineTo(24, 48);
+        plantBaseG.closePath(); plantBaseG.fillPath();
+        plantBaseG.fillStyle(0xa85c32, 1);
+        plantBaseG.fillRect(22, 44, 20, 6);
+        // Shadow
+        plantBaseG.fillStyle(0x000000, 0.2);
+        plantBaseG.fillEllipse(32, 52, 24, 6);
+        plantBaseG.generateTexture("plant_base", 64, 56);
+
+        // Plant top (leaves)
+        const plantTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        plantTopG.fillStyle(0x4a9c5d, 1);
+        plantTopG.fillEllipse(32, 24, 36, 28);
+        plantTopG.fillStyle(0x3d8a4f, 1);
+        plantTopG.fillEllipse(26, 20, 20, 18);
+        plantTopG.fillStyle(0x5db56e, 1);
+        plantTopG.fillEllipse(38, 16, 18, 16);
+        plantTopG.fillEllipse(28, 28, 14, 12);
+        plantTopG.generateTexture("plant_top", 64, 48);
+
+        // Lamp base
+        const lampBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        lampBaseG.fillStyle(0x333333, 1);
+        lampBaseG.fillEllipse(32, 50, 20, 8);
+        lampBaseG.fillStyle(0x444444, 1);
+        lampBaseG.fillRect(29, 10, 6, 42);
+        lampBaseG.fillStyle(0x000000, 0.2);
+        lampBaseG.fillEllipse(32, 54, 18, 5);
+        lampBaseG.generateTexture("lamp_base", 64, 58);
+
+        // Lamp top (shade)
+        const lampTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        lampTopG.fillStyle(0xffcc66, 1);
+        lampTopG.beginPath();
+        lampTopG.moveTo(32, 0); lampTopG.lineTo(50, 24); lampTopG.lineTo(14, 24);
+        lampTopG.closePath(); lampTopG.fillPath();
+        lampTopG.fillStyle(0xe6b84d, 1);
+        lampTopG.fillEllipse(32, 24, 18, 6);
+        // Glow
+        lampTopG.fillStyle(0xffffcc, 0.2);
+        lampTopG.fillEllipse(32, 30, 28, 12);
+        lampTopG.generateTexture("lamp_top", 64, 44);
+
+        // Avatar (simple pixel person)
+        const avatarG = this.make.graphics({ x: 0, y: 0, add: false });
+        // Shadow
+        avatarG.fillStyle(0x000000, 0.3);
+        avatarG.fillEllipse(24, 58, 20, 6);
+        // Body
+        avatarG.fillStyle(0x4a90d9, 1);
+        avatarG.fillRoundedRect(14, 28, 20, 28, 4);
+        // Arms
+        avatarG.fillStyle(0xffe0bd, 1);
+        avatarG.fillRect(10, 30, 6, 16);
+        avatarG.fillRect(32, 30, 6, 16);
+        // Head
+        avatarG.fillStyle(0xffe0bd, 1);
+        avatarG.fillCircle(24, 18, 12);
+        // Hair
+        avatarG.fillStyle(0x4a3728, 1);
+        avatarG.fillEllipse(24, 12, 14, 8);
+        // Eyes
+        avatarG.fillStyle(0x333333, 1);
+        avatarG.fillCircle(20, 18, 2);
+        avatarG.fillCircle(28, 18, 2);
+        // Smile
+        avatarG.lineStyle(2, 0x333333, 0.8);
+        avatarG.beginPath();
+        avatarG.arc(24, 20, 4, 0.2, Math.PI - 0.2);
+        avatarG.strokePath();
+        // Legs
+        avatarG.fillStyle(0x2a5080, 1);
+        avatarG.fillRect(16, 54, 7, 8);
+        avatarG.fillRect(25, 54, 7, 8);
+        avatarG.generateTexture("avatar", 48, 64);
+
+        // ✅ 牆紙 pattern（可重複鋪的小圖 - Habbo 風格條紋）
+        const wpG = this.make.graphics({ x: 0, y: 0, add: false });
+        // 條紋牆紙
+        for (let i = 0; i < 4; i++) {
+          wpG.fillStyle(i % 2 === 0 ? 0x5588bb : 0x4477aa, 1);
+          wpG.fillRect(i * 16, 0, 16, 64);
+        }
+        // 細微紋理
+        wpG.lineStyle(1, 0x6699cc, 0.3);
+        for (let y = 0; y < 64; y += 8) {
+          wpG.lineBetween(0, y, 64, y);
+        }
+        wpG.generateTexture("wallpaper", 64, 64);
+
+        // Window
+        const winG = this.make.graphics({ x: 0, y: 0, add: false });
+        winG.fillStyle(0xcaf1ff, 1);
+        winG.fillRect(4, 4, 52, 72);
+        winG.fillStyle(0x9fdfff, 1);
+        winG.fillRect(8, 8, 44, 64);
+        winG.lineStyle(4, 0xffffff, 0.9);
+        winG.strokeRect(4, 4, 52, 72);
+        winG.lineStyle(3, 0xffffff, 0.8);
+        winG.lineBetween(30, 8, 30, 72);
+        winG.lineBetween(8, 40, 52, 40);
+        winG.generateTexture("window", 60, 80);
+
+        // ===== 新增家具 =====
+
+        // TV base (電視櫃)
+        const tvBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        tvBaseG.fillStyle(0x2a2a2a, 1);
+        tvBaseG.fillRoundedRect(8, 30, 48, 18, 3);
+        tvBaseG.fillStyle(0x000000, 0.2);
+        tvBaseG.fillEllipse(32, 52, 40, 6);
+        tvBaseG.generateTexture("tv_base", 64, 56);
+
+        // TV top (螢幕)
+        const tvTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        tvTopG.fillStyle(0x1a1a1a, 1);
+        tvTopG.fillRoundedRect(4, 0, 56, 40, 4);
+        tvTopG.fillStyle(0x3399ff, 1);
+        tvTopG.fillRect(8, 4, 48, 32);
+        tvTopG.fillStyle(0x66bbff, 0.5);
+        tvTopG.fillRect(10, 6, 20, 14);
+        tvTopG.generateTexture("tv_top", 64, 44);
+
+        // Bookshelf base (書架底部)
+        const bsBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        bsBaseG.fillStyle(0x8b6914, 1);
+        bsBaseG.fillRect(8, 40, 48, 16);
+        bsBaseG.fillStyle(0x000000, 0.2);
+        bsBaseG.fillEllipse(32, 58, 44, 6);
+        bsBaseG.generateTexture("bookshelf_base", 64, 62);
+
+        // Bookshelf top (書架上部+書)
+        const bsTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        bsTopG.fillStyle(0xa67c1a, 1);
+        bsTopG.fillRect(6, 0, 52, 50);
+        bsTopG.fillStyle(0x8b6914, 1);
+        bsTopG.fillRect(8, 10, 48, 4);
+        bsTopG.fillRect(8, 26, 48, 4);
+        bsTopG.fillRect(8, 42, 48, 4);
+        // 書本
+        bsTopG.fillStyle(0xcc4444, 1); bsTopG.fillRect(12, 2, 6, 8);
+        bsTopG.fillStyle(0x44cc44, 1); bsTopG.fillRect(20, 2, 8, 8);
+        bsTopG.fillStyle(0x4444cc, 1); bsTopG.fillRect(30, 2, 5, 8);
+        bsTopG.fillStyle(0xcccc44, 1); bsTopG.fillRect(38, 2, 7, 8);
+        bsTopG.fillStyle(0xcc44cc, 1); bsTopG.fillRect(14, 14, 6, 10);
+        bsTopG.fillStyle(0x44cccc, 1); bsTopG.fillRect(24, 14, 8, 10);
+        bsTopG.fillStyle(0xff8844, 1); bsTopG.fillRect(36, 14, 10, 10);
+        bsTopG.fillStyle(0x8844ff, 1); bsTopG.fillRect(12, 30, 7, 10);
+        bsTopG.fillStyle(0xff4488, 1); bsTopG.fillRect(22, 30, 6, 10);
+        bsTopG.fillStyle(0x88ff44, 1); bsTopG.fillRect(32, 30, 9, 10);
+        bsTopG.generateTexture("bookshelf_top", 64, 54);
+
+        // Chair base (椅子底)
+        const chairBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        chairBaseG.fillStyle(0x5c4033, 1);
+        chairBaseG.fillRect(18, 28, 4, 14);
+        chairBaseG.fillRect(42, 28, 4, 14);
+        chairBaseG.fillStyle(0x000000, 0.2);
+        chairBaseG.fillEllipse(32, 44, 30, 6);
+        chairBaseG.generateTexture("chair_base", 64, 48);
+
+        // Chair top (椅子座+背)
+        const chairTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        chairTopG.fillStyle(0x6699cc, 1);
+        chairTopG.fillRoundedRect(14, 16, 36, 12, 3);
+        chairTopG.fillStyle(0x5588bb, 1);
+        chairTopG.fillRoundedRect(14, 0, 8, 18, 2);
+        chairTopG.generateTexture("chair_top", 64, 32);
+
+        // Bed base (床底)
+        const bedBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        bedBaseG.fillStyle(0x5c4033, 1);
+        bedBaseG.fillRect(4, 30, 56, 14);
+        bedBaseG.fillStyle(0x000000, 0.2);
+        bedBaseG.fillEllipse(32, 48, 52, 8);
+        bedBaseG.generateTexture("bed_base", 64, 52);
+
+        // Bed top (床墊+枕頭)
+        const bedTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        bedTopG.fillStyle(0xffeedd, 1);
+        bedTopG.fillRoundedRect(4, 8, 56, 26, 4);
+        bedTopG.fillStyle(0xffcccc, 1);
+        bedTopG.fillRoundedRect(6, 10, 52, 22, 3);
+        // 枕頭
+        bedTopG.fillStyle(0xffffff, 1);
+        bedTopG.fillRoundedRect(8, 0, 20, 12, 4);
+        bedTopG.fillStyle(0xeeeeff, 1);
+        bedTopG.fillRoundedRect(10, 2, 16, 8, 3);
+        bedTopG.generateTexture("bed_top", 64, 38);
+
+        // Fridge base (冰箱底)
+        const fridgeBaseG = this.make.graphics({ x: 0, y: 0, add: false });
+        fridgeBaseG.fillStyle(0xcccccc, 1);
+        fridgeBaseG.fillRect(16, 50, 32, 10);
+        fridgeBaseG.fillStyle(0x000000, 0.2);
+        fridgeBaseG.fillEllipse(32, 62, 30, 6);
+        fridgeBaseG.generateTexture("fridge_base", 64, 66);
+
+        // Fridge top (冰箱主體)
+        const fridgeTopG = this.make.graphics({ x: 0, y: 0, add: false });
+        fridgeTopG.fillStyle(0xeeeeee, 1);
+        fridgeTopG.fillRoundedRect(14, 0, 36, 56, 4);
+        fridgeTopG.fillStyle(0xdddddd, 1);
+        fridgeTopG.fillRect(16, 2, 32, 24);
+        fridgeTopG.fillRect(16, 30, 32, 24);
+        // 把手
+        fridgeTopG.fillStyle(0x888888, 1);
+        fridgeTopG.fillRect(42, 10, 4, 10);
+        fridgeTopG.fillRect(42, 38, 4, 10);
+        // 線條
+        fridgeTopG.lineStyle(1, 0xaaaaaa, 0.8);
+        fridgeTopG.lineBetween(16, 28, 48, 28);
+        fridgeTopG.generateTexture("fridge_top", 64, 60);
+      }
+
+      create() {
+        const { width, height } = this.scale;
+
+        this.originX = Math.floor(width * 0.52);
+        this.originY = Math.floor(height * 0.22);
+
+        // Draw walls first (behind everything)
+        this.drawWalls();
+
+        // Draw floor tiles
+        this.drawFloor();
+
+        // Place furniture
+        this.placeFurni();
+
+        // Spawn players
+        this.spawnPlayers();
+
+        // Click to walk
+        this.input.on("pointerdown", (pointer) => {
+          const cam = this.cameras.main;
+          const wp = cam.getWorldPoint(pointer.x, pointer.y);
+          const g = screenToGrid(wp.x, wp.y, this.originX, this.originY);
+
+          if (!this.isValid(g.x, g.y)) return;
+          if (!this.hasTile(g.x, g.y)) return;
+          if (this.isBlocked(g.x, g.y)) return;
+
+          this.movePlayerTo(this.meId, g.x, g.y);
+        });
+
+        // Zoom
+        this.input.on("wheel", (_p, _g, _dx, dy) => {
+          const cam = this.cameras.main;
+          cam.zoom = Phaser.Math.Clamp(cam.zoom - dy * 0.001, 0.5, 2.0);
+        });
+
+        // Pan
+        let dragging = false;
+        let last = { x: 0, y: 0 };
+        this.input.on("pointermove", (p) => {
+          if (!p.isDown) { dragging = false; return; }
+          if (!dragging) { dragging = true; last = { x: p.x, y: p.y }; return; }
+          const dx = p.x - last.x;
+          const dy = p.y - last.y;
+          last = { x: p.x, y: p.y };
+          this.cameras.main.scrollX -= dx / this.cameras.main.zoom;
+          this.cameras.main.scrollY -= dy / this.cameras.main.zoom;
+        });
+      }
+
+      drawWalls() {
+        const wallH = 170;
+
+        // 找牆的地板邊緣線（跟地板同一組座標）
+        const p00 = gridToScreen(2, 0, this.originX, this.originY);
+        const pW0 = gridToScreen(this.roomW - 1, 0, this.originX, this.originY);
+        const pWH = gridToScreen(this.roomW - 1, this.roomH - 3, this.originX, this.originY);
+
+        // ===== Top wall（用 TileSprite 鋪牆紙，再用 Mask 切成牆形）
+        const topWallW = (pW0.x - p00.x) + 220;
+        const topWallH = wallH + 80;
+
+        const topWall = this.add.tileSprite(
+          p00.x + topWallW / 2 - 10,
+          p00.y - wallH / 2 - 40,
+          topWallW,
+          topWallH,
+          "wallpaper"
+        );
+        topWall.setDepth(-60);
+
+        // Top wall mask（四邊形）
+        const m1 = this.add.graphics();
+        m1.fillStyle(0xffffff, 1);
+        m1.beginPath();
+        m1.moveTo(p00.x - 60, p00.y);
+        m1.lineTo(pW0.x + 60, pW0.y);
+        m1.lineTo(pW0.x + 60, pW0.y - wallH);
+        m1.lineTo(p00.x - 60, p00.y - wallH);
+        m1.closePath();
+        m1.fillPath();
+        topWall.setMask(m1.createGeometryMask());
+        m1.setVisible(false);
+
+        // ===== Right wall（也是牆紙 + Mask）
+        const rightWallW = 260;
+        const rightWallH = (pWH.y - pW0.y) + wallH + 120;
+
+        const rightWall = this.add.tileSprite(
+          pW0.x + rightWallW / 2 + 70,
+          (pW0.y + pWH.y) / 2 - wallH / 2,
+          rightWallW,
+          rightWallH,
+          "wallpaper"
+        );
+        rightWall.setDepth(-59);
+
+        const m2 = this.add.graphics();
+        m2.fillStyle(0xffffff, 1);
+        m2.beginPath();
+        m2.moveTo(pW0.x + 60, pW0.y);
+        m2.lineTo(pWH.x + 60, pWH.y);
+        m2.lineTo(pWH.x + 60, pWH.y - wallH);
+        m2.lineTo(pW0.x + 60, pW0.y - wallH);
+        m2.closePath();
+        m2.fillPath();
+        rightWall.setMask(m2.createGeometryMask());
+        m2.setVisible(false);
+
+        // ===== 踢腳板（Habbo靈魂：牆底黑線）
+        const g = this.add.graphics();
+        g.lineStyle(7, 0x0b1022, 0.95);
+
+        g.beginPath();
+        g.moveTo(p00.x - 60, p00.y);
+        g.lineTo(pW0.x + 60, pW0.y);
+        g.strokePath();
+
+        g.beginPath();
+        g.moveTo(pW0.x + 60, pW0.y);
+        g.lineTo(pWH.x + 60, pWH.y);
+        g.strokePath();
+
+        g.setDepth(-10);
+
+        // ===== 牆影（讓牆跟地板黏起來）
+        const shadow = this.add.graphics();
+        shadow.fillStyle(0x000000, 0.18);
+        shadow.beginPath();
+        shadow.moveTo(p00.x - 60, p00.y);
+        shadow.lineTo(pW0.x + 60, pW0.y);
+        shadow.lineTo(pW0.x + 60, pW0.y + 18);
+        shadow.lineTo(p00.x - 60, p00.y + 18);
+        shadow.closePath();
+        shadow.fillPath();
+        shadow.setDepth(-9);
+
+        // ✅ 窗戶（貼在牆上）
+        const w1 = this.add.image(p00.x + 100, p00.y - 90, "window").setDepth(-8);
+        const w2 = this.add.image(p00.x + 220, p00.y - 90, "window").setDepth(-8);
+        const w3 = this.add.image(p00.x + 340, p00.y - 90, "window").setDepth(-8);
+
+        // 右牆窗戶
+        const wr = this.add.image(pW0.x + 130, pW0.y + 40, "window").setDepth(-8);
+        wr.setScale(0.9);
+      }
+
+      drawFloor() {
+        for (let y = 0; y < this.roomH; y++) {
+          for (let x = 0; x < this.roomW; x++) {
+            if (!this.hasTile(x, y)) continue;
+
+            const pos = gridToScreen(x, y, this.originX, this.originY);
+            const texKey = (x + y) % 2 === 0 ? "floor" : "floor2";
+            const tile = this.add.image(pos.x, pos.y, texKey);
+            tile.setDepth(pos.y);
+            tile.setInteractive();
+          }
+        }
+
+        // ✅ 畫地板外框
+        this.drawFloorOutline();
+      }
+
+      // ✅ 地板外框（平台感 - Habbo 必備！加粗線條）
+      drawFloorOutline() {
+        const g = this.add.graphics();
+        g.lineStyle(8, 0x0b1022, 0.95);
+
+        for (let y = 0; y < this.roomH; y++) {
+          for (let x = 0; x < this.roomW; x++) {
+            if (!this.hasTile(x, y)) continue;
+
+            const p = gridToScreen(x, y, this.originX, this.originY);
+            const top = { x: p.x, y: p.y - TILE_H / 2 };
+            const right = { x: p.x + TILE_W / 2, y: p.y };
+            const bottom = { x: p.x, y: p.y + TILE_H / 2 };
+            const left = { x: p.x - TILE_W / 2, y: p.y };
+
+            // 只畫「外圈」- 下面這兩個邊最像 Habbo
+            // left-bottom edge（左下）
+            if (!this.hasTile(x - 1, y) || !this.hasTile(x, y + 1)) {
+              if (!this.hasTile(x, y + 1)) {
+                g.beginPath();
+                g.moveTo(left.x, left.y);
+                g.lineTo(bottom.x, bottom.y);
+                g.strokePath();
+              }
+            }
+
+            // right-bottom edge（右下）
+            if (!this.hasTile(x + 1, y) || !this.hasTile(x, y + 1)) {
+              if (!this.hasTile(x + 1, y)) {
+                g.beginPath();
+                g.moveTo(bottom.x, bottom.y);
+                g.lineTo(right.x, right.y);
+                g.strokePath();
+              }
+            }
+
+            // 完整外框（所有邊緣都畫）
+            if (!this.hasTile(x - 1, y)) {
+              g.beginPath();
+              g.moveTo(top.x - TILE_W/2 + p.x - top.x, top.y);
+              g.moveTo(left.x, left.y);
+              g.lineTo(p.x - TILE_W/2, p.y - TILE_H/2 + (p.y - left.y));
+              g.strokePath();
+            }
+          }
+        }
+
+        // 額外畫平台底部厚度線（讓地板看起來有厚度）
+        const g2 = this.add.graphics();
+        g2.lineStyle(6, 0x3d2a1f, 0.8);
+
+        for (let y = 0; y < this.roomH; y++) {
+          for (let x = 0; x < this.roomW; x++) {
+            if (!this.hasTile(x, y)) continue;
+
+            const p = gridToScreen(x, y, this.originX, this.originY);
+            const bottom = { x: p.x, y: p.y + TILE_H / 2 };
+            const left = { x: p.x - TILE_W / 2, y: p.y };
+            const right = { x: p.x + TILE_W / 2, y: p.y };
+
+            // 平台厚度（底邊往下延伸）
+            if (!this.hasTile(x, y + 1)) {
+              g2.beginPath();
+              g2.moveTo(left.x, left.y + 4);
+              g2.lineTo(bottom.x, bottom.y + 4);
+              g2.strokePath();
+            }
+            if (!this.hasTile(x + 1, y)) {
+              g2.beginPath();
+              g2.moveTo(bottom.x, bottom.y + 4);
+              g2.lineTo(right.x, right.y + 4);
+              g2.strokePath();
+            }
+          }
+        }
+
+        g.setDepth(9999);
+        g2.setDepth(9998);
+      }
+
+      placeFurni() {
+        const furniList = [
+          { x: 3, y: 2, base: "sofa_base", top: "sofa_top", baseY: 8, topY: -12, block: true },
+          { x: 6, y: 3, base: "table_base", top: "table_top", baseY: 8, topY: -8, block: true },
+          { x: 9, y: 2, base: "plant_base", top: "plant_top", baseY: 8, topY: -16, block: true },
+          { x: 4, y: 5, base: "sofa_base", top: "sofa_top", baseY: 8, topY: -12, block: true },
+          { x: 8, y: 6, base: "lamp_base", top: "lamp_top", baseY: 8, topY: -24, block: true },
+          { x: 2, y: 4, base: "plant_base", top: "plant_top", baseY: 8, topY: -16, block: true },
+          // 新增家具
+          { x: 10, y: 3, base: "tv_base", top: "tv_top", baseY: 8, topY: -30, block: true },
+          { x: 5, y: 7, base: "bookshelf_base", top: "bookshelf_top", baseY: 8, topY: -40, block: true },
+          { x: 7, y: 2, base: "chair_base", top: "chair_top", baseY: 8, topY: -14, block: true },
+          { x: 2, y: 6, base: "bed_base", top: "bed_top", baseY: 8, topY: -20, block: true },
+          { x: 9, y: 5, base: "fridge_base", top: "fridge_top", baseY: 8, topY: -36, block: true },
+        ];
+
+        for (const f of furniList) {
+          if (!this.hasTile(f.x, f.y)) continue;
+          const pos = gridToScreen(f.x, f.y, this.originX, this.originY);
+
+          // ✅ Base：貼地（y + 8），深度跟地板同層
+          const baseObj = this.add.image(pos.x, pos.y + f.baseY, f.base);
+          baseObj.setDepth(pos.y + 5);
+
+          // ✅ Top：往上偏移，深度超高（遮擋人物）
+          const topObj = this.add.image(pos.x, pos.y + f.topY, f.top);
+          topObj.setDepth(pos.y + 1000);
+
+          this.furni.push({ ...f, baseObj, topObj });
+          if (f.block) this.blocked.add(`${f.x},${f.y}`);
+        }
+      }
+
+      spawnPlayers() {
+        // 使用 Habbo Avatar API 載入的角色
+        this.createPlayer("me", "Amber", 5, 4);
+        this.createPlayer("p1", "Sophie", 7, 5);
+        this.createPlayer("p2", "Luna", 3, 6);
+        this.createPlayer("p3", "Bella", 9, 4);
+      }
+
+      createPlayer(id, name, gx, gy) {
+        const pos = gridToScreen(gx, gy, this.originX, this.originY);
+
+        // ✅ 使用 Habbo Avatar（站立姿勢），如果載入失敗用備用
+        let avatarKey = `avatar_${id}_stand`;
+        if (!this.textures.exists(avatarKey)) {
+          avatarKey = "avatar"; // 備用
+        }
+        const avatar = this.add.image(pos.x, pos.y - 30, avatarKey);
+        avatar.setOrigin(0.5, 1); // 底部對齊
+        avatar.setDepth(pos.y + 10);
+
+        // 陰影
+        const shadow = this.add.ellipse(pos.x, pos.y + 4, 28, 10, 0x000000, 0.3);
+        shadow.setDepth(pos.y + 9);
+
+        // 名字標籤
+        const tag = this.add.text(pos.x, pos.y - 70, name, {
+          fontFamily: "Arial",
+          fontSize: "11px",
+          color: "#ffffff",
+          backgroundColor: "rgba(0,0,0,0.5)",
+          padding: { left: 8, right: 8, top: 4, bottom: 4 }
+        }).setOrigin(0.5);
+        tag.setDepth(pos.y + 11);
+
+        this.players.set(id, {
+          id,
+          name,
+          grid: { x: gx, y: gy },
+          avatar,
+          shadow,
+          tag,
+          moving: false,
+          direction: 2 // 預設面向前方
+        });
+      }
+
+      // ✅ 計算 8 方向（根據移動向量）
+      getDirection(dx, dy) {
+        // Habbo 方向：0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+        // 等角座標中：+x=SE, -x=NW, +y=SW, -y=NE
+        if (dx > 0 && dy === 0) return 3;  // SE
+        if (dx > 0 && dy > 0) return 4;    // S
+        if (dx === 0 && dy > 0) return 5;  // SW
+        if (dx < 0 && dy > 0) return 6;    // W
+        if (dx < 0 && dy === 0) return 7;  // NW
+        if (dx < 0 && dy < 0) return 0;    // N
+        if (dx === 0 && dy < 0) return 1;  // NE
+        if (dx > 0 && dy < 0) return 2;    // E
+        return 2; // 預設
+      }
+
+      movePlayerTo(id, tx, ty) {
+        const p = this.players.get(id);
+        if (!p || p.moving) return;
+
+        const path = astar(
+          { x: p.grid.x, y: p.grid.y },
+          { x: tx, y: ty },
+          (x, y) => this.isBlocked(x, y) || !this.hasTile(x, y),
+          this.roomW,
+          this.roomH
+        );
+
+        if (!path.length) return;
+        p.moving = true;
+
+        const step = (i) => {
+          if (i >= path.length) {
+            p.moving = false;
+            // 停止時切回站立姿勢
+            p.avatar.setTexture(`avatar_${id}_stand`);
+            return;
+          }
+
+          const s = path[i];
+          const pos = gridToScreen(s.x, s.y, this.originX, this.originY);
+
+          // ✅ 計算方向並切換 Avatar 貼圖
+          const dx = s.x - p.grid.x;
+          const dy = s.y - p.grid.y;
+          const dir = this.getDirection(dx, dy);
+          p.direction = dir;
+
+          // 切換為該方向的走路圖
+          const walkKey = `avatar_${id}_${dir}`;
+          if (this.textures.exists(walkKey)) {
+            p.avatar.setTexture(walkKey);
+          }
+
+          // Avatar 移動
+          this.tweens.add({
+            targets: p.avatar,
+            x: pos.x,
+            y: pos.y - 30,
+            duration: 180,
+            ease: "Linear",
+            onUpdate: () => {
+              p.avatar.setDepth(pos.y + 10);
+              p.tag.setDepth(pos.y + 11);
+              if (p.shadow) p.shadow.setDepth(pos.y + 9);
+            },
+            onComplete: () => {
+              p.grid = { x: s.x, y: s.y };
+              step(i + 1);
+            }
+          });
+
+          // 名字標籤移動
+          this.tweens.add({
+            targets: p.tag,
+            x: pos.x,
+            y: pos.y - 70,
+            duration: 180,
+            ease: "Linear"
+          });
+
+          // 陰影移動
+          if (p.shadow) {
+            this.tweens.add({
+              targets: p.shadow,
+              x: pos.x,
+              y: pos.y + 4,
+              duration: 180,
+              ease: "Linear"
+            });
+          }
+        };
+
+        step(0);
+      }
+
+      isValid(x, y) { return x >= 0 && y >= 0 && x < this.roomW && y < this.roomH; }
+      hasTile(x, y) { return this.isValid(x, y) && this.shape[y]?.[x] === 1; }
+      isBlocked(x, y) { return this.blocked.has(`${x},${y}`); }
+    }
+
+    // Phaser config
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: "game",
+      backgroundColor: "#1a1a2e",
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: window.innerWidth,
+        height: window.innerHeight
+      },
+      scene: [HabboRoomScene]
+    });
+  </script>
+</body>
+</html>

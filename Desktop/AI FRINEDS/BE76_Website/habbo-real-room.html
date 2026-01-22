@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BE 76 - Habbo 風格房間</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(255,255,255,0.95);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .room-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .online-count {
+            background: #4ade80;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* Room Container */
+        .room-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: calc(100vh - 70px);
+            padding: 40px;
+        }
+
+        /* Isometric Room */
+        .iso-room {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            transform-style: preserve-3d;
+        }
+
+        /* === WALLS === */
+        .wall-left {
+            position: absolute;
+            left: 100px;
+            top: 50px;
+            width: 400px;
+            height: 200px;
+            background: linear-gradient(180deg, #7c9eb2 0%, #5a7d8f 100%);
+            transform: skewY(26.5deg);
+            border-left: 4px solid #4a6b7c;
+            z-index: 1;
+        }
+
+        .wall-left::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 15px;
+            background: linear-gradient(180deg, #9bb8c9 0%, #7c9eb2 100%);
+        }
+
+        /* Wall decorations - windows */
+        .window {
+            position: absolute;
+            width: 60px;
+            height: 80px;
+            background: linear-gradient(180deg, #87ceeb 0%, #add8e6 50%, #87ceeb 100%);
+            border: 4px solid #5a7d8f;
+            border-radius: 5px 5px 0 0;
+        }
+
+        .wall-left .window:nth-child(1) { left: 50px; top: 50px; }
+        .wall-left .window:nth-child(2) { left: 150px; top: 50px; }
+        .wall-left .window:nth-child(3) { left: 250px; top: 50px; }
+
+        .wall-right {
+            position: absolute;
+            left: 500px;
+            top: 155px;
+            width: 300px;
+            height: 200px;
+            background: linear-gradient(180deg, #6b8a9b 0%, #4d6d7c 100%);
+            transform: skewY(-26.5deg);
+            border-right: 4px solid #3d5a69;
+            z-index: 1;
+        }
+
+        .wall-right::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 15px;
+            background: linear-gradient(180deg, #8aa8b8 0%, #6b8a9b 100%);
+        }
+
+        /* === FLOOR === */
+        .floor {
+            position: absolute;
+            left: 100px;
+            top: 250px;
+            width: 600px;
+            height: 350px;
+            z-index: 2;
+        }
+
+        /* Floor tiles grid */
+        .floor-grid {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform: rotateX(60deg) rotateZ(-45deg);
+            transform-style: preserve-3d;
+        }
+
+        .tile {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            transform-origin: center;
+        }
+
+        .tile-surface {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #8b7355 0%, #a08060 50%, #8b7355 100%);
+            border: 1px solid #6b5344;
+        }
+
+        .tile:nth-child(odd) .tile-surface {
+            background: linear-gradient(135deg, #9b8365 0%, #b09070 50%, #9b8365 100%);
+        }
+
+        /* === CHARACTERS === */
+        .characters-layer {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        .character {
+            position: absolute;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            animation: characterBounce 2s ease-in-out infinite;
+        }
+
+        .character:hover {
+            transform: scale(1.1);
+            z-index: 100;
+        }
+
+        @keyframes characterBounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        /* Habbo-style pixel character */
+        .pixel-avatar {
+            position: relative;
+            width: 32px;
+            image-rendering: pixelated;
+        }
+
+        /* Head */
+        .avatar-head {
+            width: 24px;
+            height: 24px;
+            background: #ffdbac;
+            border: 2px solid #2d2d2d;
+            border-radius: 4px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        /* Hair */
+        .avatar-hair {
+            position: absolute;
+            top: -8px;
+            left: -2px;
+            width: 28px;
+            height: 14px;
+            border-radius: 8px 8px 0 0;
+        }
+
+        /* Eyes */
+        .avatar-eyes {
+            position: absolute;
+            top: 8px;
+            left: 4px;
+            width: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .eye {
+            width: 4px;
+            height: 4px;
+            background: #2d2d2d;
+            border-radius: 50%;
+        }
+
+        /* Mouth */
+        .avatar-mouth {
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px;
+            height: 2px;
+            background: #d17d7d;
+            border-radius: 2px;
+        }
+
+        /* Body */
+        .avatar-body {
+            width: 20px;
+            height: 24px;
+            margin: 2px auto 0;
+            border: 2px solid #2d2d2d;
+            border-radius: 2px;
+            position: relative;
+        }
+
+        /* Legs */
+        .avatar-legs {
+            display: flex;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .leg {
+            width: 8px;
+            height: 12px;
+            background: #3d5a80;
+            border: 2px solid #2d2d2d;
+            border-top: none;
+        }
+
+        /* Character colors */
+        .char-amber .avatar-hair { background: #f4a460; }
+        .char-amber .avatar-body { background: #ff6b9d; }
+
+        .char-bella .avatar-hair { background: #4a4a4a; }
+        .char-bella .avatar-body { background: #4cc9f0; }
+
+        .char-emma .avatar-hair { background: #deb887; }
+        .char-emma .avatar-body { background: #9b59b6; }
+
+        .char-luna .avatar-hair { background: #2d2d2d; }
+        .char-luna .avatar-body { background: #e84393; }
+
+        /* Character name tag */
+        .char-name {
+            text-align: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            background: rgba(0,0,0,0.8);
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-top: 5px;
+            white-space: nowrap;
+        }
+
+        /* Shadow */
+        .char-shadow {
+            width: 24px;
+            height: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 50%;
+            margin: 2px auto 0;
+            filter: blur(2px);
+        }
+
+        /* Speech bubble */
+        .speech-bubble {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .speech-bubble::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: white;
+        }
+
+        .character:hover .speech-bubble,
+        .speech-bubble.show {
+            opacity: 1;
+        }
+
+        /* === FURNITURE === */
+        .furniture {
+            position: absolute;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            z-index: 5;
+        }
+
+        .furniture:hover {
+            transform: scale(1.05);
+        }
+
+        /* Sofa */
+        .sofa {
+            width: 80px;
+            height: 50px;
+        }
+
+        .sofa-back {
+            width: 80px;
+            height: 30px;
+            background: linear-gradient(180deg, #c0392b 0%, #a93226 100%);
+            border: 2px solid #7b241c;
+            border-radius: 5px 5px 0 0;
+        }
+
+        .sofa-seat {
+            width: 80px;
+            height: 20px;
+            background: linear-gradient(180deg, #e74c3c 0%, #c0392b 100%);
+            border: 2px solid #7b241c;
+            border-top: none;
+            border-radius: 0 0 3px 3px;
+        }
+
+        /* Table */
+        .table {
+            width: 60px;
+            height: 40px;
+        }
+
+        .table-top {
+            width: 60px;
+            height: 8px;
+            background: linear-gradient(180deg, #8b4513 0%, #654321 100%);
+            border: 2px solid #3d2914;
+            border-radius: 3px;
+        }
+
+        .table-legs {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 5px;
+        }
+
+        .table-leg {
+            width: 6px;
+            height: 30px;
+            background: #654321;
+            border: 1px solid #3d2914;
+        }
+
+        /* Plant */
+        .plant {
+            width: 40px;
+        }
+
+        .plant-pot {
+            width: 30px;
+            height: 25px;
+            background: linear-gradient(180deg, #d35400 0%, #a04000 100%);
+            border: 2px solid #7a3000;
+            border-radius: 3px 3px 5px 5px;
+            margin: 0 auto;
+        }
+
+        .plant-leaves {
+            width: 40px;
+            height: 40px;
+            position: relative;
+            margin-bottom: -5px;
+        }
+
+        .leaf {
+            position: absolute;
+            width: 15px;
+            height: 25px;
+            background: #27ae60;
+            border: 2px solid #1e8449;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        }
+
+        .leaf:nth-child(1) { left: 5px; transform: rotate(-30deg); }
+        .leaf:nth-child(2) { left: 12px; top: -5px; }
+        .leaf:nth-child(3) { left: 20px; transform: rotate(30deg); }
+
+        /* === ROOM CONTROLS === */
+        .room-controls {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            background: rgba(255,255,255,0.95);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        .room-tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .room-tab {
+            background: transparent;
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            text-align: left;
+        }
+
+        .room-tab:hover, .room-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        /* === CHAT PANEL === */
+        .chat-panel {
+            position: fixed;
+            bottom: 0;
+            right: 20px;
+            width: 320px;
+            background: rgba(255,255,255,0.98);
+            border-radius: 15px 15px 0 0;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 15px 15px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .chat-toggle {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .chat-messages {
+            height: 200px;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .chat-msg {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            animation: msgSlide 0.3s ease;
+        }
+
+        @keyframes msgSlide {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-msg.ai {
+            background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);
+            border-left: 3px solid #667eea;
+        }
+
+        .chat-msg.user {
+            background: #f5f5f5;
+        }
+
+        .chat-input-area {
+            padding: 15px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input-area input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+            font-size: 13px;
+        }
+
+        .chat-input-area input:focus {
+            border-color: #667eea;
+        }
+
+        .chat-input-area button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .chat-input-area button:hover {
+            transform: scale(1.1);
+        }
+
+        /* === CHARACTER MODAL === */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 400px;
+            animation: modalPop 0.3s ease;
+        }
+
+        @keyframes modalPop {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 1.5rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .modal-body {
+            padding: 25px;
+            text-align: center;
+        }
+
+        .modal-avatar {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            margin: 0 auto 20px;
+        }
+
+        .modal-stats {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .modal-desc {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .modal-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .modal-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">BE 76</div>
+        <div class="room-info">
+            <span class="room-name" id="roomTitle">🎀 時尚穿搭房</span>
+            <span class="online-count">👥 12 在線</span>
+        </div>
+    </header>
+
+    <!-- Room Controls -->
+    <div class="room-controls">
+        <div class="room-tabs">
+            <button class="room-tab active" onclick="switchRoom('fashion')">🎀 時尚穿搭</button>
+            <button class="room-tab" onclick="switchRoom('beauty')">💄 美妝保養</button>
+            <button class="room-tab" onclick="switchRoom('travel')">✈️ 旅行探索</button>
+            <button class="room-tab" onclick="switchRoom('music')">🎵 音樂聊天</button>
+        </div>
+    </div>
+
+    <!-- Room Container -->
+    <div class="room-container">
+        <div class="iso-room">
+            <!-- Left Wall -->
+            <div class="wall-left" id="wallLeft">
+                <div class="window"></div>
+                <div class="window"></div>
+                <div class="window"></div>
+            </div>
+
+            <!-- Right Wall -->
+            <div class="wall-right" id="wallRight"></div>
+
+            <!-- Floor -->
+            <div class="floor">
+                <div class="floor-grid" id="floorGrid">
+                    <!-- Tiles generated by JS -->
+                </div>
+            </div>
+
+            <!-- Furniture Layer -->
+            <div class="furniture sofa" style="left: 180px; top: 320px;">
+                <div class="sofa-back"></div>
+                <div class="sofa-seat"></div>
+            </div>
+
+            <div class="furniture table" style="left: 380px; top: 380px;">
+                <div class="table-top"></div>
+                <div class="table-legs">
+                    <div class="table-leg"></div>
+                    <div class="table-leg"></div>
+                </div>
+            </div>
+
+            <div class="furniture plant" style="left: 550px; top: 280px;">
+                <div class="plant-leaves">
+                    <div class="leaf"></div>
+                    <div class="leaf"></div>
+                    <div class="leaf"></div>
+                </div>
+                <div class="plant-pot"></div>
+            </div>
+
+            <!-- Characters Layer -->
+            <div class="characters-layer">
+                <!-- Amber -->
+                <div class="character char-amber" id="amber" style="left: 250px; top: 350px;" onclick="showCharacter('amber')">
+                    <div class="speech-bubble" id="amber-bubble">嗨！歡迎來到房間！</div>
+                    <div class="pixel-avatar">
+                        <div class="avatar-head">
+                            <div class="avatar-hair"></div>
+                            <div class="avatar-eyes">
+                                <div class="eye"></div>
+                                <div class="eye"></div>
+                            </div>
+                            <div class="avatar-mouth"></div>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-legs">
+                            <div class="leg"></div>
+                            <div class="leg"></div>
+                        </div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-name">Amber</div>
+                </div>
+
+                <!-- Bella -->
+                <div class="character char-bella" id="bella" style="left: 350px; top: 400px;" onclick="showCharacter('bella')">
+                    <div class="speech-bubble" id="bella-bubble">今天想聊什麼呢？</div>
+                    <div class="pixel-avatar">
+                        <div class="avatar-head">
+                            <div class="avatar-hair"></div>
+                            <div class="avatar-eyes">
+                                <div class="eye"></div>
+                                <div class="eye"></div>
+                            </div>
+                            <div class="avatar-mouth"></div>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-legs">
+                            <div class="leg"></div>
+                            <div class="leg"></div>
+                        </div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-name">Bella</div>
+                </div>
+
+                <!-- Emma -->
+                <div class="character char-emma" id="emma" style="left: 480px; top: 360px;" onclick="showCharacter('emma')">
+                    <div class="speech-bubble" id="emma-bubble">有什麼想問的嗎？</div>
+                    <div class="pixel-avatar">
+                        <div class="avatar-head">
+                            <div class="avatar-hair"></div>
+                            <div class="avatar-eyes">
+                                <div class="eye"></div>
+                                <div class="eye"></div>
+                            </div>
+                            <div class="avatar-mouth"></div>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-legs">
+                            <div class="leg"></div>
+                            <div class="leg"></div>
+                        </div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-name">Emma</div>
+                </div>
+
+                <!-- Luna -->
+                <div class="character char-luna" id="luna" style="left: 580px; top: 420px;" onclick="showCharacter('luna')">
+                    <div class="speech-bubble" id="luna-bubble">需要幫助嗎？</div>
+                    <div class="pixel-avatar">
+                        <div class="avatar-head">
+                            <div class="avatar-hair"></div>
+                            <div class="avatar-eyes">
+                                <div class="eye"></div>
+                                <div class="eye"></div>
+                            </div>
+                            <div class="avatar-mouth"></div>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-legs">
+                            <div class="leg"></div>
+                            <div class="leg"></div>
+                        </div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-name">Luna</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div class="chat-panel">
+        <div class="chat-header">
+            💬 房間聊天
+            <button class="chat-toggle" onclick="toggleChat()">▼</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-msg ai"><strong>Amber:</strong> 歡迎來到時尚穿搭房！想聊什麼呢？</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" placeholder="輸入訊息..." onkeypress="handleEnter(event)">
+            <button onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <!-- Character Modal -->
+    <div class="modal" id="charModal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalName">Amber</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-avatar" id="modalEmoji">👗</div>
+                <div class="modal-stats">
+                    <div class="stat">
+                        <div class="stat-label">專長</div>
+                        <div class="stat-value" id="modalSkill">時尚穿搭</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">個性</div>
+                        <div class="stat-value" id="modalPersonality">溫柔友善</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">經驗值</div>
+                        <div class="stat-value" id="modalExp">2560</div>
+                    </div>
+                </div>
+                <p class="modal-desc" id="modalDesc">我是 Amber，你的專屬時尚顧問！擅長搭配建議和風格分析。</p>
+                <button class="modal-btn" onclick="startChat()">開始聊天</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Character data
+        const characters = {
+            amber: {
+                name: 'Amber',
+                emoji: '👗',
+                skill: '時尚穿搭',
+                personality: '溫柔友善',
+                exp: 2560,
+                desc: '我是 Amber，你的專屬時尚顧問！擅長搭配建議和風格分析，讓我幫你找到最適合的穿搭風格吧！'
+            },
+            bella: {
+                name: 'Bella',
+                emoji: '💄',
+                skill: '美妝保養',
+                personality: '活潑開朗',
+                exp: 1890,
+                desc: '嗨！我是 Bella，美妝達人！專精彩妝技巧和保養秘訣，讓我幫你找到最適合的妝容。'
+            },
+            emma: {
+                name: 'Emma',
+                emoji: '✈️',
+                skill: '旅行規劃',
+                personality: '冒險精神',
+                exp: 3200,
+                desc: '我是 Emma，旅行專家！喜歡探索世界各地的美景和文化，一起來規劃你的夢想旅程吧！'
+            },
+            luna: {
+                name: 'Luna',
+                emoji: '🎵',
+                skill: '音樂品味',
+                personality: '藝術氣息',
+                exp: 2100,
+                desc: '我是 Luna，音樂愛好者！從古典到流行，讓我為你推薦最適合的音樂和播放清單。'
+            }
+        };
+
+        // Room themes
+        const rooms = {
+            fashion: { name: '🎀 時尚穿搭房', wall: '#7c9eb2', floor: '#8b7355' },
+            beauty: { name: '💄 美妝保養房', wall: '#b07aa1', floor: '#c4a484' },
+            travel: { name: '✈️ 旅行探索房', wall: '#6b9eb0', floor: '#a0c4b8' },
+            music: { name: '🎵 音樂聊天房', wall: '#9b7cb0', floor: '#8e7cc3' }
+        };
+
+        let currentChar = null;
+
+        // Generate floor tiles
+        function generateFloor() {
+            const grid = document.getElementById('floorGrid');
+            grid.innerHTML = '';
+
+            const cols = 10;
+            const rows = 6;
+            const tileSize = 50;
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const tile = document.createElement('div');
+                    tile.className = 'tile';
+                    tile.style.left = (col * tileSize) + 'px';
+                    tile.style.top = (row * tileSize) + 'px';
+                    tile.innerHTML = '<div class="tile-surface"></div>';
+                    grid.appendChild(tile);
+                }
+            }
+        }
+
+        // Switch room
+        function switchRoom(roomType) {
+            const room = rooms[roomType];
+            if (!room) return;
+
+            // Update title
+            document.getElementById('roomTitle').textContent = room.name;
+
+            // Update tabs
+            document.querySelectorAll('.room-tab').forEach((tab, i) => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Add chat message
+            addMessage(`歡迎來到${room.name}！`, 'ai', 'Amber');
+
+            // Random speech bubbles
+            showRandomBubbles();
+        }
+
+        // Show character modal
+        function showCharacter(charId) {
+            const char = characters[charId];
+            if (!char) return;
+
+            currentChar = char;
+
+            document.getElementById('modalName').textContent = char.name;
+            document.getElementById('modalEmoji').textContent = char.emoji;
+            document.getElementById('modalSkill').textContent = char.skill;
+            document.getElementById('modalPersonality').textContent = char.personality;
+            document.getElementById('modalExp').textContent = char.exp;
+            document.getElementById('modalDesc').textContent = char.desc;
+
+            document.getElementById('charModal').style.display = 'flex';
+        }
+
+        function closeModal(e) {
+            if (!e || e.target.id === 'charModal') {
+                document.getElementById('charModal').style.display = 'none';
+            }
+        }
+
+        function startChat() {
+            if (currentChar) {
+                addMessage(`嗨！我是 ${currentChar.name}，很高興認識你！有什麼想聊的嗎？`, 'ai', currentChar.name);
+            }
+            closeModal();
+        }
+
+        // Chat functions
+        function addMessage(text, type, sender = 'You') {
+            const container = document.getElementById('chatMessages');
+            const msg = document.createElement('div');
+            msg.className = `chat-msg ${type}`;
+            msg.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            container.appendChild(msg);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMessage(text, 'user');
+            input.value = '';
+
+            // AI response
+            setTimeout(() => {
+                const responses = [
+                    ['Amber', '這個想法很棒！我來給你一些搭配建議...'],
+                    ['Bella', '讓我推薦一些適合你的選擇！'],
+                    ['Emma', '根據你的風格，我建議...'],
+                    ['Luna', '讓我分析一下最適合的方案！']
+                ];
+                const [name, msg] = responses[Math.floor(Math.random() * responses.length)];
+                addMessage(msg, 'ai', name);
+            }, 1000);
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function toggleChat() {
+            const msgs = document.getElementById('chatMessages');
+            const btn = document.querySelector('.chat-toggle');
+            if (msgs.style.display === 'none') {
+                msgs.style.display = 'block';
+                btn.textContent = '▼';
+            } else {
+                msgs.style.display = 'none';
+                btn.textContent = '▲';
+            }
+        }
+
+        // Random speech bubbles
+        function showRandomBubbles() {
+            const bubbles = ['amber-bubble', 'bella-bubble', 'emma-bubble', 'luna-bubble'];
+            const messages = [
+                '嗨！很高興見到你！',
+                '今天過得如何呢？',
+                '有什麼想聊的嗎？',
+                '需要我的幫助嗎？',
+                '歡迎來到這個房間！'
+            ];
+
+            bubbles.forEach(id => {
+                const bubble = document.getElementById(id);
+                if (Math.random() > 0.5) {
+                    bubble.textContent = messages[Math.floor(Math.random() * messages.length)];
+                    bubble.classList.add('show');
+                    setTimeout(() => bubble.classList.remove('show'), 3000);
+                }
+            });
+        }
+
+        // Character movement animation
+        function animateCharacters() {
+            const chars = document.querySelectorAll('.character');
+            chars.forEach(char => {
+                const currentLeft = parseInt(char.style.left);
+                const currentTop = parseInt(char.style.top);
+
+                // Random small movement
+                const newLeft = currentLeft + (Math.random() - 0.5) * 30;
+                const newTop = currentTop + (Math.random() - 0.5) * 20;
+
+                // Bounds check
+                const boundedLeft = Math.max(200, Math.min(600, newLeft));
+                const boundedTop = Math.max(300, Math.min(450, newTop));
+
+                char.style.transition = 'left 2s ease, top 2s ease';
+                char.style.left = boundedLeft + 'px';
+                char.style.top = boundedTop + 'px';
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            generateFloor();
+
+            // Random bubbles every 8 seconds
+            setInterval(showRandomBubbles, 8000);
+
+            // Character movement every 5 seconds
+            setInterval(animateCharacters, 5000);
+
+            // Initial bubbles
+            setTimeout(showRandomBubbles, 2000);
+        });
+    </script>
+</body>
+</html>

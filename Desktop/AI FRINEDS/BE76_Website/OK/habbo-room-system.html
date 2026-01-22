@@ -1,0 +1,819 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>BE 76 - Room System</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: #0e0e1a; overflow: hidden; font-family: Arial, sans-serif; }
+    #game { width: 100vw; height: 100vh; }
+
+    .ui { position: fixed; z-index: 100; }
+
+    .header {
+      top: 0; left: 0; right: 0; height: 44px;
+      background: linear-gradient(180deg, #252540, #1a1a30);
+      border-bottom: 2px solid #3a3a5a;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+    }
+    .logo { color: #5599ff; font-weight: bold; font-size: 20px; }
+    .room-info { color: #aaaacc; font-size: 13px; }
+
+    .panel {
+      top: 60px; left: 14px;
+      background: rgba(26, 26, 48, 0.95);
+      border: 2px solid #3a3a5a;
+      border-radius: 10px; padding: 12px;
+    }
+    .panel-title {
+      color: #7788cc; font-size: 11px; font-weight: bold;
+      margin-bottom: 8px; text-transform: uppercase;
+    }
+    .room-btn {
+      display: block; width: 110px;
+      background: #252540; border: 1px solid #4a4a6a;
+      color: #aaaacc; padding: 10px 14px; margin-bottom: 6px;
+      border-radius: 8px; font-size: 12px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .room-btn:hover { background: #353560; transform: translateX(3px); }
+    .room-btn.active { background: linear-gradient(135deg, #5566ee, #7755dd); color: #fff; border-color: #7788ff; }
+
+    .chat {
+      bottom: 14px; right: 14px; width: 300px;
+      background: rgba(26, 26, 48, 0.95);
+      border: 2px solid #3a3a5a;
+      border-radius: 12px; overflow: hidden;
+    }
+    .chat-head {
+      background: linear-gradient(135deg, #5566ee, #7755dd);
+      color: #fff; padding: 12px 16px; font-size: 14px; font-weight: bold;
+    }
+    .chat-body { height: 150px; overflow-y: auto; padding: 12px; background: rgba(14, 14, 26, 0.8); }
+    .chat-msg { margin-bottom: 8px; font-size: 12px; color: #ccccee; line-height: 1.4; }
+    .chat-msg b { color: #66aaff; }
+    .chat-input { display: flex; border-top: 1px solid #3a3a5a; }
+    .chat-input input {
+      flex: 1; background: #0e0e1a; border: none; color: #fff;
+      padding: 12px 14px; font-size: 13px; outline: none;
+    }
+    .chat-input button {
+      background: linear-gradient(135deg, #5566ee, #7755dd);
+      border: none; color: #fff;
+      padding: 12px 20px; cursor: pointer; font-size: 13px; font-weight: bold;
+    }
+    .chat-input button:hover { background: linear-gradient(135deg, #6677ff, #8866ee); }
+
+    .user-count {
+      bottom: 14px; left: 14px;
+      background: rgba(26, 26, 48, 0.9);
+      border: 2px solid #3a3a5a;
+      border-radius: 10px; padding: 10px 14px;
+      color: #88cc88; font-size: 12px;
+    }
+    .user-count span { color: #44ff88; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+
+  <header class="ui header">
+    <span class="logo">BE 76</span>
+    <span class="room-info" id="roomInfo">Fashion Lounge</span>
+  </header>
+
+  <div class="ui panel">
+    <div class="panel-title">Rooms</div>
+    <button class="room-btn active" data-room="fashion">Fashion Lounge</button>
+    <button class="room-btn" data-room="beauty">Beauty Studio</button>
+    <button class="room-btn" data-room="travel">Travel Hub</button>
+    <button class="room-btn" data-room="music">Music Room</button>
+  </div>
+
+  <div class="ui chat">
+    <div class="chat-head">Chat</div>
+    <div class="chat-body" id="chatBody"></div>
+    <div class="chat-input">
+      <input id="chatIn" placeholder="Say something..." onkeypress="if(event.key==='Enter')sendChat()">
+      <button onclick="sendChat()">Send</button>
+    </div>
+  </div>
+
+  <div class="ui user-count">
+    <span id="userCount">6</span> users online
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script>
+// =============================================
+// BE 76 - Room System with JSON Data
+// =============================================
+
+// === 房間資料 (Room JSON) ===
+const ROOMS = {
+  fashion: {
+    id: 'fashion',
+    name: 'Fashion Lounge',
+    gridW: 12,
+    gridH: 10,
+    floor: {
+      color1: 0x3a4a6a,
+      color2: 0x2a3a5a
+    },
+    walls: {
+      color: 0x5588bb,
+      colorDark: 0x446699,
+      height: 160
+    },
+    windows: [
+      { wallX: 2 },
+      { wallX: 5 },
+      { wallX: 8 }
+    ],
+    furni: [
+      { type: 'sofa', x: 2, y: 3, color: 0xcc4455 },
+      { type: 'sofa', x: 2, y: 4, color: 0xcc4455 },
+      { type: 'table', x: 5, y: 5 },
+      { type: 'table', x: 6, y: 5 },
+      { type: 'plant', x: 10, y: 2 },
+      { type: 'plant', x: 1, y: 8 },
+      { type: 'lamp', x: 9, y: 3 },
+      { type: 'lamp', x: 1, y: 3 }
+    ]
+  },
+  beauty: {
+    id: 'beauty',
+    name: 'Beauty Studio',
+    gridW: 10,
+    gridH: 8,
+    floor: {
+      color1: 0x6a4a5a,
+      color2: 0x5a3a4a
+    },
+    walls: {
+      color: 0xbb6688,
+      colorDark: 0x995566,
+      height: 150
+    },
+    windows: [
+      { wallX: 2 },
+      { wallX: 6 }
+    ],
+    furni: [
+      { type: 'sofa', x: 2, y: 3, color: 0xff88aa },
+      { type: 'table', x: 5, y: 4 },
+      { type: 'plant', x: 8, y: 2 },
+      { type: 'lamp', x: 1, y: 6 }
+    ]
+  },
+  travel: {
+    id: 'travel',
+    name: 'Travel Hub',
+    gridW: 14,
+    gridH: 10,
+    floor: {
+      color1: 0x4a6a5a,
+      color2: 0x3a5a4a
+    },
+    walls: {
+      color: 0x66aa88,
+      colorDark: 0x448866,
+      height: 170
+    },
+    windows: [
+      { wallX: 3 },
+      { wallX: 7 },
+      { wallX: 11 }
+    ],
+    furni: [
+      { type: 'sofa', x: 2, y: 4, color: 0x66ccaa },
+      { type: 'sofa', x: 2, y: 5, color: 0x66ccaa },
+      { type: 'table', x: 6, y: 5 },
+      { type: 'plant', x: 12, y: 2 },
+      { type: 'plant', x: 1, y: 8 },
+      { type: 'lamp', x: 11, y: 3 }
+    ]
+  },
+  music: {
+    id: 'music',
+    name: 'Music Room',
+    gridW: 12,
+    gridH: 10,
+    floor: {
+      color1: 0x5a4a6a,
+      color2: 0x4a3a5a
+    },
+    walls: {
+      color: 0x8866aa,
+      colorDark: 0x664488,
+      height: 160
+    },
+    windows: [
+      { wallX: 3 },
+      { wallX: 8 }
+    ],
+    furni: [
+      { type: 'sofa', x: 2, y: 4, color: 0xaa66cc },
+      { type: 'sofa', x: 2, y: 5, color: 0xaa66cc },
+      { type: 'table', x: 6, y: 6 },
+      { type: 'plant', x: 10, y: 2 },
+      { type: 'lamp', x: 1, y: 3 },
+      { type: 'lamp', x: 9, y: 8 }
+    ]
+  }
+};
+
+// === 角色資料 ===
+const AVATAR_API = 'https://www.habbo.com/habbo-imaging/avatarimage';
+
+const PLAYERS = [
+  { id: 'amber', name: 'Amber', figure: 'hr-545-45.hd-600-1.ch-665-71.lg-710-71.sh-906-71', x: 4, y: 5 },
+  { id: 'bella', name: 'Bella', figure: 'hr-515-31.hd-600-8.ch-650-66.lg-700-66.sh-905-66', x: 7, y: 4 },
+  { id: 'emma', name: 'Emma', figure: 'hr-540-40.hd-600-1.ch-660-70.lg-715-70.sh-907-70', x: 6, y: 7 },
+  { id: 'luna', name: 'Luna', figure: 'hr-550-42.hd-600-10.ch-655-82.lg-705-82.sh-908-82', x: 3, y: 7 },
+  { id: 'mia', name: 'Mia', figure: 'hr-831-37.hd-600-2.ch-3030-1408.lg-3216-110.sh-3068-110', x: 8, y: 6 },
+  { id: 'sophie', name: 'Sophie', figure: 'hr-828-42.hd-600-7.ch-3185-92.lg-3202-1408.sh-3252-92', x: 5, y: 3 }
+];
+
+// === 常數 ===
+const TILE_W = 64;
+const TILE_H = 32;
+
+let currentRoom = 'fashion';
+let gameScene = null;
+
+// === 座標轉換 ===
+function gridToScreen(gx, gy, originX, originY) {
+  return {
+    x: originX + (gx - gy) * (TILE_W / 2),
+    y: originY + (gx + gy) * (TILE_H / 2)
+  };
+}
+
+function screenToGrid(sx, sy, originX, originY) {
+  const dx = sx - originX;
+  const dy = sy - originY;
+  return {
+    x: Math.floor((dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2),
+    y: Math.floor((dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2)
+  };
+}
+
+// === Phaser Scene ===
+class RoomScene extends Phaser.Scene {
+  constructor() {
+    super('RoomScene');
+  }
+
+  preload() {
+    // 載入所有角色圖片
+    PLAYERS.forEach(p => {
+      const url = `${AVATAR_API}?figure=${p.figure}&direction=2&head_direction=2&gesture=sml&size=l`;
+      this.load.image(`avatar_${p.id}`, url);
+    });
+  }
+
+  create() {
+    gameScene = this;
+    this.loadRoom(currentRoom);
+
+    // 點擊移動
+    this.input.on('pointerdown', (pointer) => {
+      const g = screenToGrid(pointer.x, pointer.y, this.originX, this.originY);
+      if (this.isValidTile(g.x, g.y) && !this.blocked.has(`${g.x},${g.y}`)) {
+        this.movePlayer('mia', g.x, g.y);
+      }
+    });
+
+    // 滾輪縮放
+    this.input.on('wheel', (p, g, dx, dy) => {
+      this.cameras.main.zoom = Phaser.Math.Clamp(this.cameras.main.zoom - dy * 0.001, 0.5, 1.5);
+    });
+
+    addChat('System', 'Welcome to BE 76!');
+  }
+
+  loadRoom(roomId) {
+    // 清除舊內容
+    this.children.removeAll();
+
+    const room = ROOMS[roomId];
+    if (!room) return;
+
+    this.room = room;
+    this.blocked = new Set();
+    this.avatars = {};
+
+    const { width, height } = this.scale;
+    this.originX = width / 2;
+    this.originY = height * 0.22;
+
+    // 1. 畫牆壁（最底層）
+    this.drawWalls();
+
+    // 2. 畫窗戶（在牆上）
+    this.drawWindows();
+
+    // 3. 畫地板
+    this.drawFloor();
+
+    // 4. 放家具
+    this.placeFurniture();
+
+    // 5. 放角色
+    this.placeAvatars();
+
+    // 更新 UI
+    document.getElementById('roomInfo').textContent = room.name;
+  }
+
+  // === 畫牆壁 ===
+  drawWalls() {
+    const room = this.room;
+    const wallH = room.walls.height;
+
+    // 四個角的座標
+    const p00 = gridToScreen(0, 0, this.originX, this.originY);
+    const pW0 = gridToScreen(room.gridW, 0, this.originX, this.originY);
+    const p0H = gridToScreen(0, room.gridH, this.originX, this.originY);
+    const pWH = gridToScreen(room.gridW, room.gridH, this.originX, this.originY);
+
+    const g = this.add.graphics();
+    g.setDepth(-9999);
+
+    // --- 上牆 (Top Wall) ---
+    g.fillStyle(room.walls.color, 1);
+    g.beginPath();
+    g.moveTo(p00.x, p00.y);
+    g.lineTo(pW0.x, pW0.y);
+    g.lineTo(pW0.x, pW0.y - wallH);
+    g.lineTo(p00.x, p00.y - wallH);
+    g.closePath();
+    g.fillPath();
+
+    // 牆紋理線條
+    g.lineStyle(1, 0xffffff, 0.1);
+    for (let i = 1; i < 5; i++) {
+      const ratio = i / 5;
+      const y1 = p00.y - wallH * ratio;
+      const y2 = pW0.y - wallH * ratio;
+      g.beginPath();
+      g.moveTo(p00.x, y1);
+      g.lineTo(pW0.x, y2);
+      g.strokePath();
+    }
+
+    // 上牆輪廓
+    g.lineStyle(3, 0x000000, 0.6);
+    g.beginPath();
+    g.moveTo(p00.x, p00.y);
+    g.lineTo(pW0.x, pW0.y);
+    g.lineTo(pW0.x, pW0.y - wallH);
+    g.lineTo(p00.x, p00.y - wallH);
+    g.closePath();
+    g.strokePath();
+
+    // --- 右牆 (Right Wall) ---
+    g.fillStyle(room.walls.colorDark, 1);
+    g.beginPath();
+    g.moveTo(pW0.x, pW0.y);
+    g.lineTo(pWH.x, pWH.y);
+    g.lineTo(pWH.x, pWH.y - wallH);
+    g.lineTo(pW0.x, pW0.y - wallH);
+    g.closePath();
+    g.fillPath();
+
+    // 右牆輪廓
+    g.lineStyle(3, 0x000000, 0.6);
+    g.strokePath();
+
+    // 角落垂直線
+    g.beginPath();
+    g.moveTo(pW0.x, pW0.y);
+    g.lineTo(pW0.x, pW0.y - wallH);
+    g.strokePath();
+  }
+
+  // === 畫窗戶 ===
+  drawWindows() {
+    const room = this.room;
+    const wallH = room.walls.height;
+
+    room.windows.forEach(win => {
+      const p = gridToScreen(win.wallX, 0, this.originX, this.originY);
+
+      const winW = 55;
+      const winH = 70;
+      const winY = p.y - wallH + 50;
+
+      const g = this.add.graphics();
+      g.setDepth(-9990);
+
+      // 窗框
+      g.fillStyle(0x334455, 1);
+      g.fillRect(p.x - winW/2 - 5, winY - 5, winW + 10, winH + 10);
+
+      // 玻璃
+      g.fillStyle(0x88ccee, 1);
+      g.fillRect(p.x - winW/2, winY, winW, winH);
+
+      // 反光
+      g.fillStyle(0xffffff, 0.3);
+      g.fillRect(p.x - winW/2 + 5, winY + 5, winW * 0.3, winH * 0.4);
+
+      // 窗格
+      g.lineStyle(4, 0x334455, 1);
+      g.beginPath();
+      g.moveTo(p.x, winY);
+      g.lineTo(p.x, winY + winH);
+      g.moveTo(p.x - winW/2, winY + winH/2);
+      g.lineTo(p.x + winW/2, winY + winH/2);
+      g.strokePath();
+
+      // 外框
+      g.lineStyle(2, 0x000000, 0.5);
+      g.strokeRect(p.x - winW/2 - 5, winY - 5, winW + 10, winH + 10);
+    });
+  }
+
+  // === 畫地板 ===
+  drawFloor() {
+    const room = this.room;
+
+    for (let y = 0; y < room.gridH; y++) {
+      for (let x = 0; x < room.gridW; x++) {
+        const p = gridToScreen(x, y, this.originX, this.originY);
+        const isLight = (x + y) % 2 === 0;
+        const color = isLight ? room.floor.color1 : room.floor.color2;
+
+        const g = this.add.graphics();
+        g.setDepth(p.y);
+
+        // 頂面
+        g.fillStyle(color, 1);
+        g.beginPath();
+        g.moveTo(p.x, p.y);
+        g.lineTo(p.x + TILE_W/2, p.y + TILE_H/2);
+        g.lineTo(p.x, p.y + TILE_H);
+        g.lineTo(p.x - TILE_W/2, p.y + TILE_H/2);
+        g.closePath();
+        g.fillPath();
+
+        // 左側厚度
+        const darker1 = Phaser.Display.Color.ValueToColor(color).darken(20).color;
+        g.fillStyle(darker1, 1);
+        g.beginPath();
+        g.moveTo(p.x - TILE_W/2, p.y + TILE_H/2);
+        g.lineTo(p.x, p.y + TILE_H);
+        g.lineTo(p.x, p.y + TILE_H + 6);
+        g.lineTo(p.x - TILE_W/2, p.y + TILE_H/2 + 6);
+        g.closePath();
+        g.fillPath();
+
+        // 右側厚度
+        const darker2 = Phaser.Display.Color.ValueToColor(color).darken(35).color;
+        g.fillStyle(darker2, 1);
+        g.beginPath();
+        g.moveTo(p.x + TILE_W/2, p.y + TILE_H/2);
+        g.lineTo(p.x, p.y + TILE_H);
+        g.lineTo(p.x, p.y + TILE_H + 6);
+        g.lineTo(p.x + TILE_W/2, p.y + TILE_H/2 + 6);
+        g.closePath();
+        g.fillPath();
+
+        // 輪廓
+        g.lineStyle(1, 0x000000, 0.15);
+        g.beginPath();
+        g.moveTo(p.x, p.y);
+        g.lineTo(p.x + TILE_W/2, p.y + TILE_H/2);
+        g.lineTo(p.x, p.y + TILE_H);
+        g.lineTo(p.x - TILE_W/2, p.y + TILE_H/2);
+        g.closePath();
+        g.strokePath();
+      }
+    }
+  }
+
+  // === 放家具 ===
+  placeFurniture() {
+    const room = this.room;
+
+    room.furni.forEach((f, i) => {
+      const p = gridToScreen(f.x, f.y, this.originX, this.originY);
+      const depth = p.y + 50;
+
+      this.blocked.add(`${f.x},${f.y}`);
+
+      switch (f.type) {
+        case 'sofa':
+          this.drawSofa(p.x, p.y, f.color || 0xcc4455, depth);
+          break;
+        case 'table':
+          this.drawTable(p.x, p.y, depth);
+          break;
+        case 'plant':
+          this.drawPlant(p.x, p.y, depth, i);
+          break;
+        case 'lamp':
+          this.drawLamp(p.x, p.y, depth);
+          break;
+      }
+    });
+  }
+
+  drawSofa(cx, cy, color, depth) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+
+    // 座墊
+    g.fillStyle(color, 1);
+    g.fillRoundedRect(cx - 24, cy - 12, 48, 20, 5);
+
+    // 靠背
+    const darker = Phaser.Display.Color.ValueToColor(color).darken(20).color;
+    g.fillStyle(darker, 1);
+    g.fillRoundedRect(cx - 22, cy - 32, 44, 22, 6);
+
+    // 扶手
+    const darker2 = Phaser.Display.Color.ValueToColor(color).darken(30).color;
+    g.fillStyle(darker2, 1);
+    g.fillRoundedRect(cx - 28, cy - 18, 10, 20, 4);
+    g.fillRoundedRect(cx + 18, cy - 18, 10, 20, 4);
+
+    // 輪廓
+    g.lineStyle(2, 0x000000, 0.4);
+    g.strokeRoundedRect(cx - 24, cy - 12, 48, 20, 5);
+  }
+
+  drawTable(cx, cy, depth) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+
+    // 桌面（等角菱形）
+    g.fillStyle(0x8b5a2b, 1);
+    g.beginPath();
+    g.moveTo(cx, cy - 18);
+    g.lineTo(cx + 30, cy - 8);
+    g.lineTo(cx, cy + 2);
+    g.lineTo(cx - 30, cy - 8);
+    g.closePath();
+    g.fillPath();
+
+    // 桌腿
+    g.fillStyle(0x5a3a1b, 1);
+    g.fillRect(cx - 22, cy - 6, 6, 16);
+    g.fillRect(cx + 16, cy - 6, 6, 16);
+
+    g.lineStyle(1, 0x000000, 0.3);
+    g.strokePath();
+  }
+
+  drawPlant(cx, cy, depth, index) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+
+    // 花盆
+    g.fillStyle(0xbb7744, 1);
+    g.beginPath();
+    g.moveTo(cx - 14, cy - 6);
+    g.lineTo(cx + 14, cy - 6);
+    g.lineTo(cx + 11, cy + 10);
+    g.lineTo(cx - 11, cy + 10);
+    g.closePath();
+    g.fillPath();
+
+    // 土
+    g.fillStyle(0x553322, 1);
+    g.fillEllipse(cx, cy - 6, 14, 5);
+
+    // 葉子
+    const leafColors = [0x228b22, 0x32cd32, 0x006400];
+    g.fillStyle(leafColors[index % 3], 1);
+    g.fillEllipse(cx - 10, cy - 28, 12, 20);
+    g.fillEllipse(cx + 10, cy - 28, 12, 20);
+    g.fillEllipse(cx, cy - 38, 10, 24);
+
+    g.lineStyle(1, 0x000000, 0.3);
+    g.strokePath();
+  }
+
+  drawLamp(cx, cy, depth) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+
+    // 燈罩
+    g.fillStyle(0xffffcc, 1);
+    g.beginPath();
+    g.moveTo(cx, cy - 50);
+    g.lineTo(cx + 16, cy - 28);
+    g.lineTo(cx - 16, cy - 28);
+    g.closePath();
+    g.fillPath();
+
+    // 發光
+    g.fillStyle(0xffff88, 0.4);
+    g.fillCircle(cx, cy - 36, 12);
+
+    // 燈柱
+    g.fillStyle(0x666666, 1);
+    g.fillRect(cx - 3, cy - 28, 6, 34);
+
+    // 底座
+    g.fillStyle(0x444444, 1);
+    g.fillEllipse(cx, cy + 8, 14, 6);
+  }
+
+  // === 放角色 ===
+  placeAvatars() {
+    PLAYERS.forEach(player => {
+      // 確保在房間範圍內
+      const x = Math.min(player.x, this.room.gridW - 1);
+      const y = Math.min(player.y, this.room.gridH - 1);
+
+      const p = gridToScreen(x, y, this.originX, this.originY);
+
+      // 陰影
+      const shadow = this.add.ellipse(p.x, p.y + 12, 36, 14, 0x000000, 0.35);
+      shadow.setDepth(p.y + 99);
+
+      // 角色圖片
+      let sprite;
+      if (this.textures.exists(`avatar_${player.id}`)) {
+        sprite = this.add.image(p.x, p.y - 28, `avatar_${player.id}`);
+        sprite.setScale(0.85);
+      } else {
+        sprite = this.add.circle(p.x, p.y - 20, 18, 0x5599ff);
+      }
+      sprite.setDepth(p.y + 100);
+      sprite.setInteractive();
+
+      // 名牌背景
+      const nameBg = this.add.graphics();
+      nameBg.fillStyle(0x000000, 0.7);
+      nameBg.fillRoundedRect(p.x - 30, p.y + 18, 60, 18, 9);
+      nameBg.setDepth(p.y + 101);
+
+      // 名字
+      const nameText = this.add.text(p.x, p.y + 27, player.name, {
+        fontSize: '11px',
+        fontFamily: 'Arial',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      nameText.setDepth(p.y + 102);
+
+      // 點擊角色
+      sprite.on('pointerdown', (e) => {
+        e.stopPropagation();
+        addChat(player.name, getRandomGreeting());
+      });
+
+      this.avatars[player.id] = {
+        sprite, shadow, nameBg, nameText,
+        gridX: x, gridY: y
+      };
+    });
+  }
+
+  // === 移動角色 ===
+  movePlayer(playerId, targetX, targetY) {
+    const avatar = this.avatars[playerId];
+    if (!avatar || avatar.moving) return;
+
+    const path = this.findPath(avatar.gridX, avatar.gridY, targetX, targetY);
+    if (path.length === 0) return;
+
+    avatar.moving = true;
+    let stepIndex = 0;
+
+    const doStep = () => {
+      if (stepIndex >= path.length) {
+        avatar.moving = false;
+        return;
+      }
+
+      const step = path[stepIndex];
+      const p = gridToScreen(step.x, step.y, this.originX, this.originY);
+
+      this.tweens.add({
+        targets: avatar.sprite,
+        x: p.x,
+        y: p.y - 28,
+        duration: 100,
+        ease: 'Linear',
+        onUpdate: () => {
+          const depth = avatar.sprite.y + 28 + 100;
+          avatar.sprite.setDepth(depth);
+          avatar.shadow.setDepth(depth - 1);
+          avatar.nameBg.setDepth(depth + 1);
+          avatar.nameText.setDepth(depth + 2);
+        },
+        onComplete: () => {
+          avatar.gridX = step.x;
+          avatar.gridY = step.y;
+
+          // 更新其他元素位置
+          avatar.shadow.setPosition(p.x, p.y + 12);
+          avatar.nameBg.clear();
+          avatar.nameBg.fillStyle(0x000000, 0.7);
+          avatar.nameBg.fillRoundedRect(p.x - 30, p.y + 18, 60, 18, 9);
+          avatar.nameText.setPosition(p.x, p.y + 27);
+
+          stepIndex++;
+          doStep();
+        }
+      });
+    };
+
+    doStep();
+  }
+
+  findPath(fromX, fromY, toX, toY) {
+    const path = [];
+    let x = fromX, y = fromY;
+
+    while (x !== toX || y !== toY) {
+      if (x < toX) x++;
+      else if (x > toX) x--;
+      else if (y < toY) y++;
+      else if (y > toY) y--;
+
+      if (this.blocked.has(`${x},${y}`)) break;
+      path.push({ x, y });
+    }
+
+    return path;
+  }
+
+  isValidTile(x, y) {
+    return x >= 0 && x < this.room.gridW && y >= 0 && y < this.room.gridH;
+  }
+}
+
+// === UI 函數 ===
+function addChat(name, text) {
+  const body = document.getElementById('chatBody');
+  body.innerHTML += `<div class="chat-msg"><b>${name}:</b> ${text}</div>`;
+  body.scrollTop = body.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById('chatIn');
+  if (input.value.trim()) {
+    addChat('You', input.value);
+    input.value = '';
+
+    setTimeout(() => {
+      const names = PLAYERS.map(p => p.name);
+      const name = names[Math.floor(Math.random() * names.length)];
+      addChat(name, getRandomReply());
+    }, 600);
+  }
+}
+
+function getRandomGreeting() {
+  const greetings = ['Hi there!', 'Hello!', 'Hey!', 'Nice to meet you!', 'Welcome!'];
+  return greetings[Math.floor(Math.random() * greetings.length)];
+}
+
+function getRandomReply() {
+  const replies = ['Nice!', 'I agree!', 'Cool!', 'Sounds good!', 'Awesome!', 'Love it!'];
+  return replies[Math.floor(Math.random() * replies.length)];
+}
+
+function changeRoom(roomId) {
+  currentRoom = roomId;
+  if (gameScene) {
+    gameScene.loadRoom(roomId);
+  }
+
+  // 更新按鈕狀態
+  document.querySelectorAll('.room-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.room === roomId);
+  });
+
+  addChat('System', `Entered ${ROOMS[roomId].name}`);
+}
+
+// === 房間按鈕事件 ===
+document.querySelectorAll('.room-btn').forEach(btn => {
+  btn.addEventListener('click', () => changeRoom(btn.dataset.room));
+});
+
+// === 啟動遊戲 ===
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game',
+  backgroundColor: 0x0e0e1a,
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH
+  },
+  scene: [RoomScene]
+};
+
+const game = new Phaser.Game(config);
+  </script>
+</body>
+</html>

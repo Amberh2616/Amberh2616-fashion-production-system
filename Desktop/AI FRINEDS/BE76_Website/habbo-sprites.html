@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BE 76 - Habbo Style</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1b1b2f;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            position: fixed;
+            top: 0; left: 0;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .ui { position: fixed; z-index: 100; }
+        .header {
+            top: 0; left: 0; right: 0; height: 36px;
+            background: linear-gradient(180deg, #3a3a5c, #2a2a4c);
+            border-bottom: 2px solid #000;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 15px;
+        }
+        .logo { color: #7dd3fc; font-size: 16px; font-weight: bold; }
+        .room-name { color: #fff; font-size: 12px; }
+        .panel {
+            top: 50px; left: 10px;
+            background: #2a2a4c; border: 2px solid #000;
+            border-radius: 4px; padding: 8px;
+        }
+        .room-btn {
+            display: block; width: 80px;
+            background: #3a3a5c; border: 1px solid #555;
+            color: #aaa; padding: 6px; margin-bottom: 4px;
+            font-size: 11px; cursor: pointer; border-radius: 3px;
+        }
+        .room-btn:hover { background: #4a4a6c; }
+        .room-btn.active { background: #6366f1; color: #fff; border-color: #818cf8; }
+        .chat-box {
+            bottom: 10px; right: 10px; width: 240px;
+            background: #2a2a4c; border: 2px solid #000; border-radius: 6px;
+        }
+        .chat-head {
+            background: #6366f1; color: #fff; padding: 6px 10px;
+            font-size: 11px; font-weight: bold; border-radius: 4px 4px 0 0;
+        }
+        .chat-body { height: 100px; overflow-y: auto; padding: 6px; background: #1a1a2e; }
+        .chat-msg { margin-bottom: 4px; font-size: 10px; color: #ccc; }
+        .chat-msg b { color: #7dd3fc; }
+        .chat-input-area { display: flex; }
+        .chat-input {
+            flex: 1; padding: 6px; background: #1a1a2e; border: none;
+            color: #fff; font-size: 10px; outline: none;
+        }
+        .chat-send {
+            background: #6366f1; border: none; color: #fff;
+            padding: 6px 10px; cursor: pointer; font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+
+    <header class="ui header">
+        <div class="logo">BE 76</div>
+        <span class="room-name" id="roomName">Fashion Lounge</span>
+    </header>
+
+    <div class="ui panel">
+        <button class="room-btn active" onclick="changeRoom('fashion',this)">Fashion</button>
+        <button class="room-btn" onclick="changeRoom('beauty',this)">Beauty</button>
+        <button class="room-btn" onclick="changeRoom('travel',this)">Travel</button>
+        <button class="room-btn" onclick="changeRoom('music',this)">Music</button>
+    </div>
+
+    <div class="ui chat-box">
+        <div class="chat-head">Chat</div>
+        <div class="chat-body" id="chatBody">
+            <div class="chat-msg"><b>Amber:</b> Welcome! Click to walk~</div>
+        </div>
+        <div class="chat-input-area">
+            <input class="chat-input" id="chatInput" placeholder="Type..." onkeypress="if(event.key==='Enter')sendChat()">
+            <button class="chat-send" onclick="sendChat()">Send</button>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// Tile settings - 64x32 for clearer pixels
+const TILE_W = 64;
+const TILE_H = 32;
+const TILE_DEPTH = 8;
+
+// Room size
+const ROOM_W = 8;
+const ROOM_H = 6;
+const WALL_H = 100;
+
+// Room themes
+const THEMES = {
+    fashion: { name: 'Fashion Lounge', floor1: '#d4a76a', floor2: '#c49a60', wall: '#8ec4d4', wallDark: '#6ea4b4' },
+    beauty: { name: 'Beauty Studio', floor1: '#e4b8c8', floor2: '#d4a8b8', wall: '#e8c4d8', wallDark: '#c8a4b8' },
+    travel: { name: 'Travel Hub', floor1: '#a8d4a8', floor2: '#98c498', wall: '#a8d8e8', wallDark: '#88b8c8' },
+    music: { name: 'Music Room', floor1: '#c4b8d8', floor2: '#b4a8c8', wall: '#a898c8', wallDark: '#8878a8' }
+};
+
+// Characters - positioned in grid
+const CHARS = {
+    amber: { name: 'Amber', x: 2, y: 3, skin: '#ffd5c8', hair: '#d4875a', shirt: '#ff6b9d', pants: '#3d5a80' },
+    bella: { name: 'Bella', x: 5, y: 3, skin: '#ffe4d4', hair: '#2a2a2a', shirt: '#4cc9f0', pants: '#3d5a80' },
+    emma: { name: 'Emma', x: 6, y: 2, skin: '#ffd5c8', hair: '#f4c474', shirt: '#4ade80', pants: '#3d5a80' },
+    luna: { name: 'Luna', x: 4, y: 4, skin: '#ffe4d4', hair: '#1a1a2a', shirt: '#a855f7', pants: '#3d5a80' }
+};
+
+let currentRoom = 'fashion';
+let offsetX = 0, offsetY = 0;
+
+// Isometric conversion
+function toIso(gx, gy) {
+    return {
+        x: (gx - gy) * (TILE_W / 2),
+        y: (gx + gy) * (TILE_H / 2)
+    };
+}
+
+// Reverse isometric (screen to grid)
+function fromIso(sx, sy) {
+    const x = (sx / (TILE_W / 2) + sy / (TILE_H / 2)) / 2;
+    const y = (sy / (TILE_H / 2) - sx / (TILE_W / 2)) / 2;
+    return { x: Math.floor(x), y: Math.floor(y) };
+}
+
+// Draw isometric floor tile
+function drawFloorTile(gx, gy, color1, color2) {
+    const pos = toIso(gx, gy);
+    const x = pos.x + offsetX;
+    const y = pos.y + offsetY;
+
+    const isLight = (gx + gy) % 2 === 0;
+    const topColor = isLight ? color1 : color2;
+
+    // Top surface
+    ctx.fillStyle = topColor;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + TILE_W/2, y + TILE_H/2);
+    ctx.lineTo(x, y + TILE_H);
+    ctx.lineTo(x - TILE_W/2, y + TILE_H/2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Left edge
+    ctx.fillStyle = shadeColor(topColor, -30);
+    ctx.beginPath();
+    ctx.moveTo(x - TILE_W/2, y + TILE_H/2);
+    ctx.lineTo(x, y + TILE_H);
+    ctx.lineTo(x, y + TILE_H + TILE_DEPTH);
+    ctx.lineTo(x - TILE_W/2, y + TILE_H/2 + TILE_DEPTH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right edge
+    ctx.fillStyle = shadeColor(topColor, -50);
+    ctx.beginPath();
+    ctx.moveTo(x + TILE_W/2, y + TILE_H/2);
+    ctx.lineTo(x, y + TILE_H);
+    ctx.lineTo(x, y + TILE_H + TILE_DEPTH);
+    ctx.lineTo(x + TILE_W/2, y + TILE_H/2 + TILE_DEPTH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + TILE_W/2, y + TILE_H/2);
+    ctx.lineTo(x, y + TILE_H);
+    ctx.lineTo(x - TILE_W/2, y + TILE_H/2);
+    ctx.closePath();
+    ctx.stroke();
+}
+
+// Draw back wall
+function drawBackWall(theme) {
+    const start = toIso(0, 0);
+    const end = toIso(ROOM_W, 0);
+
+    const x1 = start.x + offsetX;
+    const y1 = start.y + offsetY;
+    const x2 = end.x + offsetX;
+    const y2 = end.y + offsetY;
+
+    // Wall face
+    ctx.fillStyle = theme.wall;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2, y2 - WALL_H);
+    ctx.lineTo(x1, y1 - WALL_H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Decorative lines
+    ctx.strokeStyle = shadeColor(theme.wall, -15);
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+        const ly = y1 - (WALL_H * i / 4);
+        ctx.beginPath();
+        ctx.moveTo(x1, ly);
+        ctx.lineTo(x2, ly + (y2 - y1));
+        ctx.stroke();
+    }
+
+    // Windows
+    drawWindow(x1 + (x2-x1)*0.25, y1 - WALL_H + 30 + (y2-y1)*0.25, 40, 50);
+    drawWindow(x1 + (x2-x1)*0.75, y1 - WALL_H + 30 + (y2-y1)*0.75, 40, 50);
+}
+
+// Draw side wall
+function drawSideWall(theme) {
+    const start = toIso(ROOM_W, 0);
+    const end = toIso(ROOM_W, ROOM_H);
+
+    const x1 = start.x + offsetX;
+    const y1 = start.y + offsetY;
+    const x2 = end.x + offsetX;
+    const y2 = end.y + offsetY;
+
+    // Wall face (darker)
+    ctx.fillStyle = theme.wallDark;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2, y2 - WALL_H);
+    ctx.lineTo(x1, y1 - WALL_H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Corner line
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1, y1 - WALL_H);
+    ctx.stroke();
+}
+
+// Draw window
+function drawWindow(x, y, w, h) {
+    // Frame
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(x - w/2 - 3, y - 3, w + 6, h + 6);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - w/2 - 3, y - 3, w + 6, h + 6);
+
+    // Glass
+    ctx.fillStyle = '#87ceeb';
+    ctx.fillRect(x - w/2, y, w, h);
+
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(x - w/2 + 3, y + 3, w * 0.3, h * 0.4);
+
+    // Cross frame
+    ctx.strokeStyle = '#2d3748';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + h);
+    ctx.moveTo(x - w/2, y + h/2);
+    ctx.lineTo(x + w/2, y + h/2);
+    ctx.stroke();
+}
+
+// ========== HABBO-STYLE CHARACTER (2D SPRITE, FRONT-FACING) ==========
+function drawCharacter(char) {
+    const pos = toIso(char.x, char.y);
+    const x = pos.x + offsetX;
+    const y = pos.y + offsetY - 10; // Lift above floor
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + TILE_H/2 + 5, 15, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === HABBO AVATAR - FRONT FACING 2D SPRITE ===
+    const headY = y - 45;
+    const bodyY = y - 15;
+
+    // LEGS (simple rectangles)
+    ctx.fillStyle = char.pants;
+    ctx.fillRect(x - 8, bodyY + 15, 6, 20);  // Left leg
+    ctx.fillRect(x + 2, bodyY + 15, 6, 20);  // Right leg
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 8, bodyY + 15, 6, 20);
+    ctx.strokeRect(x + 2, bodyY + 15, 6, 20);
+
+    // FEET
+    ctx.fillStyle = '#333';
+    ctx.fillRect(x - 9, bodyY + 33, 8, 4);
+    ctx.fillRect(x + 1, bodyY + 33, 8, 4);
+
+    // BODY (rectangle with rounded feel)
+    ctx.fillStyle = char.shirt;
+    ctx.beginPath();
+    ctx.roundRect(x - 12, bodyY, 24, 18, 3);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    // ARMS
+    ctx.fillStyle = char.skin;
+    ctx.fillRect(x - 16, bodyY + 2, 5, 14);  // Left arm
+    ctx.fillRect(x + 11, bodyY + 2, 5, 14);  // Right arm
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(x - 16, bodyY + 2, 5, 14);
+    ctx.strokeRect(x + 11, bodyY + 2, 5, 14);
+
+    // HANDS
+    ctx.fillStyle = char.skin;
+    ctx.beginPath();
+    ctx.arc(x - 13.5, bodyY + 18, 3, 0, Math.PI * 2);
+    ctx.arc(x + 13.5, bodyY + 18, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // HEAD (big round head - Habbo signature!)
+    ctx.fillStyle = char.skin;
+    ctx.beginPath();
+    ctx.ellipse(x, headY, 18, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // HAIR (on top of head)
+    ctx.fillStyle = char.hair;
+    ctx.beginPath();
+    ctx.ellipse(x, headY - 12, 19, 12, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    // Hair sides
+    ctx.beginPath();
+    ctx.ellipse(x - 14, headY - 5, 6, 10, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + 14, headY - 5, 6, 10, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // EYES (big cute eyes)
+    // Eye whites
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x - 6, headY, 5, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 6, headY, 5, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Pupils
+    ctx.fillStyle = '#2a2a2a';
+    ctx.beginPath();
+    ctx.arc(x - 5, headY + 1, 3, 0, Math.PI * 2);
+    ctx.arc(x + 7, headY + 1, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye shine
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x - 6, headY - 1, 1.5, 0, Math.PI * 2);
+    ctx.arc(x + 6, headY - 1, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // BLUSH
+    ctx.fillStyle = 'rgba(255,150,150,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(x - 12, headY + 5, 4, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 12, headY + 5, 4, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // MOUTH (small smile)
+    ctx.strokeStyle = '#c08080';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, headY + 8, 4, 0.1 * Math.PI, 0.9 * Math.PI);
+    ctx.stroke();
+
+    // NAME TAG
+    ctx.font = 'bold 11px Arial';
+    const nameWidth = ctx.measureText(char.name).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.beginPath();
+    ctx.roundRect(x - nameWidth/2 - 6, y + TILE_H/2 + 10, nameWidth + 12, 16, 8);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(char.name, x, y + TILE_H/2 + 22);
+}
+
+// Draw sofa (2D sprite style)
+function drawSofa(gx, gy) {
+    const pos = toIso(gx, gy);
+    const x = pos.x + offsetX;
+    const y = pos.y + offsetY;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + TILE_H/2 + 8, 35, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sofa base
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.roundRect(x - 35, y - 10, 70, 25, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Sofa back
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.roundRect(x - 38, y - 35, 76, 28, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Cushions
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.roundRect(x - 30, y - 8, 25, 18, 4);
+    ctx.roundRect(x + 5, y - 8, 25, 18, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Armrests
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.roundRect(x - 40, y - 15, 8, 25, 3);
+    ctx.roundRect(x + 32, y - 15, 8, 25, 3);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+}
+
+// Draw table
+function drawTable(gx, gy) {
+    const pos = toIso(gx, gy);
+    const x = pos.x + offsetX;
+    const y = pos.y + offsetY;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + TILE_H/2 + 5, 25, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Legs
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(x - 20, y, 4, 20);
+    ctx.fillRect(x + 16, y, 4, 20);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 20, y, 4, 20);
+    ctx.strokeRect(x + 16, y, 4, 20);
+
+    // Tabletop
+    ctx.fillStyle = '#a0522d';
+    ctx.beginPath();
+    ctx.roundRect(x - 25, y - 8, 50, 12, 3);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Cup
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x + 10, y - 5, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+// Draw plant
+function drawPlant(gx, gy) {
+    const pos = toIso(gx, gy);
+    const x = pos.x + offsetX;
+    const y = pos.y + offsetY;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + TILE_H/2 + 3, 15, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pot
+    ctx.fillStyle = '#d2691e';
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y - 5);
+    ctx.lineTo(x + 12, y - 5);
+    ctx.lineTo(x + 10, y + 15);
+    ctx.lineTo(x - 10, y + 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Pot rim
+    ctx.fillStyle = '#b8560f';
+    ctx.beginPath();
+    ctx.ellipse(x, y - 5, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Leaves
+    ctx.fillStyle = '#27ae60';
+    const leafPositions = [[0, -35], [-12, -25], [12, -25], [-8, -15], [8, -15]];
+    leafPositions.forEach(([dx, dy]) => {
+        ctx.beginPath();
+        ctx.ellipse(x + dx, y + dy, 8, 15, dx * 0.02, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.strokeStyle = '#1e8449';
+    ctx.lineWidth = 1;
+    leafPositions.forEach(([dx, dy]) => {
+        ctx.beginPath();
+        ctx.moveTo(x + dx, y + dy - 12);
+        ctx.lineTo(x + dx, y + dy + 10);
+        ctx.stroke();
+    });
+}
+
+// Color utility
+function shadeColor(color, percent) {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+    const G = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amt));
+    const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
+    return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+}
+
+// Main render
+function render() {
+    ctx.fillStyle = '#1b1b2f';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const theme = THEMES[currentRoom];
+
+    // Draw walls first
+    drawBackWall(theme);
+    drawSideWall(theme);
+
+    // Draw floor tiles
+    for (let gy = 0; gy < ROOM_H; gy++) {
+        for (let gx = 0; gx < ROOM_W; gx++) {
+            drawFloorTile(gx, gy, theme.floor1, theme.floor2);
+        }
+    }
+
+    // Collect all objects for depth sorting
+    const objects = [];
+
+    // Furniture
+    objects.push({ type: 'sofa', x: 1, y: 1, draw: () => drawSofa(1, 1) });
+    objects.push({ type: 'table', x: 4, y: 3, draw: () => drawTable(4, 3) });
+    objects.push({ type: 'plant', x: 6, y: 1, draw: () => drawPlant(6, 1) });
+
+    // Characters
+    Object.values(CHARS).forEach(char => {
+        objects.push({ type: 'char', x: char.x, y: char.y, draw: () => drawCharacter(char) });
+    });
+
+    // Sort by depth (y + x for isometric)
+    objects.sort((a, b) => (a.x + a.y) - (b.x + b.y));
+
+    // Draw all objects
+    objects.forEach(obj => obj.draw());
+}
+
+// Handle click
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left - offsetX;
+    const my = e.clientY - rect.top - offsetY;
+
+    const grid = fromIso(mx, my);
+
+    if (grid.x >= 0 && grid.x < ROOM_W && grid.y >= 0 && grid.y < ROOM_H) {
+        // Move Amber
+        CHARS.amber.x = grid.x;
+        CHARS.amber.y = grid.y;
+        addChat('Amber moved!', 'Amber');
+    }
+});
+
+// UI functions
+function addChat(text, name = 'System') {
+    const body = document.getElementById('chatBody');
+    const msg = document.createElement('div');
+    msg.className = 'chat-msg';
+    msg.innerHTML = `<b>${name}:</b> ${text}`;
+    body.appendChild(msg);
+    body.scrollTop = body.scrollHeight;
+}
+
+function sendChat() {
+    const input = document.getElementById('chatInput');
+    if (input.value.trim()) {
+        addChat(input.value, 'You');
+        input.value = '';
+        setTimeout(() => addChat('Nice!', 'Amber'), 500);
+    }
+}
+
+function changeRoom(id, btn) {
+    currentRoom = id;
+    document.getElementById('roomName').textContent = THEMES[id].name;
+    document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    addChat('Welcome to ' + THEMES[id].name + '!');
+}
+
+// Init
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    // Center the room
+    const roomCenter = toIso(ROOM_W / 2, ROOM_H / 2);
+    offsetX = canvas.width / 2 - roomCenter.x;
+    offsetY = canvas.height / 2 - roomCenter.y + 30;
+}
+
+function gameLoop() {
+    render();
+    requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener('resize', resize);
+window.changeRoom = changeRoom;
+window.sendChat = sendChat;
+
+resize();
+gameLoop();
+</script>
+</body>
+</html>

@@ -1,0 +1,1094 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>BE76 - Habbo-like Room (Fixed)</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #0f1220; overflow: hidden; }
+    #game { width: 100vw; height: 100vh; }
+
+    .ui-left {
+      position: fixed; left: 26px; top: 84px;
+      width: 240px;
+      background: rgba(9, 12, 22, 0.65);
+      border: 1px solid rgba(90, 110, 170, 0.35);
+      border-radius: 18px;
+      padding: 18px;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      backdrop-filter: blur(6px);
+    }
+    .brand {
+      position: fixed; left: 26px; top: 20px;
+      font-family: Arial, sans-serif;
+      font-weight: 700;
+      font-size: 28px;
+      color: #7dd3fc;
+      letter-spacing: 1px;
+      opacity: 0.95;
+    }
+    .top-right {
+      position: fixed; right: 22px; top: 20px;
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+      color: rgba(255,255,255,0.65);
+    }
+    .btn {
+      width: 100%;
+      padding: 14px 14px;
+      border-radius: 14px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(120, 140, 220, 0.25);
+      background: rgba(30, 36, 66, 0.7);
+      color: rgba(255,255,255,0.75);
+      cursor: pointer;
+      font-size: 16px;
+      transition: all .15s ease;
+    }
+    .btn.active {
+      background: rgba(86, 102, 255, 0.8);
+      color: #fff;
+      border-color: rgba(150, 170, 255, 0.35);
+      box-shadow: 0 10px 30px rgba(86, 102, 255, 0.25);
+    }
+    .btn:hover { transform: translateY(-1px); }
+
+    .chatbox {
+      position: fixed; right: 26px; bottom: 22px;
+      width: 360px; height: 280px;
+      border-radius: 18px;
+      border: 1px solid rgba(120, 140, 220, 0.30);
+      background: rgba(9, 12, 22, 0.65);
+      backdrop-filter: blur(6px);
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      color: #fff;
+    }
+    .chatbox .header {
+      height: 52px;
+      display: flex; align-items: center;
+      padding: 0 14px;
+      background: rgba(86, 102, 255, 0.85);
+      font-weight: 700;
+      letter-spacing: .4px;
+    }
+    .chatbox .body {
+      padding: 12px 14px;
+      height: 160px;
+      overflow: auto;
+      color: rgba(255,255,255,0.85);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .chatbox .inputRow {
+      display: flex;
+      gap: 10px;
+      padding: 12px 12px;
+      border-top: 1px solid rgba(120, 140, 220, 0.22);
+    }
+    .chatbox input {
+      flex: 1;
+      border-radius: 12px;
+      border: 1px solid rgba(120, 140, 220, 0.30);
+      background: rgba(255,255,255,0.06);
+      padding: 10px 12px;
+      color: #fff;
+      outline: none;
+      font-size: 14px;
+    }
+    .chatbox button {
+      width: 84px;
+      border-radius: 12px;
+      border: 1px solid rgba(120, 140, 220, 0.30);
+      background: rgba(86, 102, 255, 0.85);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="brand">BE 76</div>
+  <div class="top-right" id="roomTitle">Fashion Lounge · 6 online</div>
+
+  <div class="ui-left">
+    <button class="btn active" id="btnFashion">Fashion</button>
+    <button class="btn" id="btnBeauty">Beauty</button>
+    <button class="btn" id="btnTravel">Travel</button>
+    <button class="btn" id="btnMusic">Music</button>
+
+    <div style="margin-top:10px; font-size:12px; opacity:.7; line-height:1.35">
+      ✅ 點地板走路（A*會繞家具）<br>
+      ✅ Enter 開始輸入聊天<br>
+      ✅ 滾輪縮放 / 拖曳視角
+    </div>
+  </div>
+
+  <div class="chatbox">
+    <div class="header">💬 Chat</div>
+    <div class="body" id="chatLog">
+      <div style="color:#7dd3fc;"><b>System:</b> Room loaded. Click to walk.</div>
+      <div style="color:#7dd3fc;"><b>System:</b> Press Enter to chat bubble.</div>
+    </div>
+    <div class="inputRow">
+      <input id="chatInput" placeholder="Say something..." />
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <div id="game"></div>
+
+  <!-- Phaser 3 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+
+  <script>
+    // ================================
+    // ROOM DATA
+    // ================================
+    const ROOMS = {
+      fashion: {
+        id: "fashion-lounge",
+        name: "Fashion Lounge",
+        w: 14,
+        h: 10,
+        floor: { type: "checker", colors: [0x1b2540, 0x152038] },
+        walls: {
+          top:   { fill: 0x3d77a7, edge: 0x0b1022, heightPx: 170 },
+          right: { fill: 0x3d77a7, edge: 0x0b1022, heightPx: 170 }
+        },
+        decorations: [
+          { kind: "window", wall: "top", tileX: 3, yOffset: 62 },
+          { kind: "window", wall: "top", tileX: 6, yOffset: 62 },
+          { kind: "window", wall: "top", tileX: 9, yOffset: 62 },
+          { kind: "window", wall: "right", tileY: 2, yOffset: 62 },
+        ],
+        furni: [
+          { kind: "sofa", x: 3, y: 2, color: 0xff6d8a, block: true },
+          { kind: "table", x: 5, y: 3, color: 0xffd36d, block: true },
+          { kind: "chair", x: 6, y: 4, color: 0x6dd6ff, block: true },
+          { kind: "plant", x: 10, y: 2, color: 0x8bff6d, block: true },
+          { kind: "lamp", x: 11, y: 6, color: 0xffcc66, block: true },
+          { kind: "sofa", x: 7, y: 7, color: 0xcaf1ff, block: true },
+        ]
+      },
+
+      beauty: {
+        id: "beauty-room",
+        name: "Beauty Lounge",
+        w: 14,
+        h: 10,
+        floor: { type: "checker", colors: [0x2a1b40, 0x201538] },
+        walls: {
+          top:   { fill: 0x7a4ad1, edge: 0x0b1022, heightPx: 170 },
+          right: { fill: 0x7a4ad1, edge: 0x0b1022, heightPx: 170 }
+        },
+        decorations: [
+          { kind: "window", wall: "top", tileX: 6, yOffset: 62 },
+          { kind: "poster", wall: "right", tileY: 4, yOffset: 70 },
+        ],
+        furni: [
+          { kind: "table", x: 6, y: 4, color: 0xff6dd6, block: true },
+          { kind: "chair", x: 5, y: 5, color: 0xcaf1ff, block: true },
+          { kind: "chair", x: 7, y: 5, color: 0xcaf1ff, block: true },
+          { kind: "lamp", x: 10, y: 3, color: 0xff99cc, block: true },
+          { kind: "plant", x: 2, y: 2, color: 0x4a9c5d, block: true },
+        ]
+      },
+
+      travel: {
+        id: "travel-room",
+        name: "Travel Lounge",
+        w: 14,
+        h: 10,
+        floor: { type: "checker", colors: [0x1b4030, 0x153828] },
+        walls: {
+          top:   { fill: 0x2e8b57, edge: 0x0b1022, heightPx: 170 },
+          right: { fill: 0x2e8b57, edge: 0x0b1022, heightPx: 170 }
+        },
+        decorations: [
+          { kind: "poster", wall: "top", tileX: 7, yOffset: 78 }
+        ],
+        furni: [
+          { kind: "sofa", x: 3, y: 5, color: 0x8b6914, block: true },
+          { kind: "table", x: 5, y: 6, color: 0xc9a227, block: true },
+          { kind: "plant", x: 10, y: 3, color: 0x4a9c5d, block: true },
+          { kind: "plant", x: 11, y: 7, color: 0x4a9c5d, block: true },
+          { kind: "lamp", x: 2, y: 2, color: 0xffeebb, block: true },
+        ]
+      },
+
+      music: {
+        id: "music-room",
+        name: "Music Lounge",
+        w: 14,
+        h: 10,
+        floor: { type: "checker", colors: [0x401b1b, 0x381515] },
+        walls: {
+          top:   { fill: 0xb84a4a, edge: 0x0b1022, heightPx: 170 },
+          right: { fill: 0xb84a4a, edge: 0x0b1022, heightPx: 170 }
+        },
+        decorations: [
+          { kind: "poster", wall: "top", tileX: 4, yOffset: 78 },
+          { kind: "poster", wall: "top", tileX: 9, yOffset: 78 }
+        ],
+        furni: [
+          { kind: "sofa", x: 4, y: 4, color: 0x8b0000, block: true },
+          { kind: "sofa", x: 8, y: 4, color: 0x8b0000, block: true },
+          { kind: "table", x: 6, y: 5, color: 0x2a2a2a, block: true },
+          { kind: "lamp", x: 2, y: 2, color: 0xff4444, block: true },
+          { kind: "lamp", x: 11, y: 2, color: 0xff4444, block: true },
+        ]
+      }
+    };
+
+    // ================================
+    // Iso settings
+    // ================================
+    const TILE_W = 64;
+    const TILE_H = 32;
+
+    function gridToScreen(gx, gy, originX, originY) {
+      return {
+        x: originX + (gx - gy) * (TILE_W / 2),
+        y: originY + (gx + gy) * (TILE_H / 2)
+      };
+    }
+
+    function screenToGrid(sx, sy, originX, originY) {
+      const dx = sx - originX;
+      const dy = sy - originY;
+      const gx = (dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2;
+      const gy = (dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2;
+      return { x: Math.floor(gx + 0.00001), y: Math.floor(gy + 0.00001) };
+    }
+
+    // ================================
+    // A* pathfinding
+    // ================================
+    function astar(start, goal, isBlocked, w, h) {
+      const key = (x, y) => `${x},${y}`;
+      const inBounds = (x, y) => x >= 0 && y >= 0 && x < w && y < h;
+      const hCost = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+
+      const open = new Map();
+      const cameFrom = new Map();
+      const gScore = new Map();
+      const fScore = new Map();
+
+      const startK = key(start.x, start.y);
+      open.set(startK, { ...start });
+      gScore.set(startK, 0);
+      fScore.set(startK, hCost(start, goal));
+
+      const dirs = [
+        { x: 1, y: 0 }, { x: -1, y: 0 },
+        { x: 0, y: 1 }, { x: 0, y: -1 }
+      ];
+
+      while (open.size > 0) {
+        let currentKey = null;
+        let current = null;
+        let bestF = Infinity;
+
+        for (const [k, node] of open.entries()) {
+          const f = fScore.get(k) ?? Infinity;
+          if (f < bestF) {
+            bestF = f;
+            currentKey = k;
+            current = node;
+          }
+        }
+
+        if (!current) break;
+
+        if (current.x === goal.x && current.y === goal.y) {
+          const path = [];
+          let ck = currentKey;
+          while (ck && ck !== startK) {
+            const [x, y] = ck.split(",").map(Number);
+            path.push({ x, y });
+            ck = cameFrom.get(ck);
+          }
+          path.reverse();
+          return path;
+        }
+
+        open.delete(currentKey);
+
+        for (const d of dirs) {
+          const nx = current.x + d.x;
+          const ny = current.y + d.y;
+          if (!inBounds(nx, ny)) continue;
+          if (isBlocked(nx, ny)) continue;
+
+          const nk = key(nx, ny);
+          const tentativeG = (gScore.get(currentKey) ?? Infinity) + 1;
+
+          if (tentativeG < (gScore.get(nk) ?? Infinity)) {
+            cameFrom.set(nk, currentKey);
+            gScore.set(nk, tentativeG);
+            fScore.set(nk, tentativeG + hCost({x:nx,y:ny}, goal));
+            if (!open.has(nk)) open.set(nk, { x: nx, y: ny });
+          }
+        }
+      }
+
+      return [];
+    }
+
+    // ================================
+    // RoomScene (FIXED)
+    // ================================
+    class RoomScene extends Phaser.Scene {
+      constructor() {
+        super("RoomScene");
+
+        this.originX = 0;
+        this.originY = 0;
+
+        this.room = ROOMS.fashion;
+
+        this.blocked = new Set();
+        this.floorTiles = [];
+        this.wallLayer = null;
+        this.decoLayer = [];
+        this.furni = [];
+
+        this.players = new Map();
+        this.meId = "me";
+        this.meGrid = { x: 4, y: 4 };
+        this.chatMode = false;
+      }
+
+      create() {
+        const { width, height } = this.scale;
+
+        this.originX = Math.floor(width * 0.52);
+        this.originY = Math.floor(height * 0.18);
+
+        // 背景用 Phaser config 的 backgroundColor，不需要額外矩形
+        // （如果加矩形會蓋住 depth 負值的牆壁）
+
+        this.loadRoom(this.room);
+
+        // 點地板走路
+        this.input.on("pointerdown", (pointer) => {
+          if (this.chatMode) return;
+
+          const g = screenToGrid(pointer.x, pointer.y, this.originX, this.originY);
+          if (!this.isValid(g.x, g.y)) return;
+          if (this.isBlocked(g.x, g.y)) return;
+
+          this.movePlayerTo(this.meId, g.x, g.y);
+        });
+
+        // 滾輪縮放
+        this.input.on("wheel", (_p, _g, _dx, dy) => {
+          const cam = this.cameras.main;
+          cam.zoom = Phaser.Math.Clamp(cam.zoom - dy * 0.001, 0.5, 2.0);
+        });
+
+        // 拖曳視角
+        let dragging = false;
+        let last = { x: 0, y: 0 };
+
+        this.input.on("pointermove", (p) => {
+          if (!p.isDown) { dragging = false; return; }
+          if (!dragging) { dragging = true; last = { x: p.x, y: p.y }; return; }
+          const dx = p.x - last.x;
+          const dy = p.y - last.y;
+          last = { x: p.x, y: p.y };
+          this.cameras.main.scrollX -= dx / this.cameras.main.zoom;
+          this.cameras.main.scrollY -= dy / this.cameras.main.zoom;
+        });
+
+        // Enter -> chat
+        this.input.keyboard.on("keydown-ENTER", () => {
+          const el = document.getElementById("chatInput");
+          if (!this.chatMode) {
+            this.chatMode = true;
+            el.focus();
+          } else {
+            document.getElementById("sendBtn").click();
+          }
+        });
+
+        this.logSystem(`Loaded room: ${this.room.name}`);
+      }
+
+      // ======= LOAD / CLEAR =======
+      loadRoom(roomData) {
+        this.clearRoom();
+        this.room = roomData;
+
+        document.getElementById("roomTitle").textContent =
+          `${roomData.name} · 6 online`;
+
+        // 牆
+        this.wallLayer = this.drawWalls(roomData);
+
+        // 地板
+        this.drawFloor(roomData);
+
+        // 裝飾（窗戶/海報）
+        this.drawDecorations(roomData);
+
+        // 家具
+        this.placeFurni(roomData);
+
+        // 玩家
+        this.spawnPlayers();
+      }
+
+      clearRoom() {
+        for (const t of this.floorTiles) t.destroy();
+        this.floorTiles = [];
+
+        if (this.wallLayer) this.wallLayer.destroy();
+        this.wallLayer = null;
+
+        for (const d of this.decoLayer) d.destroy();
+        this.decoLayer = [];
+
+        for (const f of this.furni) {
+          if (f.obj) f.obj.destroy();
+        }
+        this.furni = [];
+        this.blocked.clear();
+
+        for (const p of this.players.values()) p.container.destroy();
+        this.players.clear();
+      }
+
+      // ======= FLOOR (FIXED diamond) =======
+      drawFloor(roomData) {
+        const w = roomData.w;
+        const h = roomData.h;
+
+        const c0 = roomData.floor.colors[0];
+        const c1 = roomData.floor.colors[1];
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const pos = gridToScreen(x, y, this.originX, this.originY);
+
+            const fill = ((x + y) % 2 === 0) ? c0 : c1;
+            const stroke = 0x2a3a66;
+
+            // ✅ 正確：tile 中心點
+            const tile = this.drawDiamond(pos.x, pos.y, fill, stroke);
+
+            const poly = new Phaser.Geom.Polygon([
+              0, -TILE_H/2,
+              TILE_W/2, 0,
+              0, TILE_H/2,
+              -TILE_W/2, 0
+            ]);
+
+            tile.setInteractive(poly, Phaser.Geom.Polygon.Contains);
+            tile.on("pointerover", () => tile.setAlpha(0.95));
+            tile.on("pointerout", () => tile.setAlpha(1));
+
+            tile.setDepth(pos.y);
+
+            this.floorTiles.push(tile);
+          }
+        }
+      }
+
+      drawDiamond(cx, cy, fillColor, strokeColor) {
+        const g = this.add.graphics();
+        const hw = TILE_W / 2;
+        const hh = TILE_H / 2;
+
+        g.fillStyle(fillColor, 1);
+        g.lineStyle(1, strokeColor, 0.9);
+
+        // ✅ 重要：local (0,0) 畫菱形，再把 container 放到(cx,cy)
+        g.beginPath();
+        g.moveTo(0, -hh);
+        g.lineTo(hw, 0);
+        g.lineTo(0, hh);
+        g.lineTo(-hw, 0);
+        g.closePath();
+
+        g.fillPath();
+        g.strokePath();
+
+        const c = this.add.container(cx, cy, [g]);
+        c.setSize(TILE_W, TILE_H);
+        return c;
+      }
+
+      // ======= WALLS (FIXED corners) =======
+      drawWalls(roomData) {
+        const g = this.add.graphics();
+
+        const top = roomData.walls.top;
+        const right = roomData.walls.right;
+        const wallH = top.heightPx;
+
+        // ✅ 正確角落：w-1 / h-1
+        const p00 = gridToScreen(0, 0, this.originX, this.originY);
+        const pW0 = gridToScreen(roomData.w - 1, 0, this.originX, this.originY);
+        const pWH = gridToScreen(roomData.w - 1, roomData.h - 1, this.originX, this.originY);
+
+        // ✅ 外框加半格，牆才貼齊房間外緣
+        const topLeft   = { x: p00.x - TILE_W/2, y: p00.y };
+        const topRight  = { x: pW0.x + TILE_W/2, y: pW0.y };
+        const rightDown = { x: pWH.x + TILE_W/2, y: pWH.y };
+
+        // Top wall
+        g.fillStyle(top.fill, 1);
+        g.lineStyle(2, top.edge, 0.85);
+        g.beginPath();
+        g.moveTo(topLeft.x, topLeft.y);
+        g.lineTo(topRight.x, topRight.y);
+        g.lineTo(topRight.x, topRight.y - wallH);
+        g.lineTo(topLeft.x, topLeft.y - wallH);
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+
+        // Right wall
+        g.fillStyle(right.fill, 1);
+        g.lineStyle(2, right.edge, 0.85);
+        g.beginPath();
+        g.moveTo(topRight.x, topRight.y);
+        g.lineTo(rightDown.x, rightDown.y);
+        g.lineTo(rightDown.x, rightDown.y - wallH);
+        g.lineTo(topRight.x, topRight.y - wallH);
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+
+        g.setDepth(-10);
+        return g;
+      }
+
+      // ======= DECOR =======
+      drawDecorations(roomData) {
+        const wallH = roomData.walls.top.heightPx;
+
+        for (const d of roomData.decorations) {
+          if (d.kind === "window") {
+            const win = this.createWindow(d, wallH);
+            if (win) this.decoLayer.push(win);
+          } else if (d.kind === "poster") {
+            const poster = this.createPoster(d, wallH);
+            if (poster) this.decoLayer.push(poster);
+          }
+        }
+      }
+
+      createWindow(dec, wallH) {
+        if (dec.wall === "top") {
+          const p = gridToScreen(dec.tileX, 0, this.originX, this.originY);
+
+          const outer = this.add.rectangle(0, 0, 70, 70, 0xcaf1ff, 1);
+          outer.setStrokeStyle(4, 0x0b1022, 0.85);
+
+          const inner = this.add.rectangle(0, 0, 56, 56, 0x9fdfff, 0.85);
+          inner.setStrokeStyle(2, 0x0b1022, 0.5);
+
+          const c = this.add.container(p.x, p.y - wallH + dec.yOffset, [outer, inner]);
+          c.setDepth(-9);
+          return c;
+        }
+
+        if (dec.wall === "right") {
+          const p = gridToScreen(this.room.w - 1, dec.tileY, this.originX, this.originY);
+
+          const outer = this.add.rectangle(0, 0, 70, 70, 0xcaf1ff, 1);
+          outer.setStrokeStyle(4, 0x0b1022, 0.85);
+
+          const inner = this.add.rectangle(0, 0, 56, 56, 0x9fdfff, 0.85);
+          inner.setStrokeStyle(2, 0x0b1022, 0.5);
+
+          const c = this.add.container(p.x + TILE_W/2 + 40, p.y - wallH + dec.yOffset, [outer, inner]);
+          c.setDepth(-9);
+          return c;
+        }
+      }
+
+      createPoster(dec, wallH) {
+        const makePoster = (x, y, color, label) => {
+          const rect = this.add.rectangle(0, 0, 86, 62, color, 1);
+          rect.setStrokeStyle(4, 0x0b1022, 0.85);
+          const text = this.add.text(0, 0, label, {
+            fontFamily: "Arial",
+            fontSize: "12px",
+            color: "#111827"
+          }).setOrigin(0.5);
+          const c = this.add.container(x, y, [rect, text]);
+          c.setDepth(-9);
+          return c;
+        };
+
+        if (dec.wall === "top") {
+          const p = gridToScreen(dec.tileX, 0, this.originX, this.originY);
+          return makePoster(p.x, p.y - wallH + dec.yOffset, 0xffd36d, "POSTER");
+        }
+
+        if (dec.wall === "right") {
+          const p = gridToScreen(this.room.w - 1, dec.tileY, this.originX, this.originY);
+          return makePoster(p.x + TILE_W/2 + 44, p.y - wallH + dec.yOffset, 0xff6d8a, "POSTER");
+        }
+      }
+
+      // ======= FURNI - 多種家具類型 =======
+
+      // 基本等角方塊（可調整大小）
+      createIsoBox(cx, cy, color, w, h, d) {
+        // w=寬(X), h=高(Z), d=深(Y) - 以格子為單位
+        const g = this.add.graphics();
+        const scaleW = w * (TILE_W / 2);
+        const scaleD = d * (TILE_H / 2);
+        const scaleH = h * 20;
+
+        const topColor = color;
+        const leftColor  = Phaser.Display.Color.IntegerToColor(color).darken(35).color;
+        const rightColor = Phaser.Display.Color.IntegerToColor(color).darken(15).color;
+
+        // Top face
+        g.fillStyle(topColor, 1);
+        g.beginPath();
+        g.moveTo(0, -scaleD - scaleH);
+        g.lineTo(scaleW, -scaleH);
+        g.lineTo(0, scaleD - scaleH);
+        g.lineTo(-scaleW, -scaleH);
+        g.closePath();
+        g.fillPath();
+
+        // Left face
+        g.fillStyle(leftColor, 1);
+        g.beginPath();
+        g.moveTo(-scaleW, -scaleH);
+        g.lineTo(0, scaleD - scaleH);
+        g.lineTo(0, scaleD);
+        g.lineTo(-scaleW, 0);
+        g.closePath();
+        g.fillPath();
+
+        // Right face
+        g.fillStyle(rightColor, 1);
+        g.beginPath();
+        g.moveTo(scaleW, -scaleH);
+        g.lineTo(0, scaleD - scaleH);
+        g.lineTo(0, scaleD);
+        g.lineTo(scaleW, 0);
+        g.closePath();
+        g.fillPath();
+
+        // Outline
+        g.lineStyle(2, 0x0b1022, 0.85);
+        g.strokePoints([
+          {x:0, y:-scaleD-scaleH}, {x:scaleW, y:-scaleH},
+          {x:0, y:scaleD-scaleH}, {x:-scaleW, y:-scaleH}, {x:0, y:-scaleD-scaleH}
+        ], false);
+
+        return this.add.container(cx, cy, [g]);
+      }
+
+      // 沙發（長條低矮）
+      createSofa(cx, cy, color) {
+        const g = this.add.graphics();
+        const topColor = color;
+        const leftColor = Phaser.Display.Color.IntegerToColor(color).darken(35).color;
+        const rightColor = Phaser.Display.Color.IntegerToColor(color).darken(15).color;
+        const cushion = Phaser.Display.Color.IntegerToColor(color).lighten(15).color;
+
+        // 底座 - 寬扁
+        g.fillStyle(leftColor, 1);
+        g.fillRect(-28, -8, 12, 24);
+        g.fillStyle(rightColor, 1);
+        g.fillRect(16, -8, 12, 24);
+        g.fillStyle(topColor, 1);
+        g.beginPath();
+        g.moveTo(0, -24); g.lineTo(28, -8); g.lineTo(0, 8); g.lineTo(-28, -8);
+        g.closePath(); g.fillPath();
+
+        // 靠背
+        g.fillStyle(Phaser.Display.Color.IntegerToColor(color).darken(20).color, 1);
+        g.beginPath();
+        g.moveTo(-24, -28); g.lineTo(8, -44); g.lineTo(8, -28); g.lineTo(-24, -12);
+        g.closePath(); g.fillPath();
+
+        // 坐墊
+        g.fillStyle(cushion, 1);
+        g.beginPath();
+        g.moveTo(0, -20); g.lineTo(22, -8); g.lineTo(0, 4); g.lineTo(-22, -8);
+        g.closePath(); g.fillPath();
+
+        g.lineStyle(1, 0x0b1022, 0.6);
+        g.strokeRect(-28, -8, 56, 24);
+
+        return this.add.container(cx, cy, [g]);
+      }
+
+      // 桌子（扁平有桌腳）
+      createTable(cx, cy, color) {
+        const g = this.add.graphics();
+        const topColor = color;
+        const leftColor = Phaser.Display.Color.IntegerToColor(color).darken(40).color;
+        const rightColor = Phaser.Display.Color.IntegerToColor(color).darken(20).color;
+
+        // 桌腳
+        g.fillStyle(leftColor, 1);
+        g.fillRect(-20, -2, 4, 14);
+        g.fillRect(16, -2, 4, 14);
+        g.fillStyle(rightColor, 1);
+        g.fillRect(-16, 2, 4, 14);
+        g.fillRect(20, 2, 4, 14);
+
+        // 桌面（薄）
+        g.fillStyle(topColor, 1);
+        g.beginPath();
+        g.moveTo(0, -18); g.lineTo(26, -6); g.lineTo(0, 6); g.lineTo(-26, -6);
+        g.closePath(); g.fillPath();
+        g.fillStyle(leftColor, 1);
+        g.beginPath();
+        g.moveTo(-26, -6); g.lineTo(0, 6); g.lineTo(0, 10); g.lineTo(-26, -2);
+        g.closePath(); g.fillPath();
+        g.fillStyle(rightColor, 1);
+        g.beginPath();
+        g.moveTo(26, -6); g.lineTo(0, 6); g.lineTo(0, 10); g.lineTo(26, -2);
+        g.closePath(); g.fillPath();
+
+        g.lineStyle(1, 0x0b1022, 0.7);
+        g.strokePoints([{x:0,y:-18},{x:26,y:-6},{x:0,y:6},{x:-26,y:-6},{x:0,y:-18}], false);
+
+        return this.add.container(cx, cy, [g]);
+      }
+
+      // 植物（高瘦圓形）
+      createPlant(cx, cy) {
+        const g = this.add.graphics();
+
+        // 花盆
+        g.fillStyle(0xc9784a, 1);
+        g.beginPath();
+        g.moveTo(0, 0); g.lineTo(10, -6); g.lineTo(10, 6); g.lineTo(0, 12); g.lineTo(-10, 6); g.lineTo(-10, -6);
+        g.closePath(); g.fillPath();
+        g.fillStyle(0xa85c32, 1);
+        g.beginPath();
+        g.moveTo(-10, -6); g.lineTo(0, 0); g.lineTo(0, 12); g.lineTo(-10, 6);
+        g.closePath(); g.fillPath();
+
+        // 葉子
+        g.fillStyle(0x4a9c5d, 1);
+        g.fillEllipse(0, -28, 18, 22);
+        g.fillStyle(0x3d8a4f, 1);
+        g.fillEllipse(-6, -24, 12, 16);
+        g.fillStyle(0x5db56e, 1);
+        g.fillEllipse(4, -32, 10, 14);
+
+        // 莖
+        g.lineStyle(3, 0x3d6b32, 1);
+        g.lineBetween(0, -6, 0, -18);
+
+        return this.add.container(cx, cy, [g]);
+      }
+
+      // 燈（高柱+燈罩）
+      createLamp(cx, cy, color) {
+        const g = this.add.graphics();
+
+        // 底座
+        g.fillStyle(0x333333, 1);
+        g.fillEllipse(0, 4, 14, 8);
+
+        // 柱子
+        g.fillStyle(0x444444, 1);
+        g.fillRect(-3, -50, 6, 54);
+
+        // 燈罩
+        g.fillStyle(color, 1);
+        g.beginPath();
+        g.moveTo(0, -70); g.lineTo(16, -50); g.lineTo(-16, -50);
+        g.closePath(); g.fillPath();
+        g.fillStyle(Phaser.Display.Color.IntegerToColor(color).darken(20).color, 1);
+        g.fillEllipse(0, -50, 16, 6);
+
+        // 光暈
+        g.fillStyle(0xffffcc, 0.15);
+        g.fillEllipse(0, -30, 30, 20);
+
+        return this.add.container(cx, cy, [g]);
+      }
+
+      // 椅子
+      createChair(cx, cy, color) {
+        const g = this.add.graphics();
+        const topColor = color;
+        const leftColor = Phaser.Display.Color.IntegerToColor(color).darken(35).color;
+        const rightColor = Phaser.Display.Color.IntegerToColor(color).darken(15).color;
+
+        // 椅腳
+        g.fillStyle(0x5c4033, 1);
+        g.fillRect(-12, 4, 3, 10);
+        g.fillRect(9, 4, 3, 10);
+        g.fillRect(-9, 8, 3, 10);
+        g.fillRect(12, 8, 3, 10);
+
+        // 座面
+        g.fillStyle(topColor, 1);
+        g.beginPath();
+        g.moveTo(0, -8); g.lineTo(14, 0); g.lineTo(0, 8); g.lineTo(-14, 0);
+        g.closePath(); g.fillPath();
+
+        // 靠背
+        g.fillStyle(leftColor, 1);
+        g.beginPath();
+        g.moveTo(-12, -8); g.lineTo(-12, -30); g.lineTo(2, -22); g.lineTo(2, 0);
+        g.closePath(); g.fillPath();
+
+        g.lineStyle(1, 0x0b1022, 0.6);
+        g.strokePoints([{x:0,y:-8},{x:14,y:0},{x:0,y:8},{x:-14,y:0},{x:0,y:-8}], false);
+
+        return this.add.container(cx, cy, [g]);
+      }
+
+      placeFurni(roomData) {
+        for (const f of roomData.furni) {
+          const pos = gridToScreen(f.x, f.y, this.originX, this.originY);
+          let obj;
+
+          switch (f.kind) {
+            case "sofa":
+              obj = this.createSofa(pos.x, pos.y, f.color);
+              break;
+            case "table":
+              obj = this.createTable(pos.x, pos.y, f.color);
+              break;
+            case "plant":
+              obj = this.createPlant(pos.x, pos.y);
+              break;
+            case "lamp":
+              obj = this.createLamp(pos.x, pos.y, f.color);
+              break;
+            case "chair":
+              obj = this.createChair(pos.x, pos.y, f.color);
+              break;
+            default:
+              // 預設方塊
+              obj = this.createIsoBox(pos.x, pos.y, f.color, 1, 1.7, 1);
+          }
+
+          obj.setDepth(pos.y + 6);
+          this.furni.push({ x: f.x, y: f.y, obj, block: !!f.block });
+          if (f.block) this.blocked.add(`${f.x},${f.y}`);
+        }
+      }
+
+      // ======= PLAYERS =======
+      spawnPlayers() {
+        this.createPlayer(this.meId, "Amber", this.meGrid.x, this.meGrid.y, 0xffe5f1);
+
+        const others = [
+          { id: "p1", name: "Sophie", x: 6, y: 4, color: 0xffffff },
+          { id: "p2", name: "Bella",  x: 9, y: 6, color: 0xfff2d2 },
+          { id: "p3", name: "Luna",   x: 2, y: 5, color: 0xd2f0ff },
+          { id: "p4", name: "Emma",   x: 7, y: 7, color: 0xffd36d },
+          { id: "p5", name: "Mia",    x: 10, y: 8, color: 0xcaf1ff },
+        ];
+
+        for (const o of others) {
+          if (!this.isValid(o.x, o.y)) continue;
+          if (this.isBlocked(o.x, o.y)) continue;
+          this.createPlayer(o.id, o.name, o.x, o.y, o.color);
+        }
+      }
+
+      createPlayer(id, name, gx, gy, colorHex) {
+        const pos = gridToScreen(gx, gy, this.originX, this.originY);
+
+        const shadow = this.add.ellipse(0, 12, 22, 10, 0x000000, 0.35);
+        const body = this.add.circle(0, -6, 10, colorHex, 1);
+        body.setStrokeStyle(2, 0x111827, 0.9);
+
+        const nameTag = this.add.text(0, -30, name, {
+          fontFamily: "Arial",
+          fontSize: "12px",
+          color: "#ffffff"
+        }).setOrigin(0.5, 0.5);
+
+        const bubble = this.add.text(0, -58, "", {
+          fontFamily: "Arial",
+          fontSize: "12px",
+          color: "#ffffff",
+          backgroundColor: "rgba(86,102,255,0.85)",
+          padding: { left: 8, right: 8, top: 5, bottom: 5 }
+        }).setOrigin(0.5, 0.5);
+        bubble.setVisible(false);
+
+        const container = this.add.container(pos.x, pos.y, [shadow, body, nameTag, bubble]);
+        container.setDepth(pos.y + 10);
+
+        this.players.set(id, {
+          id, name,
+          grid: { x: gx, y: gy },
+          container,
+          bubble,
+          moving: false
+        });
+      }
+
+      movePlayerTo(playerId, tx, ty) {
+        const p = this.players.get(playerId);
+        if (!p) return;
+        if (p.moving) return;
+
+        if (!this.isValid(tx, ty)) return;
+        if (this.isBlocked(tx, ty)) return;
+
+        const path = astar(
+          { x: p.grid.x, y: p.grid.y },
+          { x: tx, y: ty },
+          (x, y) => this.isBlocked(x, y),
+          this.room.w,
+          this.room.h
+        );
+
+        if (!path || path.length === 0) return;
+
+        p.moving = true;
+
+        const step = (i) => {
+          if (i >= path.length) {
+            p.moving = false;
+            return;
+          }
+
+          const s = path[i];
+          const pos = gridToScreen(s.x, s.y, this.originX, this.originY);
+
+          this.tweens.add({
+            targets: p.container,
+            x: pos.x,
+            y: pos.y,
+            duration: 120,
+            ease: "Linear",
+            onUpdate: () => p.container.setDepth(p.container.y + 10),
+            onComplete: () => {
+              p.grid = { x: s.x, y: s.y };
+              if (playerId === this.meId) this.meGrid = { ...p.grid };
+              step(i + 1);
+            }
+          });
+        };
+
+        step(0);
+      }
+
+      showBubble(playerId, text) {
+        const p = this.players.get(playerId);
+        if (!p) return;
+
+        p.bubble.setText(text);
+        p.bubble.setVisible(true);
+
+        this.time.delayedCall(3000, () => {
+          p.bubble.setVisible(false);
+        });
+      }
+
+      // ======= Helpers =======
+      isValid(x, y) {
+        return x >= 0 && y >= 0 && x < this.room.w && y < this.room.h;
+      }
+      isBlocked(x, y) {
+        return this.blocked.has(`${x},${y}`);
+      }
+
+      // ======= System log =======
+      logSystem(msg) {
+        const log = document.getElementById("chatLog");
+        const div = document.createElement("div");
+        div.style.color = "#7dd3fc";
+        div.innerHTML = `<b>System:</b> ${msg}`;
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+      }
+    }
+
+    // ================================
+    // Phaser Game
+    // ================================
+    const config = {
+      type: Phaser.AUTO,
+      parent: "game",
+      backgroundColor: "#0f1220",
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: window.innerWidth,
+        height: window.innerHeight
+      },
+      scene: [RoomScene]
+    };
+
+    const game = new Phaser.Game(config);
+
+    // ================================
+    // UI: room switch + chat send
+    // ================================
+    function setActive(btnId) {
+      for (const id of ["btnFashion", "btnBeauty", "btnTravel", "btnMusic"]) {
+        document.getElementById(id).classList.remove("active");
+      }
+      document.getElementById(btnId).classList.add("active");
+    }
+
+    function switchRoom(roomKey, btnId) {
+      setActive(btnId);
+      const scene = game.scene.getScene("RoomScene");
+      if (!scene) return;
+
+      scene.loadRoom(ROOMS[roomKey]);
+      scene.logSystem(`Switched to: ${ROOMS[roomKey].name}`);
+    }
+
+    document.getElementById("btnFashion").onclick = () => switchRoom("fashion", "btnFashion");
+    document.getElementById("btnBeauty").onclick  = () => switchRoom("beauty",  "btnBeauty");
+    document.getElementById("btnTravel").onclick  = () => switchRoom("travel",  "btnTravel");
+    document.getElementById("btnMusic").onclick   = () => switchRoom("music",   "btnMusic");
+
+    const inputEl = document.getElementById("chatInput");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function appendChat(name, text) {
+      const log = document.getElementById("chatLog");
+      const div = document.createElement("div");
+      div.innerHTML = `<b style="color:#ffffff">${name}:</b> ${text}`;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    sendBtn.onclick = () => {
+      const scene = game.scene.getScene("RoomScene");
+      if (!scene) return;
+
+      const text = (inputEl.value || "").trim();
+      if (!text) return;
+
+      appendChat("Amber", text);
+      scene.showBubble("me", text);
+
+      inputEl.value = "";
+      scene.chatMode = false;
+      inputEl.blur();
+    };
+
+    inputEl.addEventListener("focus", () => {
+      const scene = game.scene.getScene("RoomScene");
+      if (scene) scene.chatMode = true;
+    });
+    inputEl.addEventListener("blur", () => {
+      const scene = game.scene.getScene("RoomScene");
+      if (scene) scene.chatMode = false;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BE 76 - Habbo Real Style</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0e0e1a; overflow: hidden; font-family: Arial, sans-serif; }
+        #game { position: fixed; top: 0; left: 0; image-rendering: pixelated; }
+        .ui { position: fixed; z-index: 100; }
+        .header {
+            top: 0; left: 0; right: 0; height: 32px;
+            background: #1a1a2e; border-bottom: 2px solid #333;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 12px; color: #fff; font-size: 13px;
+        }
+        .logo { color: #60a5fa; font-weight: bold; }
+        .panel {
+            top: 45px; left: 8px; background: #1a1a2e;
+            border: 2px solid #333; padding: 6px;
+        }
+        .rbtn {
+            display: block; width: 70px; background: #252540;
+            border: 1px solid #444; color: #aaa; padding: 5px;
+            margin-bottom: 3px; font-size: 10px; cursor: pointer;
+        }
+        .rbtn:hover { background: #353560; }
+        .rbtn.on { background: #6366f1; color: #fff; }
+        .chat {
+            bottom: 8px; right: 8px; width: 220px;
+            background: #1a1a2e; border: 2px solid #333;
+        }
+        .chat-head { background: #6366f1; color: #fff; padding: 5px 8px; font-size: 11px; }
+        .chat-body { height: 80px; overflow-y: auto; padding: 5px; font-size: 10px; color: #ccc; }
+        .chat-msg { margin-bottom: 3px; }
+        .chat-msg b { color: #60a5fa; }
+        .chat-in { display: flex; border-top: 1px solid #333; }
+        .chat-in input {
+            flex: 1; background: #0e0e1a; border: none;
+            color: #fff; padding: 5px; font-size: 10px; outline: none;
+        }
+        .chat-in button {
+            background: #6366f1; border: none; color: #fff;
+            padding: 5px 10px; cursor: pointer; font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+    <header class="ui header">
+        <span class="logo">BE 76</span>
+        <span id="roomName">Fashion Room</span>
+    </header>
+    <div class="ui panel">
+        <button class="rbtn on" onclick="chgRoom('fashion',this)">Fashion</button>
+        <button class="rbtn" onclick="chgRoom('beauty',this)">Beauty</button>
+        <button class="rbtn" onclick="chgRoom('travel',this)">Travel</button>
+        <button class="rbtn" onclick="chgRoom('music',this)">Music</button>
+    </div>
+    <div class="ui chat">
+        <div class="chat-head">Chat</div>
+        <div class="chat-body" id="chatBody"><div class="chat-msg"><b>Amber:</b> Welcome!</div></div>
+        <div class="chat-in">
+            <input id="chatIn" placeholder="Type..." onkeypress="if(event.key==='Enter')sendMsg()">
+            <button onclick="sendMsg()">Send</button>
+        </div>
+    </div>
+
+<script>
+const C = document.getElementById('game');
+const X = C.getContext('2d');
+
+// 像素大小
+const PX = 2;
+
+// 地磚 (32x16 的 2:1 等距)
+const TW = 32, TH = 16, TD = 4;
+const RW = 9, RH = 7;
+const WH = 64;
+
+// 主題
+const THEMES = {
+    fashion: { f1:'#c4a060', f2:'#b49050', w1:'#80b8c8', w2:'#60a0b0' },
+    beauty: { f1:'#d0a0b8', f2:'#c090a8', w1:'#d8b0c8', w2:'#b890a8' },
+    travel: { f1:'#90c090', f2:'#80b080', w1:'#90c8d8', w2:'#70a8b8' },
+    music: { f1:'#b0a0c8', f2:'#a090b8', w1:'#9080b0', w2:'#706090' }
+};
+
+// ============ 真正的像素角色 ============
+// 每個角色是 24x36 像素的陣列
+// 0=透明, 1=輪廓(黑), 2=皮膚, 3=頭髮, 4=衣服, 5=褲子, 6=眼白, 7=眼珠, 8=嘴
+
+const AVATAR_W = 24, AVATAR_H = 36;
+
+// 基本角色模板 (正面站姿)
+const AVATAR_TEMPLATE = [
+// 頭髮頂部 (row 0-3)
+'000000011111111100000000',
+'000001133333333311000000',
+'000011333333333333110000',
+'000113333333333333311000',
+// 頭部 (row 4-11)
+'001133332222222233311100',
+'001133222222222222331100',
+'011332222222222222233110',
+'011332222662266222233110',
+'011332222672276222233110',
+'011332222222222222233110',
+'001133222228822222331100',
+'001133322222222223331100',
+// 脖子 (row 12)
+'000011332222222233110000',
+// 身體 (row 13-22)
+'000001144444444411000000',
+'000011444444444444110000',
+'002114444444444444411200',
+'022114444444444444411220',
+'022114444444444444411220',
+'022114444444444444411220',
+'002214444444444444412200',
+'000221444444444444122000',
+'000022144444444441220000',
+'000002211111111112200000',
+// 褲子 (row 23-30)
+'000001155555555511000000',
+'000011555555555555110000',
+'000115555555555555511000',
+'000115555511555555511000',
+'000115555110555555511000',
+'000115555110555555511000',
+'000115555110555555511000',
+'000115555110055555511000',
+// 腳 (row 31-35)
+'000011111110011111110000',
+'000011111110011111110000',
+'000111111111011111111000',
+'000111111111011111111000',
+'000011111110011111110000',
+];
+
+// 角色資料
+const CHARS = {
+    amber: { name:'Amber', hair:'#d08050', shirt:'#ff6090', x:2, y:3 },
+    bella: { name:'Bella', hair:'#303030', shirt:'#40c0f0', x:5, y:4 },
+    emma: { name:'Emma', hair:'#e0b060', shirt:'#50d080', x:6, y:2 },
+    luna: { name:'Luna', hair:'#202030', shirt:'#a050f0', x:4, y:5 }
+};
+
+let curRoom = 'fashion';
+let offX = 0, offY = 0;
+
+// 等距轉換
+function iso(gx, gy) {
+    return { x: (gx - gy) * TW, y: (gx + gy) * TH };
+}
+
+// 畫像素
+function px(x, y, color) {
+    X.fillStyle = color;
+    X.fillRect(x * PX, y * PX, PX, PX);
+}
+
+// 畫像素方塊
+function pxRect(x, y, w, h, color) {
+    X.fillStyle = color;
+    X.fillRect(x * PX, y * PX, w * PX, h * PX);
+}
+
+// 畫角色
+function drawAvatar(sx, sy, char) {
+    const colors = {
+        '0': null,           // 透明
+        '1': '#000000',      // 輪廓
+        '2': '#ffd0b8',      // 皮膚
+        '3': char.hair,      // 頭髮
+        '4': char.shirt,     // 衣服
+        '5': '#3050a0',      // 褲子
+        '6': '#ffffff',      // 眼白
+        '7': '#000000',      // 眼珠
+        '8': '#c06060',      // 嘴
+    };
+
+    // 陰影
+    X.fillStyle = 'rgba(0,0,0,0.3)';
+    X.beginPath();
+    X.ellipse((sx + AVATAR_W/2) * PX, (sy + AVATAR_H + 2) * PX, 12 * PX, 4 * PX, 0, 0, Math.PI * 2);
+    X.fill();
+
+    // 畫像素
+    for (let y = 0; y < AVATAR_TEMPLATE.length; y++) {
+        const row = AVATAR_TEMPLATE[y];
+        for (let x = 0; x < row.length; x++) {
+            const c = colors[row[x]];
+            if (c) px(sx + x, sy + y, c);
+        }
+    }
+
+    // 名牌
+    X.fillStyle = 'rgba(0,0,0,0.7)';
+    const nameW = char.name.length * 6 + 8;
+    X.fillRect((sx + AVATAR_W/2 - nameW/2) * PX, (sy + AVATAR_H + 5) * PX, nameW * PX, 10 * PX);
+    X.fillStyle = '#fff';
+    X.font = `${8 * PX}px Arial`;
+    X.textAlign = 'center';
+    X.fillText(char.name, (sx + AVATAR_W/2) * PX, (sy + AVATAR_H + 12) * PX);
+}
+
+// 畫地磚
+function drawTile(gx, gy, c1, c2) {
+    const p = iso(gx, gy);
+    const x = p.x + offX, y = p.y + offY;
+    const light = (gx + gy) % 2 === 0;
+    const top = light ? c1 : c2;
+
+    // 頂面
+    X.fillStyle = top;
+    X.beginPath();
+    X.moveTo((x) * PX, (y) * PX);
+    X.lineTo((x + TW) * PX, (y + TH) * PX);
+    X.lineTo((x) * PX, (y + TH * 2) * PX);
+    X.lineTo((x - TW) * PX, (y + TH) * PX);
+    X.closePath();
+    X.fill();
+
+    // 左面
+    X.fillStyle = shadeColor(top, -40);
+    X.beginPath();
+    X.moveTo((x - TW) * PX, (y + TH) * PX);
+    X.lineTo((x) * PX, (y + TH * 2) * PX);
+    X.lineTo((x) * PX, (y + TH * 2 + TD) * PX);
+    X.lineTo((x - TW) * PX, (y + TH + TD) * PX);
+    X.closePath();
+    X.fill();
+
+    // 右面
+    X.fillStyle = shadeColor(top, -60);
+    X.beginPath();
+    X.moveTo((x + TW) * PX, (y + TH) * PX);
+    X.lineTo((x) * PX, (y + TH * 2) * PX);
+    X.lineTo((x) * PX, (y + TH * 2 + TD) * PX);
+    X.lineTo((x + TW) * PX, (y + TH + TD) * PX);
+    X.closePath();
+    X.fill();
+
+    // 輪廓
+    X.strokeStyle = '#000';
+    X.lineWidth = PX;
+    X.beginPath();
+    X.moveTo((x) * PX, (y) * PX);
+    X.lineTo((x + TW) * PX, (y + TH) * PX);
+    X.lineTo((x) * PX, (y + TH * 2) * PX);
+    X.lineTo((x - TW) * PX, (y + TH) * PX);
+    X.closePath();
+    X.stroke();
+}
+
+// 畫牆
+function drawWalls(theme) {
+    // 後牆
+    const b0 = iso(0, 0), b1 = iso(RW, 0);
+    X.fillStyle = theme.w1;
+    X.beginPath();
+    X.moveTo((b0.x + offX) * PX, (b0.y + offY) * PX);
+    X.lineTo((b1.x + offX) * PX, (b1.y + offY) * PX);
+    X.lineTo((b1.x + offX) * PX, (b1.y + offY - WH) * PX);
+    X.lineTo((b0.x + offX) * PX, (b0.y + offY - WH) * PX);
+    X.closePath();
+    X.fill();
+    X.strokeStyle = '#000';
+    X.lineWidth = PX * 2;
+    X.stroke();
+
+    // 後牆裝飾線
+    X.strokeStyle = shadeColor(theme.w1, -20);
+    X.lineWidth = PX;
+    for (let i = 1; i < 4; i++) {
+        const ly = offY - WH * i / 4;
+        X.beginPath();
+        X.moveTo((b0.x + offX) * PX, (b0.y + ly) * PX);
+        X.lineTo((b1.x + offX) * PX, (b1.y + ly) * PX);
+        X.stroke();
+    }
+
+    // 窗戶
+    drawWindow((b0.x + (b1.x - b0.x) * 0.3 + offX), (b0.y + offY - WH + 15));
+    drawWindow((b0.x + (b1.x - b0.x) * 0.7 + offX), (b0.y + offY - WH + 15 + (b1.y - b0.y) * 0.4));
+
+    // 右牆
+    const s0 = iso(RW, 0), s1 = iso(RW, RH);
+    X.fillStyle = theme.w2;
+    X.beginPath();
+    X.moveTo((s0.x + offX) * PX, (s0.y + offY) * PX);
+    X.lineTo((s1.x + offX) * PX, (s1.y + offY) * PX);
+    X.lineTo((s1.x + offX) * PX, (s1.y + offY - WH) * PX);
+    X.lineTo((s0.x + offX) * PX, (s0.y + offY - WH) * PX);
+    X.closePath();
+    X.fill();
+    X.strokeStyle = '#000';
+    X.lineWidth = PX * 2;
+    X.stroke();
+
+    // 角落線
+    X.beginPath();
+    X.moveTo((s0.x + offX) * PX, (s0.y + offY) * PX);
+    X.lineTo((s0.x + offX) * PX, (s0.y + offY - WH) * PX);
+    X.stroke();
+}
+
+// 畫窗戶
+function drawWindow(x, y) {
+    const w = 24, h = 32;
+    // 框
+    X.fillStyle = '#405060';
+    X.fillRect((x - w/2 - 2) * PX, (y - 2) * PX, (w + 4) * PX, (h + 4) * PX);
+    // 玻璃
+    X.fillStyle = '#90d0f0';
+    X.fillRect((x - w/2) * PX, y * PX, w * PX, h * PX);
+    // 反光
+    X.fillStyle = 'rgba(255,255,255,0.4)';
+    X.fillRect((x - w/2 + 2) * PX, (y + 2) * PX, (w/3) * PX, (h/3) * PX);
+    // 十字
+    X.strokeStyle = '#304050';
+    X.lineWidth = PX * 2;
+    X.beginPath();
+    X.moveTo(x * PX, y * PX);
+    X.lineTo(x * PX, (y + h) * PX);
+    X.moveTo((x - w/2) * PX, (y + h/2) * PX);
+    X.lineTo((x + w/2) * PX, (y + h/2) * PX);
+    X.stroke();
+    // 外框
+    X.strokeStyle = '#000';
+    X.lineWidth = PX;
+    X.strokeRect((x - w/2 - 2) * PX, (y - 2) * PX, (w + 4) * PX, (h + 4) * PX);
+}
+
+// 畫沙發 (像素風格)
+function drawSofa(gx, gy) {
+    const p = iso(gx, gy);
+    const x = p.x + offX, y = p.y + offY - 8;
+
+    // 陰影
+    X.fillStyle = 'rgba(0,0,0,0.25)';
+    X.beginPath();
+    X.ellipse(x * PX, (y + TH + 8) * PX, 28 * PX, 8 * PX, 0, 0, Math.PI * 2);
+    X.fill();
+
+    // 靠背
+    pxRect(x - 28, y - 20, 56, 18, '#c03030');
+    pxRect(x - 26, y - 18, 52, 14, '#e04040');
+
+    // 座墊
+    pxRect(x - 26, y, 52, 14, '#e04040');
+    pxRect(x - 24, y + 2, 22, 10, '#f05050');
+    pxRect(x + 2, y + 2, 22, 10, '#f05050');
+
+    // 扶手
+    pxRect(x - 30, y - 8, 6, 22, '#c03030');
+    pxRect(x + 24, y - 8, 6, 22, '#c03030');
+
+    // 輪廓
+    X.strokeStyle = '#000';
+    X.lineWidth = PX;
+    X.strokeRect((x - 30) * PX, (y - 20) * PX, 60 * PX, 34 * PX);
+}
+
+// 畫桌子
+function drawTable(gx, gy) {
+    const p = iso(gx, gy);
+    const x = p.x + offX, y = p.y + offY;
+
+    // 桌腳
+    pxRect(x - 16, y + 4, 4, 14, '#604020');
+    pxRect(x + 12, y + 4, 4, 14, '#604020');
+
+    // 桌面
+    pxRect(x - 20, y - 4, 40, 10, '#805030');
+    pxRect(x - 18, y - 2, 36, 6, '#906040');
+
+    // 輪廓
+    X.strokeStyle = '#000';
+    X.lineWidth = PX;
+    X.strokeRect((x - 20) * PX, (y - 4) * PX, 40 * PX, 10 * PX);
+}
+
+// 畫植物
+function drawPlant(gx, gy) {
+    const p = iso(gx, gy);
+    const x = p.x + offX, y = p.y + offY;
+
+    // 盆
+    pxRect(x - 10, y, 20, 16, '#c06020');
+    pxRect(x - 8, y + 2, 16, 12, '#d07030');
+
+    // 葉子
+    const leaves = [[0,-24],[-10,-16],[10,-16],[-6,-8],[6,-8]];
+    leaves.forEach(([dx, dy]) => {
+        pxRect(x + dx - 4, y + dy, 8, 16, '#30a040');
+        pxRect(x + dx - 3, y + dy + 2, 6, 12, '#40b050');
+    });
+
+    // 輪廓
+    X.strokeStyle = '#000';
+    X.lineWidth = PX;
+    X.strokeRect((x - 10) * PX, y * PX, 20 * PX, 16 * PX);
+}
+
+// 顏色調整
+function shadeColor(c, amt) {
+    let col = c.replace('#', '');
+    let num = parseInt(col, 16);
+    let r = Math.min(255, Math.max(0, (num >> 16) + amt));
+    let g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amt));
+    let b = Math.min(255, Math.max(0, (num & 0xff) + amt));
+    return `rgb(${r},${g},${b})`;
+}
+
+// 主渲染
+function render() {
+    X.fillStyle = '#0e0e1a';
+    X.fillRect(0, 0, C.width, C.height);
+
+    const theme = THEMES[curRoom];
+
+    // 牆
+    drawWalls(theme);
+
+    // 地板
+    for (let gy = 0; gy < RH; gy++) {
+        for (let gx = 0; gx < RW; gx++) {
+            drawTile(gx, gy, theme.f1, theme.f2);
+        }
+    }
+
+    // 收集物件排序
+    const objs = [];
+    objs.push({ d: 1 + 1, fn: () => drawSofa(1, 1) });
+    objs.push({ d: 4 + 3, fn: () => drawTable(4, 3) });
+    objs.push({ d: 7 + 1, fn: () => drawPlant(7, 1) });
+
+    Object.entries(CHARS).forEach(([id, ch]) => {
+        const p = iso(ch.x, ch.y);
+        objs.push({
+            d: ch.x + ch.y,
+            fn: () => drawAvatar(p.x + offX - AVATAR_W/2, p.y + offY - AVATAR_H + TH, ch)
+        });
+    });
+
+    objs.sort((a, b) => a.d - b.d);
+    objs.forEach(o => o.fn());
+}
+
+// 點擊移動
+C.addEventListener('click', (e) => {
+    const mx = e.clientX / PX - offX;
+    const my = e.clientY / PX - offY;
+
+    // 反向等距轉換
+    const gx = Math.floor((mx / TW + my / TH) / 2);
+    const gy = Math.floor((my / TH - mx / TW) / 2);
+
+    if (gx >= 0 && gx < RW && gy >= 0 && gy < RH) {
+        CHARS.amber.x = gx;
+        CHARS.amber.y = gy;
+        addMsg('Amber', 'I\'m here!');
+    }
+});
+
+// UI
+function addMsg(name, text) {
+    const body = document.getElementById('chatBody');
+    body.innerHTML += `<div class="chat-msg"><b>${name}:</b> ${text}</div>`;
+    body.scrollTop = body.scrollHeight;
+}
+
+function sendMsg() {
+    const inp = document.getElementById('chatIn');
+    if (inp.value.trim()) {
+        addMsg('You', inp.value);
+        inp.value = '';
+        setTimeout(() => addMsg('Amber', 'Nice! 💕'), 400);
+    }
+}
+
+function chgRoom(id, btn) {
+    curRoom = id;
+    document.getElementById('roomName').textContent = THEMES[id] ? id.charAt(0).toUpperCase() + id.slice(1) + ' Room' : 'Room';
+    document.querySelectorAll('.rbtn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    addMsg('System', 'Welcome!');
+}
+
+// 初始化
+function resize() {
+    C.width = window.innerWidth;
+    C.height = window.innerHeight;
+    const center = iso(RW / 2, RH / 2);
+    offX = C.width / 2 / PX - center.x;
+    offY = C.height / 2 / PX - center.y + 20;
+}
+
+function loop() {
+    render();
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize', resize);
+window.chgRoom = chgRoom;
+window.sendMsg = sendMsg;
+resize();
+loop();
+</script>
+</body>
+</html>

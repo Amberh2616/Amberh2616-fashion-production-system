@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BE 76 - Habbo Pro 房間</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        /* ========== HEADER ========== */
+        .header {
+            background: linear-gradient(90deg, #2d1f3d 0%, #1a1a2e 100%);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #4a3f5c;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 0 10px #a855f7;
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .room-title {
+            color: #e0e0e0;
+            font-size: 1.1rem;
+        }
+
+        .online-badge {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+        }
+
+        /* ========== MAIN CONTAINER ========== */
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 50px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(ellipse at center, #2a2a4a 0%, #1a1a2e 70%);
+        }
+
+        /* ========== ISOMETRIC ROOM ========== */
+        .iso-room {
+            position: relative;
+            width: 900px;
+            height: 600px;
+            transform-style: preserve-3d;
+        }
+
+        /* ========== WALLS ========== */
+        .wall-back {
+            position: absolute;
+            left: 150px;
+            top: 30px;
+            width: 450px;
+            height: 180px;
+            background: linear-gradient(180deg,
+                #6b8cae 0%,
+                #5a7a9a 20%,
+                #5a7a9a 80%,
+                #4a6a8a 100%
+            );
+            transform: skewY(26.5deg);
+            border: 3px solid #3d5a73;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.3);
+            z-index: 1;
+        }
+
+        /* 壁紙紋理 */
+        .wall-back::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent 0px,
+                transparent 20px,
+                rgba(255,255,255,0.03) 20px,
+                rgba(255,255,255,0.03) 21px
+            );
+        }
+
+        /* 頂部裝飾條 */
+        .wall-back::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 12px;
+            background: linear-gradient(180deg, #8ba8c4 0%, #6b8cae 100%);
+            border-bottom: 2px solid #5a7a9a;
+        }
+
+        .wall-side {
+            position: absolute;
+            left: 600px;
+            top: 150px;
+            width: 250px;
+            height: 180px;
+            background: linear-gradient(180deg,
+                #5a7a9a 0%,
+                #4a6a8a 20%,
+                #4a6a8a 80%,
+                #3a5a7a 100%
+            );
+            transform: skewY(-26.5deg);
+            border: 3px solid #2d4a63;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.4);
+            z-index: 1;
+        }
+
+        .wall-side::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent 0px,
+                transparent 20px,
+                rgba(255,255,255,0.02) 20px,
+                rgba(255,255,255,0.02) 21px
+            );
+        }
+
+        .wall-side::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 12px;
+            background: linear-gradient(180deg, #7a9ab4 0%, #5a7a9a 100%);
+            border-bottom: 2px solid #4a6a8a;
+        }
+
+        /* ========== WINDOWS ========== */
+        .window {
+            position: absolute;
+            width: 70px;
+            height: 90px;
+            background: linear-gradient(180deg,
+                #87ceeb 0%,
+                #b0e2ff 30%,
+                #87ceeb 60%,
+                #6bb3d9 100%
+            );
+            border: 4px solid #4a6a8a;
+            border-radius: 8px 8px 0 0;
+            box-shadow:
+                inset 0 0 20px rgba(255,255,255,0.3),
+                0 0 15px rgba(135,206,235,0.3);
+            overflow: hidden;
+        }
+
+        /* 窗框 */
+        .window::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: #4a6a8a;
+        }
+
+        .window::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 4px;
+            background: #4a6a8a;
+            transform: translateX(-50%);
+        }
+
+        /* 窗簾 */
+        .curtain {
+            position: absolute;
+            top: 0;
+            width: 15px;
+            height: 100%;
+            background: linear-gradient(90deg, #d4a5a5 0%, #c49090 100%);
+        }
+        .curtain.left { left: 0; }
+        .curtain.right { right: 0; }
+
+        .wall-back .window:nth-child(1) { left: 40px; top: 40px; }
+        .wall-back .window:nth-child(2) { left: 150px; top: 40px; }
+        .wall-back .window:nth-child(3) { left: 260px; top: 40px; }
+
+        .wall-side .window { left: 60px; top: 40px; }
+
+        /* ========== FLOOR ========== */
+        .floor-container {
+            position: absolute;
+            left: 120px;
+            top: 200px;
+            z-index: 2;
+        }
+
+        .floor {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .floor-row {
+            display: flex;
+        }
+
+        /* 等距菱形地磚 */
+        .tile {
+            width: 64px;
+            height: 32px;
+            position: relative;
+            cursor: pointer;
+            transition: filter 0.2s;
+        }
+
+        .tile:hover {
+            filter: brightness(1.2);
+        }
+
+        .tile-top {
+            position: absolute;
+            width: 64px;
+            height: 32px;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+        }
+
+        /* 地磚顏色 - 棋盤格 */
+        .tile-light .tile-top {
+            background: linear-gradient(135deg, #c9a86c 0%, #b8976b 50%, #a8875a 100%);
+        }
+
+        .tile-dark .tile-top {
+            background: linear-gradient(135deg, #a8875a 0%, #987555 50%, #876545 100%);
+        }
+
+        /* 地磚高光 */
+        .tile-top::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 25%;
+            width: 50%;
+            height: 30%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+        }
+
+        /* ========== CHARACTERS ========== */
+        .characters {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        .character {
+            position: absolute;
+            cursor: pointer;
+            transition: transform 0.3s, filter 0.3s;
+            filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
+        }
+
+        .character:hover {
+            transform: scale(1.15) translateY(-5px);
+            filter: drop-shadow(2px 6px 5px rgba(0,0,0,0.5));
+            z-index: 100;
+        }
+
+        /* Habbo 像素風格角色 */
+        .habbo-char {
+            width: 36px;
+            position: relative;
+        }
+
+        /* 頭部 */
+        .h-head {
+            width: 28px;
+            height: 28px;
+            background: #ffdcb8;
+            border: 2px solid #2a2a2a;
+            border-radius: 6px;
+            margin: 0 auto;
+            position: relative;
+            box-shadow: inset -3px -3px 0 #ecc8a0;
+        }
+
+        /* 頭髮 */
+        .h-hair {
+            position: absolute;
+            top: -6px;
+            left: -3px;
+            width: 34px;
+            height: 16px;
+            border-radius: 10px 10px 0 0;
+            border: 2px solid #2a2a2a;
+            border-bottom: none;
+        }
+
+        /* 瀏海 */
+        .h-bangs {
+            position: absolute;
+            top: 8px;
+            left: 2px;
+            width: 24px;
+            height: 6px;
+            border-radius: 0 0 8px 8px;
+        }
+
+        /* 眼睛 */
+        .h-eyes {
+            position: absolute;
+            top: 10px;
+            left: 5px;
+            width: 18px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .h-eye {
+            width: 5px;
+            height: 6px;
+            background: #2a2a2a;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        /* 眼睛高光 */
+        .h-eye::after {
+            content: '';
+            position: absolute;
+            top: 1px;
+            right: 1px;
+            width: 2px;
+            height: 2px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        /* 腮紅 */
+        .h-blush {
+            position: absolute;
+            top: 16px;
+            width: 6px;
+            height: 3px;
+            background: #ffb3b3;
+            border-radius: 50%;
+            opacity: 0.6;
+        }
+        .h-blush.left { left: 2px; }
+        .h-blush.right { right: 2px; }
+
+        /* 嘴巴 */
+        .h-mouth {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px;
+            height: 3px;
+            background: #d98080;
+            border-radius: 0 0 4px 4px;
+        }
+
+        /* 身體 */
+        .h-body {
+            width: 24px;
+            height: 22px;
+            margin: 2px auto 0;
+            border: 2px solid #2a2a2a;
+            border-radius: 4px;
+            position: relative;
+            box-shadow: inset -3px -3px 0 rgba(0,0,0,0.15);
+        }
+
+        /* 衣服細節 */
+        .h-body::before {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 8px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+
+        /* 腿 */
+        .h-legs {
+            display: flex;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .h-leg {
+            width: 9px;
+            height: 14px;
+            background: #3d5a80;
+            border: 2px solid #2a2a2a;
+            border-top: none;
+            border-radius: 0 0 3px 3px;
+        }
+
+        /* 鞋子 */
+        .h-leg::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            width: 11px;
+            height: 4px;
+            background: #2a2a2a;
+            border-radius: 2px;
+        }
+
+        /* 角色顏色變體 */
+        .char-amber .h-hair, .char-amber .h-bangs { background: #f4a460; }
+        .char-amber .h-body { background: linear-gradient(180deg, #ff6b9d 0%, #e55a8a 100%); }
+
+        .char-bella .h-hair, .char-bella .h-bangs { background: #4a4a4a; }
+        .char-bella .h-body { background: linear-gradient(180deg, #4cc9f0 0%, #3ab8df 100%); }
+
+        .char-emma .h-hair, .char-emma .h-bangs { background: #d4a574; }
+        .char-emma .h-body { background: linear-gradient(180deg, #a855f7 0%, #9333ea 100%); }
+
+        .char-luna .h-hair, .char-luna .h-bangs { background: #2d2d2d; }
+        .char-luna .h-body { background: linear-gradient(180deg, #ec4899 0%, #db2777 100%); }
+
+        /* 名字標籤 */
+        .char-label {
+            text-align: center;
+            margin-top: 6px;
+        }
+
+        .char-name {
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            background: rgba(0,0,0,0.85);
+            padding: 3px 10px;
+            border-radius: 10px;
+            display: inline-block;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* 陰影 */
+        .char-shadow {
+            width: 26px;
+            height: 8px;
+            background: rgba(0,0,0,0.35);
+            border-radius: 50%;
+            margin: 3px auto 0;
+            filter: blur(2px);
+        }
+
+        /* 對話泡泡 */
+        .bubble {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px 14px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+            opacity: 0;
+            transition: all 0.3s ease;
+            margin-bottom: 12px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .bubble::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: white;
+        }
+
+        .character:hover .bubble,
+        .bubble.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-5px);
+        }
+
+        /* 角色動畫 */
+        @keyframes idle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
+
+        .character {
+            animation: idle 2.5s ease-in-out infinite;
+        }
+
+        .character:nth-child(2) { animation-delay: 0.5s; }
+        .character:nth-child(3) { animation-delay: 1s; }
+        .character:nth-child(4) { animation-delay: 1.5s; }
+
+        /* ========== FURNITURE ========== */
+        .furniture {
+            position: absolute;
+            z-index: 5;
+            cursor: pointer;
+            transition: transform 0.2s, filter 0.2s;
+            filter: drop-shadow(3px 5px 4px rgba(0,0,0,0.4));
+        }
+
+        .furniture:hover {
+            transform: scale(1.08);
+            filter: drop-shadow(3px 7px 6px rgba(0,0,0,0.5));
+        }
+
+        /* 沙發 */
+        .sofa {
+            width: 100px;
+        }
+
+        .sofa-back {
+            width: 100px;
+            height: 35px;
+            background: linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%);
+            border: 3px solid #7f1d1d;
+            border-radius: 8px 8px 0 0;
+            box-shadow: inset 0 5px 10px rgba(255,255,255,0.2);
+        }
+
+        .sofa-seat {
+            width: 100px;
+            height: 25px;
+            background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+            border: 3px solid #7f1d1d;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            position: relative;
+        }
+
+        /* 沙發裝飾 */
+        .sofa-cushion {
+            position: absolute;
+            top: 5px;
+            width: 25px;
+            height: 12px;
+            background: linear-gradient(180deg, #fca5a5 0%, #f87171 100%);
+            border: 2px solid #dc2626;
+            border-radius: 4px;
+        }
+        .sofa-cushion:first-child { left: 8px; }
+        .sofa-cushion:last-child { right: 8px; }
+
+        .sofa-legs {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 10px;
+        }
+
+        .sofa-leg {
+            width: 8px;
+            height: 8px;
+            background: #4a3728;
+            border: 2px solid #2a1f18;
+            border-radius: 2px;
+        }
+
+        /* 桌子 */
+        .table {
+            width: 80px;
+        }
+
+        .table-top {
+            width: 80px;
+            height: 12px;
+            background: linear-gradient(180deg, #92400e 0%, #78350f 100%);
+            border: 3px solid #451a03;
+            border-radius: 4px;
+            box-shadow: inset 0 3px 6px rgba(255,255,255,0.15);
+        }
+
+        .table-legs {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 8px;
+        }
+
+        .table-leg {
+            width: 8px;
+            height: 35px;
+            background: linear-gradient(90deg, #78350f 0%, #92400e 50%, #78350f 100%);
+            border: 2px solid #451a03;
+        }
+
+        /* 桌上物品 */
+        .table-items {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        .coffee-cup {
+            width: 14px;
+            height: 16px;
+            background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #d97706;
+            border-radius: 2px 2px 4px 4px;
+            position: relative;
+        }
+
+        .coffee-cup::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: -6px;
+            width: 6px;
+            height: 8px;
+            border: 2px solid #d97706;
+            border-left: none;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .book {
+            width: 18px;
+            height: 12px;
+            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+            border: 2px solid #1e40af;
+            border-radius: 2px;
+        }
+
+        /* 盆栽 */
+        .plant {
+            width: 50px;
+        }
+
+        .plant-leaves {
+            position: relative;
+            height: 50px;
+            margin-bottom: -8px;
+        }
+
+        .leaf {
+            position: absolute;
+            width: 20px;
+            height: 30px;
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            border: 2px solid #15803d;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        }
+
+        .leaf:nth-child(1) { left: 5px; top: 10px; transform: rotate(-25deg); }
+        .leaf:nth-child(2) { left: 15px; top: 0; }
+        .leaf:nth-child(3) { left: 25px; top: 10px; transform: rotate(25deg); }
+        .leaf:nth-child(4) { left: 10px; top: 20px; transform: rotate(-10deg); width: 15px; height: 22px; }
+        .leaf:nth-child(5) { left: 22px; top: 20px; transform: rotate(10deg); width: 15px; height: 22px; }
+
+        .plant-pot {
+            width: 36px;
+            height: 30px;
+            background: linear-gradient(180deg, #ea580c 0%, #c2410c 100%);
+            border: 3px solid #9a3412;
+            border-radius: 5px 5px 8px 8px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .plant-pot::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -3px;
+            width: 42px;
+            height: 8px;
+            background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+            border: 2px solid #9a3412;
+            border-radius: 3px;
+        }
+
+        /* 地毯 */
+        .rug {
+            position: absolute;
+            width: 180px;
+            height: 90px;
+            background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.3);
+            z-index: 3;
+        }
+
+        .rug::before {
+            content: '';
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            right: 10%;
+            bottom: 10%;
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+        }
+
+        .rug::after {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 25%;
+            right: 25%;
+            bottom: 25%;
+            background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+        }
+
+        /* 壁畫 */
+        .wall-art {
+            position: absolute;
+            width: 50px;
+            height: 60px;
+            background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
+            border: 4px solid #b45309;
+            border-radius: 3px;
+            box-shadow: 2px 3px 8px rgba(0,0,0,0.3);
+            z-index: 2;
+        }
+
+        .wall-art::before {
+            content: '🌸';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+        }
+
+        /* 燈具 */
+        .lamp {
+            position: absolute;
+            z-index: 15;
+        }
+
+        .lamp-shade {
+            width: 30px;
+            height: 20px;
+            background: linear-gradient(180deg, #fef9c3 0%, #fef08a 100%);
+            border: 2px solid #ca8a04;
+            border-radius: 4px 4px 15px 15px;
+            box-shadow: 0 0 20px rgba(254, 240, 138, 0.6);
+        }
+
+        .lamp-stand {
+            width: 6px;
+            height: 25px;
+            background: #78350f;
+            margin: 0 auto;
+            border: 1px solid #451a03;
+        }
+
+        .lamp-base {
+            width: 20px;
+            height: 6px;
+            background: #78350f;
+            margin: 0 auto;
+            border: 1px solid #451a03;
+            border-radius: 2px;
+        }
+
+        /* ========== ROOM CONTROLS ========== */
+        .controls {
+            position: fixed;
+            top: 60px;
+            left: 15px;
+            background: rgba(30, 30, 50, 0.95);
+            padding: 15px;
+            border-radius: 15px;
+            border: 2px solid #4a3f5c;
+            z-index: 1000;
+        }
+
+        .room-btn {
+            display: block;
+            width: 100%;
+            background: transparent;
+            border: 2px solid #6366f1;
+            color: #a5b4fc;
+            padding: 10px 20px;
+            margin-bottom: 8px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            text-align: left;
+        }
+
+        .room-btn:last-child {
+            margin-bottom: 0;
+        }
+
+        .room-btn:hover, .room-btn.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border-color: transparent;
+            transform: translateX(5px);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+        }
+
+        /* ========== CHAT PANEL ========== */
+        .chat-box {
+            position: fixed;
+            bottom: 0;
+            right: 15px;
+            width: 340px;
+            background: rgba(30, 30, 50, 0.98);
+            border-radius: 20px 20px 0 0;
+            border: 2px solid #4a3f5c;
+            border-bottom: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .chat-head {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 12px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .chat-toggle-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .chat-toggle-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .chat-body {
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .chat-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-body::-webkit-scrollbar-thumb {
+            background: #6366f1;
+            border-radius: 3px;
+        }
+
+        .msg {
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            animation: msgPop 0.3s ease;
+        }
+
+        @keyframes msgPop {
+            from { opacity: 0; transform: translateY(10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .msg.ai {
+            background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.2) 100%);
+            border-left: 3px solid #6366f1;
+            color: #e0e0e0;
+        }
+
+        .msg.user {
+            background: rgba(255,255,255,0.1);
+            color: #e0e0e0;
+        }
+
+        .msg strong {
+            color: #a5b4fc;
+        }
+
+        .chat-input {
+            padding: 12px 15px;
+            border-top: 1px solid #4a3f5c;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 10px 16px;
+            border: 2px solid #4a3f5c;
+            border-radius: 25px;
+            background: rgba(255,255,255,0.05);
+            color: white;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input input::placeholder {
+            color: #888;
+        }
+
+        .chat-input input:focus {
+            border-color: #6366f1;
+        }
+
+        .chat-input button {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border: none;
+            color: white;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .chat-input button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+        }
+
+        /* ========== MODAL ========== */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-box {
+            background: linear-gradient(180deg, #2d2d4a 0%, #1a1a2e 100%);
+            border-radius: 25px;
+            width: 90%;
+            max-width: 420px;
+            border: 2px solid #4a3f5c;
+            overflow: hidden;
+            animation: modalBounce 0.4s ease;
+        }
+
+        @keyframes modalBounce {
+            0% { opacity: 0; transform: scale(0.8) translateY(-30px); }
+            60% { transform: scale(1.02) translateY(5px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .modal-head {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-head h3 {
+            font-size: 1.4rem;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background 0.3s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .modal-content {
+            padding: 25px;
+            text-align: center;
+        }
+
+        .modal-avatar {
+            width: 90px;
+            height: 90px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            margin: 0 auto 20px;
+            box-shadow: 0 0 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .modal-stats {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-bottom: 20px;
+        }
+
+        .modal-stat {
+            text-align: center;
+        }
+
+        .modal-stat-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .modal-stat-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #a5b4fc;
+            margin-top: 4px;
+        }
+
+        .modal-desc {
+            color: #b0b0b0;
+            line-height: 1.7;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+
+        .modal-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            padding: 14px 35px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .modal-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+        }
+
+        /* ========== AMBIENT EFFECTS ========== */
+        .ambient-light {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(254, 240, 138, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 4;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">BE 76</div>
+        <div class="room-info">
+            <span class="room-title" id="roomTitle">🎀 時尚穿搭房</span>
+            <span class="online-badge">👥 12 在線</span>
+        </div>
+    </header>
+
+    <!-- Room Controls -->
+    <div class="controls">
+        <button class="room-btn active" onclick="switchRoom('fashion', this)">🎀 時尚穿搭</button>
+        <button class="room-btn" onclick="switchRoom('beauty', this)">💄 美妝保養</button>
+        <button class="room-btn" onclick="switchRoom('travel', this)">✈️ 旅行探索</button>
+        <button class="room-btn" onclick="switchRoom('music', this)">🎵 音樂聊天</button>
+    </div>
+
+    <!-- Main Game -->
+    <div class="game-container">
+        <div class="iso-room">
+            <!-- Walls -->
+            <div class="wall-back" id="wallBack">
+                <div class="window"><div class="curtain left"></div><div class="curtain right"></div></div>
+                <div class="window"><div class="curtain left"></div><div class="curtain right"></div></div>
+                <div class="window"><div class="curtain left"></div><div class="curtain right"></div></div>
+            </div>
+            <div class="wall-side" id="wallSide">
+                <div class="window"><div class="curtain left"></div><div class="curtain right"></div></div>
+            </div>
+
+            <!-- Wall Art -->
+            <div class="wall-art" style="left: 380px; top: 60px;"></div>
+
+            <!-- Floor -->
+            <div class="floor-container">
+                <div class="floor" id="floor"></div>
+            </div>
+
+            <!-- Rug -->
+            <div class="rug" style="left: 350px; top: 350px;"></div>
+
+            <!-- Ambient Light -->
+            <div class="ambient-light" style="left: 400px; top: 250px;"></div>
+
+            <!-- Furniture -->
+            <div class="furniture sofa" style="left: 180px; top: 340px;">
+                <div class="sofa-back"></div>
+                <div class="sofa-seat">
+                    <div class="sofa-cushion"></div>
+                    <div class="sofa-cushion"></div>
+                </div>
+                <div class="sofa-legs">
+                    <div class="sofa-leg"></div>
+                    <div class="sofa-leg"></div>
+                </div>
+            </div>
+
+            <div class="furniture table" style="left: 380px; top: 400px;">
+                <div class="table-items">
+                    <div class="coffee-cup"></div>
+                    <div class="book"></div>
+                </div>
+                <div class="table-top"></div>
+                <div class="table-legs">
+                    <div class="table-leg"></div>
+                    <div class="table-leg"></div>
+                </div>
+            </div>
+
+            <div class="furniture plant" style="left: 600px; top: 290px;">
+                <div class="plant-leaves">
+                    <div class="leaf"></div>
+                    <div class="leaf"></div>
+                    <div class="leaf"></div>
+                    <div class="leaf"></div>
+                    <div class="leaf"></div>
+                </div>
+                <div class="plant-pot"></div>
+            </div>
+
+            <div class="furniture lamp" style="left: 550px; top: 270px;">
+                <div class="lamp-shade"></div>
+                <div class="lamp-stand"></div>
+                <div class="lamp-base"></div>
+            </div>
+
+            <!-- Characters -->
+            <div class="characters">
+                <!-- Amber -->
+                <div class="character char-amber" style="left: 250px; top: 380px;" onclick="showModal('amber')">
+                    <div class="bubble" id="bubble-amber">嗨！歡迎來到房間！✨</div>
+                    <div class="habbo-char">
+                        <div class="h-head">
+                            <div class="h-hair"></div>
+                            <div class="h-bangs"></div>
+                            <div class="h-eyes"><div class="h-eye"></div><div class="h-eye"></div></div>
+                            <div class="h-blush left"></div>
+                            <div class="h-blush right"></div>
+                            <div class="h-mouth"></div>
+                        </div>
+                        <div class="h-body"></div>
+                        <div class="h-legs"><div class="h-leg"></div><div class="h-leg"></div></div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-label"><span class="char-name">Amber</span></div>
+                </div>
+
+                <!-- Bella -->
+                <div class="character char-bella" style="left: 340px; top: 420px;" onclick="showModal('bella')">
+                    <div class="bubble" id="bubble-bella">今天想聊什麼呢？💄</div>
+                    <div class="habbo-char">
+                        <div class="h-head">
+                            <div class="h-hair"></div>
+                            <div class="h-bangs"></div>
+                            <div class="h-eyes"><div class="h-eye"></div><div class="h-eye"></div></div>
+                            <div class="h-blush left"></div>
+                            <div class="h-blush right"></div>
+                            <div class="h-mouth"></div>
+                        </div>
+                        <div class="h-body"></div>
+                        <div class="h-legs"><div class="h-leg"></div><div class="h-leg"></div></div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-label"><span class="char-name">Bella</span></div>
+                </div>
+
+                <!-- Emma -->
+                <div class="character char-emma" style="left: 460px; top: 370px;" onclick="showModal('emma')">
+                    <div class="bubble" id="bubble-emma">有什麼想問的嗎？🌍</div>
+                    <div class="habbo-char">
+                        <div class="h-head">
+                            <div class="h-hair"></div>
+                            <div class="h-bangs"></div>
+                            <div class="h-eyes"><div class="h-eye"></div><div class="h-eye"></div></div>
+                            <div class="h-blush left"></div>
+                            <div class="h-blush right"></div>
+                            <div class="h-mouth"></div>
+                        </div>
+                        <div class="h-body"></div>
+                        <div class="h-legs"><div class="h-leg"></div><div class="h-leg"></div></div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-label"><span class="char-name">Emma</span></div>
+                </div>
+
+                <!-- Luna -->
+                <div class="character char-luna" style="left: 560px; top: 430px;" onclick="showModal('luna')">
+                    <div class="bubble" id="bubble-luna">需要幫助嗎？🎵</div>
+                    <div class="habbo-char">
+                        <div class="h-head">
+                            <div class="h-hair"></div>
+                            <div class="h-bangs"></div>
+                            <div class="h-eyes"><div class="h-eye"></div><div class="h-eye"></div></div>
+                            <div class="h-blush left"></div>
+                            <div class="h-blush right"></div>
+                            <div class="h-mouth"></div>
+                        </div>
+                        <div class="h-body"></div>
+                        <div class="h-legs"><div class="h-leg"></div><div class="h-leg"></div></div>
+                    </div>
+                    <div class="char-shadow"></div>
+                    <div class="char-label"><span class="char-name">Luna</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div class="chat-box">
+        <div class="chat-head">
+            💬 房間聊天
+            <button class="chat-toggle-btn" onclick="toggleChat()">▼</button>
+        </div>
+        <div class="chat-body" id="chatBody">
+            <div class="msg ai"><strong>Amber:</strong> 歡迎來到時尚穿搭房！想聊什麼呢？✨</div>
+        </div>
+        <div class="chat-input">
+            <input type="text" id="chatInput" placeholder="輸入訊息..." onkeypress="if(event.key==='Enter')sendMsg()">
+            <button onclick="sendMsg()">➤</button>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal" onclick="closeModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-head">
+                <h3 id="modalName">Amber</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-content">
+                <div class="modal-avatar" id="modalEmoji">👗</div>
+                <div class="modal-stats">
+                    <div class="modal-stat">
+                        <div class="modal-stat-label">專長</div>
+                        <div class="modal-stat-value" id="modalSkill">時尚穿搭</div>
+                    </div>
+                    <div class="modal-stat">
+                        <div class="modal-stat-label">個性</div>
+                        <div class="modal-stat-value" id="modalPersonality">溫柔友善</div>
+                    </div>
+                    <div class="modal-stat">
+                        <div class="modal-stat-label">經驗值</div>
+                        <div class="modal-stat-value" id="modalExp">2,560</div>
+                    </div>
+                </div>
+                <p class="modal-desc" id="modalDesc">我是 Amber，你的專屬時尚顧問！</p>
+                <button class="modal-btn" onclick="startChat()">開始聊天 💬</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data
+        const chars = {
+            amber: { name: 'Amber', emoji: '👗', skill: '時尚穿搭', personality: '溫柔友善', exp: '2,560', desc: '我是 Amber，你的專屬時尚顧問！擅長搭配建議和風格分析，讓我幫你找到最適合的穿搭風格吧！' },
+            bella: { name: 'Bella', emoji: '💄', skill: '美妝保養', personality: '活潑開朗', exp: '1,890', desc: '嗨！我是 Bella，美妝達人！專精彩妝技巧和保養秘訣，讓我幫你找到最適合的妝容。' },
+            emma: { name: 'Emma', emoji: '✈️', skill: '旅行規劃', personality: '冒險精神', exp: '3,200', desc: '我是 Emma，旅行專家！喜歡探索世界各地的美景和文化，一起來規劃夢想旅程吧！' },
+            luna: { name: 'Luna', emoji: '🎵', skill: '音樂品味', personality: '藝術氣息', exp: '2,100', desc: '我是 Luna，音樂愛好者！從古典到流行，讓我為你推薦最適合的音樂和播放清單。' }
+        };
+
+        const rooms = {
+            fashion: '🎀 時尚穿搭房',
+            beauty: '💄 美妝保養房',
+            travel: '✈️ 旅行探索房',
+            music: '🎵 音樂聊天房'
+        };
+
+        let currentChar = null;
+
+        // Generate floor
+        function genFloor() {
+            const floor = document.getElementById('floor');
+            floor.innerHTML = '';
+            const rows = 8, cols = 12;
+
+            for (let r = 0; r < rows; r++) {
+                const row = document.createElement('div');
+                row.className = 'floor-row';
+                for (let c = 0; c < cols; c++) {
+                    const tile = document.createElement('div');
+                    tile.className = `tile ${(r + c) % 2 === 0 ? 'tile-light' : 'tile-dark'}`;
+                    tile.innerHTML = '<div class="tile-top"></div>';
+                    row.appendChild(tile);
+                }
+                floor.appendChild(row);
+            }
+        }
+
+        // Switch room
+        function switchRoom(type, btn) {
+            document.getElementById('roomTitle').textContent = rooms[type];
+            document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            addMsg(`歡迎來到${rooms[type]}！`, 'ai', 'Amber');
+            randomBubbles();
+        }
+
+        // Modal
+        function showModal(id) {
+            const c = chars[id];
+            currentChar = c;
+            document.getElementById('modalName').textContent = c.name;
+            document.getElementById('modalEmoji').textContent = c.emoji;
+            document.getElementById('modalSkill').textContent = c.skill;
+            document.getElementById('modalPersonality').textContent = c.personality;
+            document.getElementById('modalExp').textContent = c.exp;
+            document.getElementById('modalDesc').textContent = c.desc;
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function closeModal(e) {
+            if (!e || e.target.id === 'modal') {
+                document.getElementById('modal').style.display = 'none';
+            }
+        }
+
+        function startChat() {
+            if (currentChar) {
+                addMsg(`嗨！我是 ${currentChar.name}，很高興認識你！有什麼想聊的嗎？`, 'ai', currentChar.name);
+            }
+            closeModal();
+        }
+
+        // Chat
+        function addMsg(text, type, sender = 'You') {
+            const body = document.getElementById('chatBody');
+            const msg = document.createElement('div');
+            msg.className = `msg ${type}`;
+            msg.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            body.appendChild(msg);
+            body.scrollTop = body.scrollHeight;
+        }
+
+        function sendMsg() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            addMsg(text, 'user');
+            input.value = '';
+
+            setTimeout(() => {
+                const resps = [
+                    ['Amber', '這個想法很棒！我來給你一些建議～ ✨'],
+                    ['Bella', '讓我推薦一些適合你的選擇！💖'],
+                    ['Emma', '根據你的風格，我建議... 🌟'],
+                    ['Luna', '讓我分析一下最適合的方案！🎵']
+                ];
+                const [name, msg] = resps[Math.floor(Math.random() * resps.length)];
+                addMsg(msg, 'ai', name);
+            }, 1200);
+        }
+
+        function toggleChat() {
+            const body = document.getElementById('chatBody');
+            const btn = document.querySelector('.chat-toggle-btn');
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                btn.textContent = '▼';
+            } else {
+                body.style.display = 'none';
+                btn.textContent = '▲';
+            }
+        }
+
+        // Bubbles
+        function randomBubbles() {
+            const bubbles = ['bubble-amber', 'bubble-bella', 'bubble-emma', 'bubble-luna'];
+            const msgs = [
+                '嗨！很高興見到你！',
+                '今天過得如何呢？',
+                '有什麼想聊的嗎？',
+                '需要我的幫助嗎？',
+                '歡迎來到房間！'
+            ];
+            bubbles.forEach(id => {
+                const b = document.getElementById(id);
+                if (Math.random() > 0.4) {
+                    b.textContent = msgs[Math.floor(Math.random() * msgs.length)];
+                    b.classList.add('show');
+                    setTimeout(() => b.classList.remove('show'), 3500);
+                }
+            });
+        }
+
+        // Character movement
+        function moveChars() {
+            document.querySelectorAll('.character').forEach(char => {
+                const left = parseInt(char.style.left);
+                const top = parseInt(char.style.top);
+                const newLeft = Math.max(200, Math.min(580, left + (Math.random() - 0.5) * 40));
+                const newTop = Math.max(350, Math.min(450, top + (Math.random() - 0.5) * 30));
+                char.style.transition = 'left 2s ease, top 2s ease';
+                char.style.left = newLeft + 'px';
+                char.style.top = newTop + 'px';
+            });
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            genFloor();
+            setInterval(randomBubbles, 6000);
+            setInterval(moveChars, 4000);
+            setTimeout(randomBubbles, 1500);
+        });
+    </script>
+</body>
+</html>

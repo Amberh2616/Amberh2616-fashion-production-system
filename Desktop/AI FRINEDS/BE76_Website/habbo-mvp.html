@@ -1,0 +1,278 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>BE 76 - Habbo-like Isometric Room MVP</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #0f1220; }
+    #game { width: 100vw; height: 100vh; overflow: hidden; }
+    .hint {
+      position: fixed; left: 16px; top: 12px;
+      color: #fff; font-family: Arial, sans-serif; font-size: 14px;
+      opacity: 0.85; background: rgba(0,0,0,0.35);
+      padding: 8px 10px; border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">
+    ✅ 點地板讓角色走路（等角房間）<br>
+    這是 MVP：菱形地板 + 家具 + 深度排序
+  </div>
+  <div id="game"></div>
+
+  <!-- Phaser 3 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script>
+    // =========================
+    // 1) 基本設定（房間大小）
+    // =========================
+    const GRID_W = 14;   // 欄
+    const GRID_H = 10;   // 列
+    const TILE_W = 64;   // 菱形寬
+    const TILE_H = 32;   // 菱形高
+
+    // 等角轉換：grid(x,y) -> screen(x,y)
+    function gridToScreen(gx, gy, originX, originY) {
+      const sx = originX + (gx - gy) * (TILE_W / 2);
+      const sy = originY + (gx + gy) * (TILE_H / 2);
+      return { x: sx, y: sy };
+    }
+
+    // screen -> grid（用在點擊判斷）
+    function screenToGrid(sx, sy, originX, originY) {
+      const dx = sx - originX;
+      const dy = sy - originY;
+      const gx = (dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2;
+      const gy = (dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2;
+      return { x: Math.floor(gx + 0.00001), y: Math.floor(gy + 0.00001) };
+    }
+
+    // 走路路徑：先給最簡單版本（直線走格子）
+    function simplePath(from, to) {
+      const path = [];
+      let x = from.x, y = from.y;
+      while (x !== to.x || y !== to.y) {
+        if (x < to.x) x++;
+        else if (x > to.x) x--;
+        else if (y < to.y) y++;
+        else if (y > to.y) y--;
+        path.push({ x, y });
+      }
+      return path;
+    }
+
+    // =========================
+    // 2) Phaser Scene
+    // =========================
+    class RoomScene extends Phaser.Scene {
+      constructor() {
+        super('RoomScene');
+        this.originX = 0;
+        this.originY = 0;
+
+        this.tiles = [];
+        this.furnis = [];
+        this.blocked = new Set();
+
+        this.player = null;
+        this.playerGrid = { x: 4, y: 3 };
+        this.isMoving = false;
+      }
+
+      preload() {}
+
+      create() {
+        const { width, height } = this.scale;
+
+        this.originX = Math.floor(width * 0.5);
+        this.originY = Math.floor(height * 0.18);
+
+        this.add.rectangle(width/2, height/2, width, height, 0x0f1220);
+
+        this.createIsoFloor();
+
+        this.placeFurniture(6, 4, 0x6dd6ff);
+        this.placeFurniture(7, 4, 0xffd36d);
+        this.placeFurniture(6, 6, 0xff6d8a);
+
+        this.createPlayer(this.playerGrid.x, this.playerGrid.y);
+
+        this.input.on('pointerdown', (pointer) => {
+          const g = screenToGrid(pointer.x, pointer.y, this.originX, this.originY);
+          if (!this.isValidGrid(g.x, g.y)) return;
+          if (this.blocked.has(`${g.x},${g.y}`)) return;
+
+          this.movePlayerTo(g.x, g.y);
+        });
+
+        this.cameras.main.setBounds(-2000, -2000, 4000, 4000);
+        this.input.on('wheel', (_p, _g, _dx, dy) => {
+          const cam = this.cameras.main;
+          cam.zoom = Phaser.Math.Clamp(cam.zoom - dy * 0.001, 0.4, 2.0);
+        });
+      }
+
+      createIsoFloor() {
+        for (let y = 0; y < GRID_H; y++) {
+          for (let x = 0; x < GRID_W; x++) {
+            const pos = gridToScreen(x, y, this.originX, this.originY);
+
+            const isAlt = (x + y) % 2 === 0;
+            const fill = isAlt ? 0x1b2540 : 0x152038;
+            const stroke = 0x2a3a66;
+
+            const tile = this.drawDiamond(pos.x, pos.y, fill, stroke);
+            tile.setInteractive(new Phaser.Geom.Polygon([
+              0, -TILE_H/2,
+              TILE_W/2, 0,
+              0, TILE_H/2,
+              -TILE_W/2, 0
+            ]), Phaser.Geom.Polygon.Contains);
+
+            tile.on('pointerover', () => tile.setAlpha(0.95));
+            tile.on('pointerout', () => tile.setAlpha(1.0));
+
+            tile.setDepth(pos.y);
+
+            this.tiles.push({ x, y, tile, pos });
+          }
+        }
+      }
+
+      drawDiamond(cx, cy, fillColor, strokeColor) {
+        const g = this.add.graphics();
+        g.fillStyle(fillColor, 1);
+        g.lineStyle(1, strokeColor, 0.9);
+
+        const hw = TILE_W / 2;
+        const hh = TILE_H / 2;
+
+        g.beginPath();
+        g.moveTo(cx, cy - hh);
+        g.lineTo(cx + hw, cy);
+        g.lineTo(cx, cy + hh);
+        g.lineTo(cx - hw, cy);
+        g.closePath();
+
+        g.fillPath();
+        g.strokePath();
+
+        const c = this.add.container(0, 0, [g]);
+        c.setSize(TILE_W, TILE_H);
+        c.setPosition(0, 0);
+        return c;
+      }
+
+      placeFurniture(gx, gy, color) {
+        const pos = gridToScreen(gx, gy, this.originX, this.originY);
+
+        const boxW = 38;
+        const boxH = 44;
+
+        const rect = this.add.rectangle(pos.x, pos.y - 20, boxW, boxH, color, 1.0);
+        rect.setStrokeStyle(2, 0x0b1022, 0.9);
+
+        rect.setDepth(pos.y + 5);
+
+        this.furnis.push({ x: gx, y: gy, obj: rect });
+        this.blocked.add(`${gx},${gy}`);
+      }
+
+      createPlayer(gx, gy) {
+        const pos = gridToScreen(gx, gy, this.originX, this.originY);
+
+        const shadow = this.add.ellipse(pos.x, pos.y + 10, 22, 10, 0x000000, 0.35);
+        const body = this.add.circle(pos.x, pos.y - 6, 10, 0xffffff, 1.0);
+        body.setStrokeStyle(2, 0x111827, 0.9);
+
+        const nameTag = this.add.text(pos.x, pos.y - 30, "Amber", {
+          fontFamily: "Arial",
+          fontSize: "12px",
+          color: "#ffffff"
+        }).setOrigin(0.5, 0.5);
+
+        this.player = this.add.container(0, 0, [shadow, body, nameTag]);
+        this.playerParts = { shadow, body, nameTag };
+
+        this.updatePlayerScreenAndDepth(gx, gy);
+      }
+
+      updatePlayerScreenAndDepth(gx, gy) {
+        const pos = gridToScreen(gx, gy, this.originX, this.originY);
+
+        this.player.x = pos.x;
+        this.player.y = pos.y;
+
+        this.player.setDepth(pos.y + 10);
+      }
+
+      movePlayerTo(targetX, targetY) {
+        if (!this.player) return;
+        if (this.isMoving) return;
+
+        const from = { ...this.playerGrid };
+        const to = { x: targetX, y: targetY };
+        const steps = simplePath(from, to);
+        if (steps.length === 0) return;
+
+        this.isMoving = true;
+
+        const doStep = (i) => {
+          if (i >= steps.length) {
+            this.isMoving = false;
+            return;
+          }
+
+          const step = steps[i];
+          if (this.blocked.has(`${step.x},${step.y}`)) {
+            this.isMoving = false;
+            return;
+          }
+
+          const pos = gridToScreen(step.x, step.y, this.originX, this.originY);
+
+          this.tweens.add({
+            targets: this.player,
+            x: pos.x,
+            y: pos.y,
+            duration: 120,
+            ease: 'Linear',
+            onUpdate: () => {
+              this.player.setDepth(this.player.y + 10);
+            },
+            onComplete: () => {
+              this.playerGrid = { x: step.x, y: step.y };
+              doStep(i + 1);
+            }
+          });
+        };
+
+        doStep(0);
+      }
+
+      isValidGrid(x, y) {
+        return x >= 0 && y >= 0 && x < GRID_W && y < GRID_H;
+      }
+    }
+
+    // =========================
+    // 3) Phaser Game 啟動
+    // =========================
+    const config = {
+      type: Phaser.AUTO,
+      parent: 'game',
+      backgroundColor: '#0f1220',
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: window.innerWidth,
+        height: window.innerHeight
+      },
+      scene: [RoomScene]
+    };
+
+    const game = new Phaser.Game(config);
+  </script>
+</body>
+</html>

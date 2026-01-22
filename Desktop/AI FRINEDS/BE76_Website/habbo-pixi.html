@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BE 76 - Habbo Room (PixiJS)</title>
+    <script src="https://pixijs.download/v7.3.2/pixi.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI Overlay */
+        .ui-layer {
+            position: fixed;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .ui-layer > * {
+            pointer-events: auto;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: linear-gradient(90deg, rgba(45,31,61,0.95) 0%, rgba(26,26,46,0.95) 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            border-bottom: 2px solid #4a3f5c;
+            z-index: 1000;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #a855f7;
+            text-shadow: 0 0 10px rgba(168,85,247,0.5);
+        }
+
+        .room-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .room-title {
+            color: #e0e0e0;
+            font-size: 1rem;
+        }
+
+        .online-badge {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        /* Room Controls */
+        .room-controls {
+            position: fixed;
+            top: 60px;
+            left: 15px;
+            background: rgba(30, 30, 50, 0.95);
+            padding: 12px;
+            border-radius: 12px;
+            border: 2px solid #4a3f5c;
+            z-index: 1000;
+        }
+
+        .room-btn {
+            display: block;
+            width: 100%;
+            background: transparent;
+            border: 2px solid #6366f1;
+            color: #a5b4fc;
+            padding: 8px 16px;
+            margin-bottom: 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.3s ease;
+            text-align: left;
+        }
+
+        .room-btn:last-child { margin-bottom: 0; }
+
+        .room-btn:hover, .room-btn.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        /* Instructions */
+        .instructions {
+            position: fixed;
+            top: 60px;
+            right: 15px;
+            background: rgba(30, 30, 50, 0.9);
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 2px solid #4a3f5c;
+            color: #a5b4fc;
+            font-size: 12px;
+            z-index: 1000;
+        }
+
+        .instructions h4 {
+            color: #fff;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .instructions p {
+            margin: 4px 0;
+            opacity: 0.8;
+        }
+
+        /* Chat Panel */
+        .chat-panel {
+            position: fixed;
+            bottom: 0;
+            right: 15px;
+            width: 320px;
+            background: rgba(30, 30, 50, 0.98);
+            border-radius: 15px 15px 0 0;
+            border: 2px solid #4a3f5c;
+            border-bottom: none;
+            z-index: 1000;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 10px 16px;
+            border-radius: 13px 13px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .chat-toggle {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .chat-messages {
+            height: 180px;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #6366f1;
+            border-radius: 3px;
+        }
+
+        .chat-msg {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            line-height: 1.4;
+            animation: msgSlide 0.3s ease;
+        }
+
+        @keyframes msgSlide {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-msg.ai {
+            background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.2) 100%);
+            border-left: 3px solid #6366f1;
+            color: #e0e0e0;
+        }
+
+        .chat-msg.user {
+            background: rgba(255,255,255,0.1);
+            color: #e0e0e0;
+        }
+
+        .chat-msg strong {
+            color: #a5b4fc;
+        }
+
+        .chat-input-area {
+            padding: 10px 12px;
+            border-top: 1px solid #4a3f5c;
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-input-area input {
+            flex: 1;
+            padding: 8px 14px;
+            border: 2px solid #4a3f5c;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.05);
+            color: white;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .chat-input-area input:focus {
+            border-color: #6366f1;
+        }
+
+        .chat-input-area input::placeholder {
+            color: #666;
+        }
+
+        .chat-input-area button {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .chat-input-area button:hover {
+            transform: scale(1.1);
+        }
+
+        /* Character Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-box {
+            background: linear-gradient(180deg, #2d2d4a 0%, #1a1a2e 100%);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 380px;
+            border: 2px solid #4a3f5c;
+            animation: modalPop 0.3s ease;
+        }
+
+        @keyframes modalPop {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 16px 20px;
+            border-radius: 18px 18px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 1.2rem;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            text-align: center;
+        }
+
+        .modal-avatar {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 15px;
+        }
+
+        .modal-stats {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .modal-stat {
+            text-align: center;
+        }
+
+        .modal-stat-label {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        .modal-stat-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: #a5b4fc;
+        }
+
+        .modal-desc {
+            color: #aaa;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .modal-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .modal-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <!-- PixiJS Canvas Container -->
+    <div id="game-container"></div>
+
+    <!-- UI Layer -->
+    <header class="header">
+        <div class="logo">BE 76</div>
+        <div class="room-info">
+            <span class="room-title" id="roomTitle">🎀 時尚穿搭房</span>
+            <span class="online-badge">👥 12 在線</span>
+        </div>
+    </header>
+
+    <div class="room-controls">
+        <button class="room-btn active" onclick="switchRoom('fashion', this)">🎀 時尚穿搭</button>
+        <button class="room-btn" onclick="switchRoom('beauty', this)">💄 美妝保養</button>
+        <button class="room-btn" onclick="switchRoom('travel', this)">✈️ 旅行探索</button>
+        <button class="room-btn" onclick="switchRoom('music', this)">🎵 音樂聊天</button>
+    </div>
+
+    <div class="instructions">
+        <h4>🎮 操作說明</h4>
+        <p>🖱️ 點擊地板 = 角色移動</p>
+        <p>👆 點擊角色 = 查看資訊</p>
+        <p>💬 下方聊天 = AI 對話</p>
+    </div>
+
+    <div class="chat-panel">
+        <div class="chat-header">
+            💬 房間聊天
+            <button class="chat-toggle" onclick="toggleChat()">▼</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-msg ai"><strong>Amber:</strong> 歡迎來到時尚穿搭房！點擊地板讓我走過去～</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" placeholder="輸入訊息..." onkeypress="if(event.key==='Enter')sendMsg()">
+            <button onclick="sendMsg()">➤</button>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal" onclick="closeModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalName">Amber</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-avatar" id="modalEmoji">👗</div>
+                <div class="modal-stats">
+                    <div class="modal-stat">
+                        <div class="modal-stat-label">專長</div>
+                        <div class="modal-stat-value" id="modalSkill">時尚穿搭</div>
+                    </div>
+                    <div class="modal-stat">
+                        <div class="modal-stat-label">個性</div>
+                        <div class="modal-stat-value" id="modalPersonality">溫柔友善</div>
+                    </div>
+                    <div class="modal-stat">
+                        <div class="modal-stat-label">經驗值</div>
+                        <div class="modal-stat-value" id="modalExp">2,560</div>
+                    </div>
+                </div>
+                <p class="modal-desc" id="modalDesc">我是 Amber，你的專屬時尚顧問！</p>
+                <button class="modal-btn" onclick="startModalChat()">開始聊天 💬</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ==================== PIXI.JS GAME ====================
+
+    // Config
+    const CONFIG = {
+        TILE_WIDTH: 64,
+        TILE_HEIGHT: 32,
+        ROOM_WIDTH: 12,
+        ROOM_HEIGHT: 8,
+        WALL_HEIGHT: 150,
+    };
+
+    // Room themes
+    const ROOM_THEMES = {
+        fashion: { name: '🎀 時尚穿搭房', floor: 0xc9a86c, wall: 0x6b8cae },
+        beauty: { name: '💄 美妝保養房', floor: 0xd4a5a5, wall: 0xb07aa1 },
+        travel: { name: '✈️ 旅行探索房', floor: 0xa0c4b8, wall: 0x6b9eb0 },
+        music: { name: '🎵 音樂聊天房', floor: 0xc4b5d4, wall: 0x9b7cb0 }
+    };
+
+    // Character data
+    const CHAR_DATA = {
+        amber: { name: 'Amber', color: 0xff6b9d, hair: 0xf4a460, emoji: '👗', skill: '時尚穿搭', personality: '溫柔友善', exp: '2,560', desc: '我是 Amber，你的專屬時尚顧問！擅長搭配建議和風格分析。' },
+        bella: { name: 'Bella', color: 0x4cc9f0, hair: 0x4a4a4a, emoji: '💄', skill: '美妝保養', personality: '活潑開朗', exp: '1,890', desc: '嗨！我是 Bella，美妝達人！專精彩妝技巧和保養秘訣。' },
+        emma: { name: 'Emma', color: 0xa855f7, hair: 0xd4a574, emoji: '✈️', skill: '旅行規劃', personality: '冒險精神', exp: '3,200', desc: '我是 Emma，旅行專家！喜歡探索世界各地的美景。' },
+        luna: { name: 'Luna', color: 0xec4899, hair: 0x2d2d2d, emoji: '🎵', skill: '音樂品味', personality: '藝術氣息', exp: '2,100', desc: '我是 Luna，音樂愛好者！讓我為你推薦好音樂。' }
+    };
+
+    // Global state
+    let app, roomContainer, charactersContainer;
+    let characters = {};
+    let currentRoom = 'fashion';
+    let currentModalChar = null;
+
+    // ==================== INIT ====================
+    async function init() {
+        // Create PIXI Application
+        app = new PIXI.Application({
+            width: window.innerWidth,
+            height: window.innerHeight,
+            backgroundColor: 0x1a1a2e,
+            antialias: true,
+            resolution: window.devicePixelRatio || 1,
+            autoDensity: true,
+        });
+
+        document.getElementById('game-container').appendChild(app.view);
+
+        // Create containers
+        roomContainer = new PIXI.Container();
+        roomContainer.sortableChildren = true;
+        app.stage.addChild(roomContainer);
+
+        // Center the room
+        roomContainer.x = app.screen.width / 2 - 100;
+        roomContainer.y = app.screen.height / 2 - 150;
+
+        // Build room
+        buildRoom();
+
+        // Create characters
+        createCharacters();
+
+        // Handle resize
+        window.addEventListener('resize', onResize);
+
+        // Animation loop
+        app.ticker.add(gameLoop);
+    }
+
+    // ==================== COORDINATE CONVERSION ====================
+    function cartToIso(x, y) {
+        return {
+            x: (x - y) * (CONFIG.TILE_WIDTH / 2),
+            y: (x + y) * (CONFIG.TILE_HEIGHT / 2)
+        };
+    }
+
+    function isoToCart(isoX, isoY) {
+        const x = (isoX / (CONFIG.TILE_WIDTH / 2) + isoY / (CONFIG.TILE_HEIGHT / 2)) / 2;
+        const y = (isoY / (CONFIG.TILE_HEIGHT / 2) - isoX / (CONFIG.TILE_WIDTH / 2)) / 2;
+        return { x, y };
+    }
+
+    // ==================== BUILD ROOM ====================
+    function buildRoom() {
+        // Clear existing
+        roomContainer.removeChildren();
+
+        const theme = ROOM_THEMES[currentRoom];
+
+        // Draw walls
+        drawWalls(theme.wall);
+
+        // Draw floor
+        drawFloor(theme.floor);
+
+        // Draw furniture
+        drawFurniture();
+    }
+
+    function drawWalls(color) {
+        const wallContainer = new PIXI.Container();
+        wallContainer.zIndex = 0;
+
+        // Back wall (left side)
+        const backWall = new PIXI.Graphics();
+        const wallStartIso = cartToIso(0, 0);
+        const wallEndIso = cartToIso(CONFIG.ROOM_WIDTH, 0);
+
+        backWall.beginFill(color);
+        backWall.moveTo(wallStartIso.x, wallStartIso.y - CONFIG.WALL_HEIGHT);
+        backWall.lineTo(wallEndIso.x, wallEndIso.y - CONFIG.WALL_HEIGHT);
+        backWall.lineTo(wallEndIso.x, wallEndIso.y);
+        backWall.lineTo(wallStartIso.x, wallStartIso.y);
+        backWall.closePath();
+        backWall.endFill();
+
+        // Wall border
+        backWall.lineStyle(3, 0x3d5a73);
+        backWall.moveTo(wallStartIso.x, wallStartIso.y - CONFIG.WALL_HEIGHT);
+        backWall.lineTo(wallEndIso.x, wallEndIso.y - CONFIG.WALL_HEIGHT);
+
+        // Wall stripe decoration
+        backWall.lineStyle(1, 0xffffff, 0.1);
+        for (let i = 20; i < CONFIG.WALL_HEIGHT; i += 25) {
+            backWall.moveTo(wallStartIso.x, wallStartIso.y - i);
+            backWall.lineTo(wallEndIso.x, wallEndIso.y - i);
+        }
+
+        wallContainer.addChild(backWall);
+
+        // Side wall (right side)
+        const sideWall = new PIXI.Graphics();
+        const sideStartIso = cartToIso(CONFIG.ROOM_WIDTH, 0);
+        const sideEndIso = cartToIso(CONFIG.ROOM_WIDTH, CONFIG.ROOM_HEIGHT);
+
+        sideWall.beginFill(darkenColor(color, 0.85));
+        sideWall.moveTo(sideStartIso.x, sideStartIso.y - CONFIG.WALL_HEIGHT);
+        sideWall.lineTo(sideEndIso.x, sideEndIso.y - CONFIG.WALL_HEIGHT);
+        sideWall.lineTo(sideEndIso.x, sideEndIso.y);
+        sideWall.lineTo(sideStartIso.x, sideStartIso.y);
+        sideWall.closePath();
+        sideWall.endFill();
+
+        sideWall.lineStyle(3, 0x2d4a63);
+        sideWall.moveTo(sideStartIso.x, sideStartIso.y - CONFIG.WALL_HEIGHT);
+        sideWall.lineTo(sideEndIso.x, sideEndIso.y - CONFIG.WALL_HEIGHT);
+
+        wallContainer.addChild(sideWall);
+
+        // Windows on back wall
+        drawWindows(wallContainer, 'back');
+
+        // Windows on side wall
+        drawWindows(wallContainer, 'side');
+
+        roomContainer.addChild(wallContainer);
+    }
+
+    function drawWindows(container, wall) {
+        const windowWidth = 50;
+        const windowHeight = 70;
+
+        if (wall === 'back') {
+            for (let i = 2; i < CONFIG.ROOM_WIDTH - 2; i += 3) {
+                const pos = cartToIso(i, 0);
+                drawWindow(container, pos.x, pos.y - CONFIG.WALL_HEIGHT + 30, windowWidth, windowHeight, 0);
+            }
+        } else {
+            const pos = cartToIso(CONFIG.ROOM_WIDTH, 3);
+            drawWindow(container, pos.x + 20, pos.y - CONFIG.WALL_HEIGHT + 30, windowWidth * 0.8, windowHeight, 1);
+        }
+    }
+
+    function drawWindow(container, x, y, w, h, skew) {
+        const window = new PIXI.Graphics();
+
+        // Window frame
+        window.beginFill(0x87ceeb);
+        window.drawRoundedRect(x, y, w, h, 5);
+        window.endFill();
+
+        // Glass gradient effect
+        window.beginFill(0xb0e2ff, 0.5);
+        window.drawRoundedRect(x + 3, y + 3, w - 6, h / 2 - 3, 3);
+        window.endFill();
+
+        // Frame
+        window.lineStyle(3, 0x4a6a8a);
+        window.drawRoundedRect(x, y, w, h, 5);
+
+        // Cross bars
+        window.lineStyle(2, 0x4a6a8a);
+        window.moveTo(x, y + h / 2);
+        window.lineTo(x + w, y + h / 2);
+        window.moveTo(x + w / 2, y);
+        window.lineTo(x + w / 2, y + h);
+
+        // Curtains
+        window.beginFill(0xd4a5a5);
+        window.drawRect(x - 5, y, 8, h);
+        window.drawRect(x + w - 3, y, 8, h);
+        window.endFill();
+
+        container.addChild(window);
+    }
+
+    function drawFloor(color) {
+        const floorContainer = new PIXI.Container();
+        floorContainer.zIndex = 1;
+
+        for (let x = 0; x < CONFIG.ROOM_WIDTH; x++) {
+            for (let y = 0; y < CONFIG.ROOM_HEIGHT; y++) {
+                const tile = createTile(x, y, (x + y) % 2 === 0 ? color : darkenColor(color, 0.9));
+                floorContainer.addChild(tile);
+            }
+        }
+
+        roomContainer.addChild(floorContainer);
+    }
+
+    function createTile(gridX, gridY, color) {
+        const iso = cartToIso(gridX, gridY);
+        const tile = new PIXI.Graphics();
+
+        // Tile shape (diamond)
+        tile.beginFill(color);
+        tile.moveTo(iso.x, iso.y - CONFIG.TILE_HEIGHT / 2);
+        tile.lineTo(iso.x + CONFIG.TILE_WIDTH / 2, iso.y);
+        tile.lineTo(iso.x, iso.y + CONFIG.TILE_HEIGHT / 2);
+        tile.lineTo(iso.x - CONFIG.TILE_WIDTH / 2, iso.y);
+        tile.closePath();
+        tile.endFill();
+
+        // Highlight
+        tile.beginFill(0xffffff, 0.1);
+        tile.moveTo(iso.x, iso.y - CONFIG.TILE_HEIGHT / 2);
+        tile.lineTo(iso.x + CONFIG.TILE_WIDTH / 2, iso.y);
+        tile.lineTo(iso.x, iso.y - CONFIG.TILE_HEIGHT / 4);
+        tile.lineTo(iso.x - CONFIG.TILE_WIDTH / 2, iso.y);
+        tile.closePath();
+        tile.endFill();
+
+        // Border
+        tile.lineStyle(1, 0x000000, 0.2);
+        tile.moveTo(iso.x, iso.y - CONFIG.TILE_HEIGHT / 2);
+        tile.lineTo(iso.x + CONFIG.TILE_WIDTH / 2, iso.y);
+        tile.lineTo(iso.x, iso.y + CONFIG.TILE_HEIGHT / 2);
+        tile.lineTo(iso.x - CONFIG.TILE_WIDTH / 2, iso.y);
+        tile.closePath();
+
+        // Interactive
+        tile.eventMode = 'static';
+        tile.cursor = 'pointer';
+        tile.hitArea = new PIXI.Polygon([
+            iso.x, iso.y - CONFIG.TILE_HEIGHT / 2,
+            iso.x + CONFIG.TILE_WIDTH / 2, iso.y,
+            iso.x, iso.y + CONFIG.TILE_HEIGHT / 2,
+            iso.x - CONFIG.TILE_WIDTH / 2, iso.y
+        ]);
+
+        tile.on('pointerdown', () => {
+            moveCharacterTo('amber', gridX, gridY);
+        });
+
+        tile.on('pointerover', () => {
+            tile.tint = 0xcccccc;
+        });
+
+        tile.on('pointerout', () => {
+            tile.tint = 0xffffff;
+        });
+
+        return tile;
+    }
+
+    // ==================== FURNITURE ====================
+    function drawFurniture() {
+        // Sofa at (2, 2)
+        drawSofa(2, 2);
+
+        // Table at (5, 4)
+        drawTable(5, 4);
+
+        // Plant at (9, 2)
+        drawPlant(9, 2);
+
+        // Rug at (5, 3)
+        drawRug(4, 3, 3, 2);
+    }
+
+    function drawSofa(gridX, gridY) {
+        const iso = cartToIso(gridX, gridY);
+        const sofa = new PIXI.Container();
+        sofa.zIndex = 100 + gridX + gridY;
+
+        const g = new PIXI.Graphics();
+
+        // Back
+        g.beginFill(0xdc2626);
+        g.drawRoundedRect(-40, -50, 80, 30, 5);
+        g.endFill();
+
+        // Seat
+        g.beginFill(0xef4444);
+        g.drawRoundedRect(-40, -25, 80, 25, 3);
+        g.endFill();
+
+        // Cushions
+        g.beginFill(0xfca5a5);
+        g.drawRoundedRect(-32, -18, 25, 15, 4);
+        g.drawRoundedRect(7, -18, 25, 15, 4);
+        g.endFill();
+
+        // Legs
+        g.beginFill(0x4a3728);
+        g.drawRect(-35, 0, 8, 8);
+        g.drawRect(27, 0, 8, 8);
+        g.endFill();
+
+        // Shadow
+        g.beginFill(0x000000, 0.3);
+        g.drawEllipse(0, 12, 45, 10);
+        g.endFill();
+
+        sofa.addChild(g);
+        sofa.x = iso.x;
+        sofa.y = iso.y;
+
+        roomContainer.addChild(sofa);
+    }
+
+    function drawTable(gridX, gridY) {
+        const iso = cartToIso(gridX, gridY);
+        const table = new PIXI.Container();
+        table.zIndex = 100 + gridX + gridY;
+
+        const g = new PIXI.Graphics();
+
+        // Shadow
+        g.beginFill(0x000000, 0.3);
+        g.drawEllipse(0, 25, 35, 10);
+        g.endFill();
+
+        // Legs
+        g.beginFill(0x78350f);
+        g.drawRect(-25, -5, 6, 30);
+        g.drawRect(19, -5, 6, 30);
+        g.endFill();
+
+        // Table top
+        g.beginFill(0x92400e);
+        g.drawRoundedRect(-35, -15, 70, 15, 3);
+        g.endFill();
+
+        // Items on table
+        // Coffee cup
+        g.beginFill(0xfef3c7);
+        g.drawRect(-15, -25, 12, 14);
+        g.endFill();
+        g.beginFill(0x92400e);
+        g.drawRect(-18, -27, 6, 3);
+        g.endFill();
+
+        // Book
+        g.beginFill(0x3b82f6);
+        g.drawRect(5, -22, 15, 10);
+        g.endFill();
+
+        table.addChild(g);
+        table.x = iso.x;
+        table.y = iso.y;
+
+        roomContainer.addChild(table);
+    }
+
+    function drawPlant(gridX, gridY) {
+        const iso = cartToIso(gridX, gridY);
+        const plant = new PIXI.Container();
+        plant.zIndex = 100 + gridX + gridY;
+
+        const g = new PIXI.Graphics();
+
+        // Shadow
+        g.beginFill(0x000000, 0.3);
+        g.drawEllipse(0, 20, 20, 6);
+        g.endFill();
+
+        // Pot
+        g.beginFill(0xea580c);
+        g.moveTo(-15, -10);
+        g.lineTo(-12, 15);
+        g.lineTo(12, 15);
+        g.lineTo(15, -10);
+        g.closePath();
+        g.endFill();
+
+        // Pot rim
+        g.beginFill(0xf97316);
+        g.drawRect(-18, -15, 36, 8);
+        g.endFill();
+
+        // Leaves
+        const leafPositions = [
+            { x: 0, y: -45, rot: 0 },
+            { x: -12, y: -35, rot: -0.4 },
+            { x: 12, y: -35, rot: 0.4 },
+            { x: -8, y: -25, rot: -0.2 },
+            { x: 8, y: -25, rot: 0.2 },
+        ];
+
+        leafPositions.forEach(leaf => {
+            g.beginFill(0x22c55e);
+            g.drawEllipse(leaf.x, leaf.y, 8, 18);
+            g.endFill();
+        });
+
+        plant.addChild(g);
+        plant.x = iso.x;
+        plant.y = iso.y;
+
+        roomContainer.addChild(plant);
+    }
+
+    function drawRug(gridX, gridY, width, height) {
+        const rug = new PIXI.Graphics();
+        rug.zIndex = 50;
+
+        const corners = [];
+        for (let dx = 0; dx <= width; dx++) {
+            for (let dy = 0; dy <= height; dy++) {
+                if ((dx === 0 || dx === width) && (dy === 0 || dy === height)) {
+                    corners.push(cartToIso(gridX + dx, gridY + dy));
+                }
+            }
+        }
+
+        const iso00 = cartToIso(gridX, gridY);
+        const iso10 = cartToIso(gridX + width, gridY);
+        const iso11 = cartToIso(gridX + width, gridY + height);
+        const iso01 = cartToIso(gridX, gridY + height);
+
+        // Outer rug
+        rug.beginFill(0x7c3aed, 0.8);
+        rug.moveTo(iso00.x, iso00.y);
+        rug.lineTo(iso10.x, iso10.y);
+        rug.lineTo(iso11.x, iso11.y);
+        rug.lineTo(iso01.x, iso01.y);
+        rug.closePath();
+        rug.endFill();
+
+        // Inner pattern
+        const margin = 15;
+        rug.beginFill(0x8b5cf6, 0.9);
+        rug.moveTo(iso00.x, iso00.y + margin);
+        rug.lineTo(iso10.x - margin, iso10.y);
+        rug.lineTo(iso11.x, iso11.y - margin);
+        rug.lineTo(iso01.x + margin, iso01.y);
+        rug.closePath();
+        rug.endFill();
+
+        roomContainer.addChild(rug);
+    }
+
+    // ==================== CHARACTERS ====================
+    function createCharacters() {
+        charactersContainer = new PIXI.Container();
+        charactersContainer.sortableChildren = true;
+        roomContainer.addChild(charactersContainer);
+
+        const positions = [
+            { id: 'amber', x: 3, y: 3 },
+            { id: 'bella', x: 5, y: 5 },
+            { id: 'emma', x: 7, y: 3 },
+            { id: 'luna', x: 8, y: 5 }
+        ];
+
+        positions.forEach(pos => {
+            const char = createCharacter(pos.id, pos.x, pos.y);
+            characters[pos.id] = char;
+            charactersContainer.addChild(char.container);
+        });
+    }
+
+    function createCharacter(id, gridX, gridY) {
+        const data = CHAR_DATA[id];
+        const iso = cartToIso(gridX, gridY);
+
+        const container = new PIXI.Container();
+        container.x = iso.x;
+        container.y = iso.y;
+        container.zIndex = 200 + gridX + gridY;
+        container.sortableChildren = true;
+
+        // Shadow
+        const shadow = new PIXI.Graphics();
+        shadow.beginFill(0x000000, 0.4);
+        shadow.drawEllipse(0, 5, 15, 5);
+        shadow.endFill();
+        shadow.zIndex = 0;
+        container.addChild(shadow);
+
+        // Body
+        const body = new PIXI.Graphics();
+        body.zIndex = 1;
+
+        // Legs
+        body.beginFill(0x3d5a80);
+        body.drawRoundedRect(-8, 10, 7, 15, 2);
+        body.drawRoundedRect(1, 10, 7, 15, 2);
+        body.endFill();
+
+        // Torso
+        body.beginFill(data.color);
+        body.drawRoundedRect(-10, -10, 20, 22, 4);
+        body.endFill();
+
+        // Shirt detail
+        body.beginFill(0xffffff, 0.2);
+        body.drawRect(-2, -8, 4, 10);
+        body.endFill();
+
+        // Head
+        body.beginFill(0xffdcb8);
+        body.drawRoundedRect(-12, -35, 24, 26, 6);
+        body.endFill();
+
+        // Hair
+        body.beginFill(data.hair);
+        body.drawRoundedRect(-14, -42, 28, 15, 8);
+        body.endFill();
+
+        // Bangs
+        body.beginFill(data.hair);
+        body.drawRoundedRect(-10, -30, 20, 6, 3);
+        body.endFill();
+
+        // Eyes
+        body.beginFill(0x2d2d2d);
+        body.drawCircle(-5, -22, 3);
+        body.drawCircle(5, -22, 3);
+        body.endFill();
+
+        // Eye highlights
+        body.beginFill(0xffffff);
+        body.drawCircle(-4, -23, 1);
+        body.drawCircle(6, -23, 1);
+        body.endFill();
+
+        // Blush
+        body.beginFill(0xffb3b3, 0.5);
+        body.drawEllipse(-9, -18, 3, 2);
+        body.drawEllipse(9, -18, 3, 2);
+        body.endFill();
+
+        // Mouth
+        body.beginFill(0xd98080);
+        body.drawRoundedRect(-3, -15, 6, 3, 2);
+        body.endFill();
+
+        container.addChild(body);
+
+        // Name tag
+        const nameTag = new PIXI.Text(data.name, {
+            fontFamily: 'Segoe UI',
+            fontSize: 11,
+            fontWeight: 'bold',
+            fill: 0xffffff,
+        });
+        nameTag.anchor.set(0.5);
+        nameTag.y = 30;
+        nameTag.zIndex = 2;
+
+        const nameBg = new PIXI.Graphics();
+        nameBg.beginFill(0x000000, 0.8);
+        nameBg.drawRoundedRect(-nameTag.width / 2 - 6, 22, nameTag.width + 12, 18, 9);
+        nameBg.endFill();
+        nameBg.zIndex = 2;
+
+        container.addChild(nameBg);
+        container.addChild(nameTag);
+
+        // Speech bubble
+        const bubble = createBubble('');
+        bubble.visible = false;
+        bubble.zIndex = 100;
+        container.addChild(bubble);
+
+        // Interactive
+        container.eventMode = 'static';
+        container.cursor = 'pointer';
+        container.hitArea = new PIXI.Rectangle(-15, -45, 30, 80);
+
+        container.on('pointerdown', (e) => {
+            e.stopPropagation();
+            showModal(id);
+        });
+
+        container.on('pointerover', () => {
+            container.scale.set(1.1);
+            showBubble(id, getRandomGreeting());
+        });
+
+        container.on('pointerout', () => {
+            container.scale.set(1);
+            hideBubble(id);
+        });
+
+        // Idle animation
+        let idleTime = Math.random() * 1000;
+        app.ticker.add((delta) => {
+            idleTime += delta * 0.05;
+            container.y = iso.y + Math.sin(idleTime) * 2;
+        });
+
+        return {
+            container,
+            bubble,
+            gridX,
+            gridY,
+            targetX: gridX,
+            targetY: gridY,
+            moving: false,
+            data
+        };
+    }
+
+    function createBubble(text) {
+        const bubble = new PIXI.Container();
+
+        const bg = new PIXI.Graphics();
+        bubble.addChild(bg);
+
+        const txt = new PIXI.Text(text, {
+            fontFamily: 'Segoe UI',
+            fontSize: 11,
+            fill: 0x333333,
+        });
+        txt.anchor.set(0.5);
+        txt.y = -60;
+        bubble.addChild(txt);
+
+        bubble.updateText = (newText) => {
+            txt.text = newText;
+            bg.clear();
+            bg.beginFill(0xffffff);
+            bg.drawRoundedRect(-txt.width / 2 - 10, -75, txt.width + 20, 30, 10);
+            bg.endFill();
+            // Triangle
+            bg.beginFill(0xffffff);
+            bg.moveTo(-5, -45);
+            bg.lineTo(5, -45);
+            bg.lineTo(0, -38);
+            bg.closePath();
+            bg.endFill();
+        };
+
+        return bubble;
+    }
+
+    function showBubble(id, text) {
+        const char = characters[id];
+        if (char && char.bubble) {
+            char.bubble.updateText(text);
+            char.bubble.visible = true;
+        }
+    }
+
+    function hideBubble(id) {
+        const char = characters[id];
+        if (char && char.bubble) {
+            char.bubble.visible = false;
+        }
+    }
+
+    function getRandomGreeting() {
+        const greetings = [
+            '嗨！很高興見到你！',
+            '今天過得如何？',
+            '需要幫助嗎？',
+            '歡迎！✨',
+            '來聊聊吧！'
+        ];
+        return greetings[Math.floor(Math.random() * greetings.length)];
+    }
+
+    // ==================== CHARACTER MOVEMENT ====================
+    function moveCharacterTo(id, targetX, targetY) {
+        const char = characters[id];
+        if (!char || char.moving) return;
+
+        // Clamp to room bounds
+        targetX = Math.max(0, Math.min(CONFIG.ROOM_WIDTH - 1, targetX));
+        targetY = Math.max(0, Math.min(CONFIG.ROOM_HEIGHT - 1, targetY));
+
+        char.targetX = targetX;
+        char.targetY = targetY;
+        char.moving = true;
+
+        const targetIso = cartToIso(targetX, targetY);
+        const startX = char.container.x;
+        const startY = char.container.y;
+        const duration = 1000;
+        let elapsed = 0;
+
+        const moveAnim = (delta) => {
+            elapsed += delta * 16.67;
+            const t = Math.min(elapsed / duration, 1);
+            const easeT = 1 - Math.pow(1 - t, 3); // easeOutCubic
+
+            char.container.x = startX + (targetIso.x - startX) * easeT;
+            char.container.y = startY + (targetIso.y - startY) * easeT;
+
+            // Update z-index based on position
+            char.container.zIndex = 200 + Math.floor(targetX * t + char.gridX * (1 - t)) + Math.floor(targetY * t + char.gridY * (1 - t));
+
+            if (t >= 1) {
+                app.ticker.remove(moveAnim);
+                char.gridX = targetX;
+                char.gridY = targetY;
+                char.moving = false;
+
+                // Show arrival message
+                addChatMsg(`${char.data.name} 走到了新位置～`, 'ai', char.data.name);
+            }
+        };
+
+        app.ticker.add(moveAnim);
+    }
+
+    // ==================== ROOM SWITCHING ====================
+    function switchRoom(roomId, btn) {
+        currentRoom = roomId;
+
+        // Update UI
+        document.getElementById('roomTitle').textContent = ROOM_THEMES[roomId].name;
+        document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+
+        // Rebuild room
+        buildRoom();
+
+        // Re-add characters
+        if (charactersContainer) {
+            roomContainer.addChild(charactersContainer);
+        }
+
+        // Chat message
+        addChatMsg(`歡迎來到${ROOM_THEMES[roomId].name}！`, 'ai', 'Amber');
+    }
+
+    // ==================== UTILITIES ====================
+    function darkenColor(color, factor) {
+        const r = Math.floor(((color >> 16) & 0xff) * factor);
+        const g = Math.floor(((color >> 8) & 0xff) * factor);
+        const b = Math.floor((color & 0xff) * factor);
+        return (r << 16) | (g << 8) | b;
+    }
+
+    function onResize() {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+        roomContainer.x = app.screen.width / 2 - 100;
+        roomContainer.y = app.screen.height / 2 - 150;
+    }
+
+    function gameLoop(delta) {
+        // Random bubbles
+        if (Math.random() < 0.001) {
+            const ids = Object.keys(characters);
+            const randomId = ids[Math.floor(Math.random() * ids.length)];
+            showBubble(randomId, getRandomGreeting());
+            setTimeout(() => hideBubble(randomId), 3000);
+        }
+    }
+
+    // ==================== UI FUNCTIONS ====================
+    function addChatMsg(text, type, sender = 'You') {
+        const container = document.getElementById('chatMessages');
+        const msg = document.createElement('div');
+        msg.className = `chat-msg ${type}`;
+        msg.innerHTML = `<strong>${sender}:</strong> ${text}`;
+        container.appendChild(msg);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function sendMsg() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        addChatMsg(text, 'user');
+        input.value = '';
+
+        setTimeout(() => {
+            const responses = [
+                ['Amber', '這個想法很棒！讓我給你一些建議～ ✨'],
+                ['Bella', '我來推薦一些適合你的選擇！💖'],
+                ['Emma', '根據你的風格，我建議... 🌟'],
+                ['Luna', '讓我分析一下最適合的方案！🎵']
+            ];
+            const [name, msg] = responses[Math.floor(Math.random() * responses.length)];
+            addChatMsg(msg, 'ai', name);
+        }, 1000);
+    }
+
+    function toggleChat() {
+        const msgs = document.getElementById('chatMessages');
+        const btn = document.querySelector('.chat-toggle');
+        if (msgs.style.display === 'none') {
+            msgs.style.display = 'block';
+            btn.textContent = '▼';
+        } else {
+            msgs.style.display = 'none';
+            btn.textContent = '▲';
+        }
+    }
+
+    function showModal(id) {
+        const data = CHAR_DATA[id];
+        currentModalChar = data;
+
+        document.getElementById('modalName').textContent = data.name;
+        document.getElementById('modalEmoji').textContent = data.emoji;
+        document.getElementById('modalSkill').textContent = data.skill;
+        document.getElementById('modalPersonality').textContent = data.personality;
+        document.getElementById('modalExp').textContent = data.exp;
+        document.getElementById('modalDesc').textContent = data.desc;
+
+        document.getElementById('modal').style.display = 'flex';
+    }
+
+    function closeModal(e) {
+        if (!e || e.target.id === 'modal') {
+            document.getElementById('modal').style.display = 'none';
+        }
+    }
+
+    function startModalChat() {
+        if (currentModalChar) {
+            addChatMsg(`嗨！我是 ${currentModalChar.name}，很高興認識你！`, 'ai', currentModalChar.name);
+        }
+        closeModal();
+    }
+
+    // Make functions global
+    window.switchRoom = switchRoom;
+    window.sendMsg = sendMsg;
+    window.toggleChat = toggleChat;
+    window.showModal = showModal;
+    window.closeModal = closeModal;
+    window.startModalChat = startModalChat;
+
+    // Start
+    init();
+    </script>
+</body>
+</html>
