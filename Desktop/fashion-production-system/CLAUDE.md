@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-22
-**Version:** 4.38.0
-**Status:** P0-P29 + DA-2 + P23 + GLO-1 完成 ✅ | GLO-1 成衣詞彙庫整合翻譯
+**Last Updated:** 2026-01-24
+**Version:** 4.39.0
+**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0124 完成 ✅ | 詞彙庫修正 + Tech Pack 提取修復
 
 ---
 
@@ -261,6 +261,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | **DA-2** | Celery 異步處理（分類+提取 async mode）| ✅ 完成 (2026-01-21) |
 | **P23** | 採購優化（交期追蹤 + 狀態改善）| ✅ 完成 (2026-01-21) |
 | **GLO-1** | 成衣詞彙庫整合翻譯（1252 條術語）| ✅ 完成 (2026-01-22) |
+| **FIX-0124** | 詞彙庫修正 + Tech Pack 提取修復 | ✅ 完成 (2026-01-24) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
@@ -708,7 +709,7 @@ curl "http://localhost:8000/api/v2/tasks/abc123.../"
 |------|--------|------|
 | 縮寫 | 180 | ARMHOLE 夾圈、AQL 驗收合格標準 |
 | 顏色 | 144 | Amber 琥珀色、Navy 海軍藍 |
-| 車縫裁床 | 85 | BARTACK 打棗、BINDING 包邊 |
+| 車縫裁床 | 85 | BARTACK 打結車、BINDING 包邊 |
 | 服裝部位 | 38 | COLLAR 領子、SLEEVE 袖子 |
 | 副料 | 57+ | VELCRO 魔術貼、SNAP 撳鈕 |
 | 常用單詞 | 28 | THREAD 線、ZIPPER 拉鏈 |
@@ -742,3 +743,31 @@ lookup_glossary('ZIPPER')  # → '拉鏈'
 **效能提升：**
 - BOM 項目翻譯：約 60% 可直接從詞彙庫匹配（0 API 調用）
 - LLM 翻譯：附帶相關詞彙參考，專業術語更準確
+
+### FIX-0124 詞彙庫修正 + Tech Pack 提取修復 ✅ 完成 (2026-01-24)
+
+**1. 詞彙庫翻譯修正：**
+- ✅ `BARTACK`: 打棗 → **打結車**
+- 文件：`backend/apps/parsing/data/garment_glossary.json`
+
+**2. Tech Pack 提取修復：**
+- ✅ 修復被分類為 "other" 的頁面被跳過的問題
+- ✅ 重新提取 LM5ARES.pdf（6 頁全部提取，共 158 個區塊）
+- 原因：第 2 頁被 AI 分類為 "other"（fit reference images），導致提取時跳過
+- 解法：手動將分類結果改為 "tech_pack" 後重新提取
+
+**提取結果（LM5ARES.pdf）：**
+| 頁面 | 區塊數 | 狀態 |
+|------|--------|------|
+| 第 1 頁 | 34 | ✅ 新增 |
+| 第 2 頁 | 7 | ✅ 新增 |
+| 第 3 頁 | 47 | ✓ |
+| 第 4 頁 | 58 | ✓ |
+| 第 5 頁 | 27 | ✓ |
+| 第 6 頁 | 8 | ✓ |
+| **總計** | **158** | |
+
+**技術說明：**
+- 提取技術：pdfplumber（文字層）+ GPT-4o Vision（圖形標註）
+- 翻譯技術：GPT-4o-mini + 成衣詞彙庫參考
+- 新 TechPackRevision ID：`ca07cbb4-8292-48a3-9e1a-a9fbba97389f`
