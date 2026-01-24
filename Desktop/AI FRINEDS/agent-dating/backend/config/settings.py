@@ -195,9 +195,11 @@ SIMPLE_JWT = {
 # CORS Settings
 CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://localhost:8080'
+    'http://localhost:3000,http://localhost:8080,http://127.0.0.1:5500,http://localhost:5500'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
+# Allow local HTML files (null origin)
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only in development
 
 
 # Channels (WebSocket)

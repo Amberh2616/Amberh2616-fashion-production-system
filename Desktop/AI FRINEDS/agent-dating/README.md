@@ -42,15 +42,14 @@
 | LangChain + LangGraph | AI Agent 框架 |
 | OpenAI GPT-4 | LLM |
 
-### 前端
+### 前端 (Habbo 風格虛擬世界)
 
 | 技術 | 用途 |
 |------|------|
-| Vue 3 | UI 框架 |
-| TypeScript | 類型安全 |
-| Tailwind CSS | 樣式 |
-| Pinia | 狀態管理 |
-| Vue Router | 路由 |
+| Phaser 3 | 遊戲引擎 |
+| Habbo Avatar API | 像素人物 |
+| JavaScript | 邏輯 |
+| CSS3 | UI 樣式 |
 
 ## 專案結構
 
@@ -70,13 +69,8 @@ agent-dating/
 │       ├── agents/          # Soul Agent, Social Agent
 │       └── prompts/         # 提示語模板
 │
-└── frontend/                # Vue 3 前端
-    ├── src/
-    │   ├── views/           # 頁面組件
-    │   ├── components/      # 通用組件
-    │   ├── stores/          # Pinia stores
-    │   ├── services/        # API 服務
-    │   └── router/          # 路由配置
+└── frontend/                # Habbo 風格前端
+    ├── index.html           # 主入口 (Phaser + API 整合)
     └── package.json
 ```
 
@@ -115,17 +109,22 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-### 前端設置
+### 前端設置 (Habbo 虛擬世界)
 
 ```bash
 cd frontend
 
-# 安裝依賴
-npm install
+# 方法 1: 使用 npx serve
+npx serve -p 3000
 
-# 啟動開發伺服器
-npm run dev
+# 方法 2: 直接用瀏覽器打開
+# 打開 frontend/index.html (需要後端運行)
+
+# 方法 3: 使用 VS Code Live Server
+# 右鍵 index.html → Open with Live Server
 ```
+
+**訪問地址:** http://localhost:3000
 
 ### Celery (背景任務)
 
@@ -236,12 +235,15 @@ ws://host/ws/world/room/:roomId/    # 虛擬世界同步
 - [x] 對話記憶系統
 - [x] WebSocket 即時通訊
 
-### Phase 3: 虛擬世界 🚧
+### Phase 3: 虛擬世界 ✅
 
-- [ ] Habbo 風格房間
-- [ ] A* 尋路
-- [ ] Agent 自主移動
-- [ ] 對話氣泡
+- [x] Habbo 風格房間 (Phaser 3)
+- [x] 等距地圖渲染
+- [x] Habbo Avatar API 整合
+- [x] 前端後端 API 整合
+- [x] 點擊角色開始 AI 聊天
+- [ ] Agent 自主移動 (A* 尋路)
+- [ ] 對話氣泡系統
 
 ### Phase 4: 深化交友 📋
 

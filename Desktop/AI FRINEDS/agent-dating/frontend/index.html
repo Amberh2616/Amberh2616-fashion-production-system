@@ -1,14 +1,1501 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>代理交友 - AI 代理社交平台</title>
-    <meta name="description" content="讓你的 AI 分身幫你找到靈魂伴侶" />
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BE 76 - AI Dating Village</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      background: #1b1b2f;
+      overflow: hidden;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      height: 100%;
+    }
+    #game { width: 100vw; height: 100vh; }
+
+    /* ==================== Login Screen ==================== */
+    #loginScreen {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, #1b1b2f 0%, #2d2d4a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .login-box {
+      background: linear-gradient(180deg, #2a2a48 0%, #1e1e36 100%);
+      border: 3px solid #4a4a7a;
+      border-radius: 20px;
+      padding: 40px;
+      width: 380px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .login-logo {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .login-logo h1 {
+      color: #7ecfff;
+      font-size: 36px;
+      text-shadow: 0 0 20px rgba(126,207,255,0.5);
+      letter-spacing: 4px;
+    }
+    .login-logo p {
+      color: #a0a0cc;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .login-field {
+      margin-bottom: 20px;
+    }
+    .login-field label {
+      display: block;
+      color: #7ecfff;
+      font-size: 12px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .login-field input {
+      width: 100%;
+      background: #151525;
+      border: 2px solid #4a4a7a;
+      border-radius: 10px;
+      padding: 14px 16px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .login-field input:focus {
+      border-color: #7ecfff;
+    }
+    .login-field input::placeholder {
+      color: #666688;
+    }
+    .login-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #5588ff 0%, #7755ee 100%);
+      border: none;
+      border-radius: 10px;
+      padding: 16px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+    .login-btn:hover {
+      background: linear-gradient(135deg, #66aaff 0%, #8866ff 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(85,136,255,0.4);
+    }
+    .login-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .login-error {
+      color: #ff6688;
+      font-size: 13px;
+      margin-top: 15px;
+      text-align: center;
+      min-height: 20px;
+    }
+    .login-demo {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #4a4a7a;
+      text-align: center;
+    }
+    .login-demo p {
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    .demo-accounts {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    .demo-btn {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid #4a4a7a;
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: #a0a0cc;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .demo-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+
+    /* ==================== UI Overlay ==================== */
+    .ui { position: fixed; z-index: 100; }
+
+    .header {
+      top: 0; left: 0; right: 0; height: 48px;
+      background: linear-gradient(180deg, #2d2d4a 0%, #1f1f35 100%);
+      border-bottom: 3px solid #4a4a7a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    .logo {
+      color: #7ecfff;
+      font-weight: bold;
+      font-size: 22px;
+      text-shadow: 0 0 10px rgba(126,207,255,0.5);
+      letter-spacing: 2px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .room-info {
+      color: #a0a0cc;
+      font-size: 14px;
+      background: rgba(0,0,0,0.3);
+      padding: 6px 14px;
+      border-radius: 15px;
+    }
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #88ddaa;
+      font-size: 13px;
+    }
+    .user-info .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #5588ff 0%, #7755ee 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #fff;
+    }
+    .logout-btn {
+      background: rgba(255,100,100,0.2);
+      border: 1px solid rgba(255,100,100,0.3);
+      color: #ff8888;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .logout-btn:hover {
+      background: rgba(255,100,100,0.3);
+    }
+
+    .panel {
+      top: 70px; left: 16px;
+      background: linear-gradient(180deg, #2a2a48 0%, #1e1e36 100%);
+      border: 2px solid #4a4a7a;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .panel-title {
+      color: #7ecfff;
+      font-size: 11px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .room-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 140px;
+      background: linear-gradient(180deg, #35355a 0%, #2a2a48 100%);
+      border: 2px solid #4a4a7a;
+      color: #b0b0dd;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .room-btn:hover {
+      background: linear-gradient(180deg, #45458a 0%, #35355a 100%);
+      border-color: #6a6aaa;
+      transform: translateX(4px);
+    }
+    .room-btn.active {
+      background: linear-gradient(135deg, #5588ff 0%, #7755ee 100%);
+      color: #fff;
+      border-color: #88aaff;
+      box-shadow: 0 0 15px rgba(85,136,255,0.4);
+    }
+    .room-btn .icon { font-size: 16px; }
+
+    /* ==================== Chat Box ==================== */
+    .chat {
+      bottom: 16px; right: 16px; width: 360px;
+      background: linear-gradient(180deg, #2a2a48 0%, #1e1e36 100%);
+      border: 2px solid #4a4a7a;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .chat-head {
+      background: linear-gradient(135deg, #5588ff 0%, #7755ee 100%);
+      color: #fff;
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+    }
+    .chat-head:hover {
+      background: linear-gradient(135deg, #66aaff 0%, #8866ff 100%);
+    }
+    .chat-head .title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .chat-head .toggle {
+      font-size: 18px;
+      transition: transform 0.3s;
+    }
+    .chat.collapsed .toggle { transform: rotate(180deg); }
+    .chat.collapsed .chat-body,
+    .chat.collapsed .chat-input { display: none; }
+
+    .chat-body {
+      height: 220px;
+      overflow-y: auto;
+      padding: 14px;
+      background: rgba(10, 10, 20, 0.6);
+    }
+    .chat-msg {
+      margin-bottom: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .chat-msg .sender {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .chat-msg .sender.user { color: #88ddaa; }
+    .chat-msg .sender.agent { color: #7ecfff; }
+    .chat-msg .sender.system { color: #ffaa66; }
+    .chat-msg .content {
+      color: #d0d0ee;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      display: inline-block;
+      max-width: 90%;
+    }
+    .chat-msg.from-agent .content {
+      background: rgba(126,207,255,0.1);
+      border-left: 3px solid #7ecfff;
+    }
+    .chat-msg.from-user .content {
+      background: rgba(136,221,170,0.1);
+      border-left: 3px solid #88ddaa;
+    }
+    .chat-msg .typing {
+      color: #888;
+      font-style: italic;
+    }
+
+    .chat-input {
+      display: flex;
+      border-top: 2px solid #4a4a7a;
+    }
+    .chat-input input {
+      flex: 1;
+      background: #151525;
+      border: none;
+      color: #fff;
+      padding: 14px 16px;
+      font-size: 13px;
+      outline: none;
+    }
+    .chat-input input::placeholder { color: #666688; }
+    .chat-input input:disabled {
+      opacity: 0.5;
+    }
+    .chat-input button {
+      background: linear-gradient(135deg, #5588ff 0%, #7755ee 100%);
+      border: none;
+      color: #fff;
+      padding: 14px 22px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    .chat-input button:hover:not(:disabled) {
+      background: linear-gradient(135deg, #66aaff 0%, #8866ff 100%);
+    }
+    .chat-input button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .user-count {
+      bottom: 16px; left: 16px;
+      background: linear-gradient(180deg, #2a2a48 0%, #1e1e36 100%);
+      border: 2px solid #4a4a7a;
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: #88ddaa;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .user-count .dot {
+      width: 8px;
+      height: 8px;
+      background: #44ff88;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .user-count span { color: #44ff88; font-weight: bold; }
+
+    /* Scrollbar */
+    .chat-body::-webkit-scrollbar { width: 6px; }
+    .chat-body::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    .chat-body::-webkit-scrollbar-thumb { background: #5588ff; border-radius: 3px; }
+
+    /* ==================== Chat Bubble (In-Game) ==================== */
+    .chat-bubble {
+      position: absolute;
+      background: #fff;
+      color: #333;
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      max-width: 180px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+      z-index: 500;
+      pointer-events: none;
+      animation: bubbleIn 0.3s ease-out;
+    }
+    .chat-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 8px solid transparent;
+      border-top-color: #fff;
+      border-bottom: 0;
+    }
+    @keyframes bubbleIn {
+      from { opacity: 0; transform: translateY(10px) scale(0.9); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Loading */
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="loginScreen">
+    <div class="login-box">
+      <div class="login-logo">
+        <h1>BE 76</h1>
+        <p>AI Dating Village</p>
+      </div>
+      <form id="loginForm">
+        <div class="login-field">
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="your@email.com" required>
+        </div>
+        <div class="login-field">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="********" required>
+        </div>
+        <button type="submit" class="login-btn" id="loginBtn">Enter World</button>
+        <div class="login-error" id="loginError"></div>
+      </form>
+      <div class="login-demo">
+        <p>Demo Accounts</p>
+        <div class="demo-accounts">
+          <button type="button" class="demo-btn" onclick="fillDemo('maria@test.com', '1234')">Maria</button>
+          <button type="button" class="demo-btn" onclick="fillDemo('amberh2616@gmail.com', '1234')">Admin</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Canvas -->
+  <div id="game"></div>
+
+  <!-- UI Overlay -->
+  <header class="ui header" style="display: none;" id="gameUI">
+    <span class="logo">BE 76</span>
+    <div class="header-right">
+      <span class="room-info" id="roomInfo">Fashion Lounge</span>
+      <div class="user-info">
+        <div class="avatar" id="userAvatar">?</div>
+        <span id="userName">Guest</span>
+      </div>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </header>
+
+  <div class="ui panel" style="display: none;" id="roomPanel">
+    <div class="panel-title">Rooms</div>
+    <button class="room-btn active" data-room="fashion">
+      <span class="icon">&#128151;</span> Soul Lounge
+    </button>
+    <button class="room-btn" data-room="beauty">
+      <span class="icon">&#10024;</span> Match Hub
+    </button>
+    <button class="room-btn" data-room="travel">
+      <span class="icon">&#127759;</span> World Cafe
+    </button>
+    <button class="room-btn" data-room="music">
+      <span class="icon">&#127925;</span> Vibe Room
+    </button>
+  </div>
+
+  <div class="ui chat" id="chatBox" style="display: none;">
+    <div class="chat-head" onclick="toggleChat()">
+      <span class="title">Chat with <span id="chatTarget">-</span></span>
+      <span class="toggle">&#9660;</span>
+    </div>
+    <div class="chat-body" id="chatBody"></div>
+    <div class="chat-input">
+      <input id="chatIn" placeholder="Say something..." disabled>
+      <button id="chatSendBtn" onclick="sendChat()" disabled>Send</button>
+    </div>
+  </div>
+
+  <div class="ui user-count" style="display: none;" id="userCountPanel">
+    <div class="dot"></div>
+    <span id="userCount">0</span> agents online
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script>
+// =============================================
+// BE 76 - AI Dating Village (Integrated Version)
+// =============================================
+
+// === Configuration ===
+const API_BASE = 'http://localhost:8000/api';
+const WS_BASE = 'ws://localhost:8000/ws';
+const AVATAR_API = 'https://www.habbo.com/habbo-imaging/avatarimage';
+
+const TILE_W = 64;
+const TILE_H = 32;
+const TILE_DEPTH = 8;
+
+// === App State ===
+let authToken = localStorage.getItem('authToken');
+let currentUser = null;
+let currentConversationId = null;
+let currentChatAgent = null;
+let agents = [];
+let gameScene = null;
+let chatWebSocket = null;
+
+// === Room Data ===
+const ROOMS = {
+  fashion: {
+    id: 'fashion',
+    name: 'Soul Lounge',
+    gridW: 11,
+    gridH: 9,
+    floor: { base: 0x8b7355, accent: 0x7a6548, border: 0x5c4a3d },
+    walls: { main: 0x6699cc, stripe: 0x5588bb, baseboard: 0x3d2817, height: 180 },
+    furni: [
+      { type: 'sofa', x: 2, y: 2, color: 0xcc3344 },
+      { type: 'sofa', x: 2, y: 3, color: 0xcc3344 },
+      { type: 'table', x: 4, y: 4 },
+      { type: 'plant', x: 9, y: 1 },
+      { type: 'lamp', x: 8, y: 2 },
+    ]
+  },
+  beauty: {
+    id: 'beauty',
+    name: 'Match Hub',
+    gridW: 10,
+    gridH: 8,
+    floor: { base: 0xd4a5a5, accent: 0xc49595, border: 0x8a6565 },
+    walls: { main: 0xffb6c1, stripe: 0xffa0b0, baseboard: 0x4a2a2a, height: 160 },
+    furni: [
+      { type: 'sofa', x: 2, y: 2, color: 0xff6699 },
+      { type: 'table', x: 5, y: 4 },
+      { type: 'plant', x: 8, y: 1 },
+    ]
+  },
+  travel: {
+    id: 'travel',
+    name: 'World Cafe',
+    gridW: 12,
+    gridH: 9,
+    floor: { base: 0x8fbc8f, accent: 0x7fac7f, border: 0x4f7c4f },
+    walls: { main: 0x87ceeb, stripe: 0x77bedd, baseboard: 0x2a3d2a, height: 170 },
+    furni: [
+      { type: 'sofa', x: 2, y: 3, color: 0x66aa88 },
+      { type: 'table', x: 5, y: 5 },
+      { type: 'plant', x: 10, y: 1 },
+    ]
+  },
+  music: {
+    id: 'music',
+    name: 'Vibe Room',
+    gridW: 11,
+    gridH: 9,
+    floor: { base: 0x9370db, accent: 0x8360cb, border: 0x5340ab },
+    walls: { main: 0xba55d3, stripe: 0xaa45c3, baseboard: 0x2a1a3a, height: 170 },
+    furni: [
+      { type: 'sofa', x: 2, y: 3, color: 0x9955cc },
+      { type: 'table', x: 5, y: 5 },
+      { type: 'lamp', x: 8, y: 7 },
+    ]
+  }
+};
+
+let currentRoom = 'fashion';
+
+// =============================================
+// API Service
+// =============================================
+const api = {
+  async request(endpoint, options = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers
+    };
+
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers
+    });
+
+    if (response.status === 401) {
+      // Token expired
+      logout();
+      throw new Error('Session expired');
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || data.detail || 'API Error');
+    }
+
+    return data;
+  },
+
+  // Auth
+  async login(email, password) {
+    const data = await this.request('/auth/token/', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    return data;
+  },
+
+  // User
+  async getProfile() {
+    return await this.request('/user/profile/');
+  },
+
+  // Agents
+  async getMyAgent() {
+    return await this.request('/agent/me/');
+  },
+
+  async getAgent(agentId) {
+    return await this.request(`/agent/${agentId}/`);
+  },
+
+  async getMatchRecommendations() {
+    return await this.request('/match/recommendations/');
+  },
+
+  // Chat
+  async startChat(agentId) {
+    return await this.request(`/chat/start/${agentId}/`, {
+      method: 'POST'
+    });
+  },
+
+  async sendMessage(conversationId, content) {
+    return await this.request(`/chat/conversations/${conversationId}/send/`, {
+      method: 'POST',
+      body: JSON.stringify({ content })
+    });
+  },
+
+  async getMessages(conversationId) {
+    return await this.request(`/chat/conversations/${conversationId}/`);
+  }
+};
+
+// =============================================
+// Auth & Login
+// =============================================
+function fillDemo(email, password) {
+  document.getElementById('loginEmail').value = email;
+  document.getElementById('loginPassword').value = password;
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
+  const errorEl = document.getElementById('loginError');
+  const btnEl = document.getElementById('loginBtn');
+
+  errorEl.textContent = '';
+  btnEl.disabled = true;
+  btnEl.textContent = 'Connecting...';
+
+  try {
+    const data = await api.login(email, password);
+    authToken = data.access;
+    localStorage.setItem('authToken', authToken);
+
+    // Get user profile
+    currentUser = await api.getProfile();
+
+    // Enter game
+    enterGame();
+  } catch (err) {
+    errorEl.textContent = err.message || 'Login failed';
+    btnEl.disabled = false;
+    btnEl.textContent = 'Enter World';
+  }
+});
+
+function logout() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('authToken');
+
+  // Close WebSocket
+  if (chatWebSocket) {
+    chatWebSocket.close();
+    chatWebSocket = null;
+  }
+
+  // Hide game UI
+  document.getElementById('gameUI').style.display = 'none';
+  document.getElementById('roomPanel').style.display = 'none';
+  document.getElementById('chatBox').style.display = 'none';
+  document.getElementById('userCountPanel').style.display = 'none';
+
+  // Show login
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+async function enterGame() {
+  // Hide login
+  document.getElementById('loginScreen').style.display = 'none';
+
+  // Show game UI
+  document.getElementById('gameUI').style.display = 'flex';
+  document.getElementById('roomPanel').style.display = 'block';
+  document.getElementById('chatBox').style.display = 'block';
+  document.getElementById('userCountPanel').style.display = 'flex';
+
+  // Update user info
+  document.getElementById('userName').textContent = currentUser.username || currentUser.email.split('@')[0];
+  document.getElementById('userAvatar').textContent = (currentUser.username || 'U')[0].toUpperCase();
+
+  // Load agents (from recommendations)
+  await loadAgents();
+
+  // Initialize game
+  if (!gameScene) {
+    initGame();
+  } else {
+    gameScene.loadRoom(currentRoom);
+  }
+
+  addSystemMessage('Welcome to BE 76! Click on an agent to chat.');
+}
+
+async function loadAgents() {
+  // First, get my own agent
+  let myAgent = null;
+  try {
+    const myAgentData = await api.getMyAgent();
+    myAgent = {
+      id: 'me',  // Special ID for self
+      name: myAgentData.name + ' (You)',
+      figure: myAgentData.avatar_look || 'hr-545-45.hd-600-1.ch-665-71.lg-710-71.sh-906-71',
+      bio: myAgentData.bio,
+      isMe: true,
+      x: 5,  // Center position
+      y: 4
+    };
+  } catch (err) {
+    console.log('No personal agent:', err.message);
+  }
+
+  try {
+    // Get match recommendations (other people's agents)
+    const data = await api.getMatchRecommendations();
+    agents = (data.recommendations || [])
+      .filter(rec => rec.agent)
+      .map((rec, idx) => ({
+        id: rec.agent.id,
+        name: rec.agent.name || rec.username,
+        figure: rec.agent.avatar_look || getDefaultFigure(rec.agent.name || rec.username),
+        bio: rec.agent.bio,
+        compatibility: rec.match_score,
+        x: 3 + (idx % 3) * 2,
+        y: 2 + Math.floor(idx / 3) * 2
+      }));
+
+    // Add myself to the list (at the front)
+    if (myAgent) {
+      agents.unshift(myAgent);
+    }
+
+    if (agents.length === 0) {
+      throw new Error('No agents found');
+    }
+  } catch (err) {
+    console.log('No recommendations, using demo agents:', err.message);
+    // Fallback demo agents
+    agents = [
+      { id: 'demo1', name: 'Luna', figure: 'hr-550-42.hd-600-10.ch-655-82.lg-705-82.sh-908-82', x: 4, y: 5 },
+      { id: 'demo2', name: 'Bella', figure: 'hr-515-31.hd-600-8.ch-650-66.lg-700-66.sh-905-66', x: 6, y: 3 },
+      { id: 'demo3', name: 'Emma', figure: 'hr-540-40.hd-600-1.ch-660-70.lg-715-70.sh-907-70', x: 5, y: 6 },
+      { id: 'demo4', name: 'Mia', figure: 'hr-831-37.hd-600-2.ch-3030-1408.lg-3216-110.sh-3068-110', x: 7, y: 5 },
+      { id: 'demo5', name: 'Sophie', figure: 'hr-828-42.hd-600-7.ch-3185-92.lg-3202-1408.sh-3252-92', x: 4, y: 2 },
+    ];
+
+    // Still add myself if available
+    if (myAgent) {
+      agents.unshift(myAgent);
+    }
+  }
+
+  document.getElementById('userCount').textContent = agents.length;
+
+  // Debug: log agents
+  console.log('Loaded agents:', agents.map(a => ({ name: a.name, isMe: a.isMe, id: a.id })));
+}
+
+function getDefaultFigure(name) {
+  const figures = [
+    'hr-545-45.hd-600-1.ch-665-71.lg-710-71.sh-906-71',
+    'hr-515-31.hd-600-8.ch-650-66.lg-700-66.sh-905-66',
+    'hr-540-40.hd-600-1.ch-660-70.lg-715-70.sh-907-70',
+    'hr-550-42.hd-600-10.ch-655-82.lg-705-82.sh-908-82',
+    'hr-831-37.hd-600-2.ch-3030-1408.lg-3216-110.sh-3068-110',
+  ];
+  return figures[name.charCodeAt(0) % figures.length];
+}
+
+// =============================================
+// Chat System
+// =============================================
+async function startChatWithAgent(agent) {
+  console.log('Starting chat with:', agent.name, agent.id);
+  currentChatAgent = agent;
+
+  // Ensure chat box is visible and expanded
+  const chatBox = document.getElementById('chatBox');
+  chatBox.style.display = 'block';
+  chatBox.classList.remove('collapsed');
+
+  document.getElementById('chatTarget').textContent = agent.name;
+  document.getElementById('chatIn').disabled = false;
+  document.getElementById('chatSendBtn').disabled = false;
+
+  // Focus on input
+  setTimeout(() => document.getElementById('chatIn').focus(), 100);
+
+  // Clear chat
+  document.getElementById('chatBody').innerHTML = '';
+
+  // Start chat with backend
+  try {
+    console.log('Calling API: startChat...');
+    const data = await api.startChat(agent.id);
+    console.log('Chat started:', data);
+    currentConversationId = data.conversation_id;
+
+    // Load existing messages
+    if (!data.created) {
+      const msgData = await api.getMessages(currentConversationId);
+      msgData.messages.forEach(msg => {
+        addChatMessage(
+          msg.sender.name,
+          msg.content,
+          msg.sender.type === 'agent' ? 'agent' : 'user'
+        );
+      });
+    }
+
+    // Connect WebSocket for real-time
+    connectChatWebSocket(currentConversationId);
+
+    addSystemMessage(`Started conversation with ${agent.name}`);
+  } catch (err) {
+    // Demo mode - no backend
+    currentConversationId = 'demo';
+    addSystemMessage(`Chatting with ${agent.name} (Demo Mode)`);
+  }
+}
+
+function connectChatWebSocket(conversationId) {
+  if (chatWebSocket) {
+    chatWebSocket.close();
+  }
+
+  try {
+    chatWebSocket = new WebSocket(`${WS_BASE}/chat/${conversationId}/?token=${authToken}`);
+
+    chatWebSocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'ai_response' || data.message) {
+        const msg = data.message || data;
+        addChatMessage(
+          currentChatAgent?.name || 'AI',
+          msg.content,
+          'agent'
+        );
+        showChatBubble(currentChatAgent?.id, msg.content);
+      }
+    };
+
+    chatWebSocket.onerror = () => {
+      console.log('WebSocket not available, using REST API');
+    };
+  } catch (err) {
+    console.log('WebSocket connection failed');
+  }
+}
+
+async function sendChat() {
+  console.log('sendChat called');
+  const input = document.getElementById('chatIn');
+  const content = input.value.trim();
+  console.log('Content:', content, 'Agent:', currentChatAgent?.name);
+
+  if (!content || !currentChatAgent) {
+    console.log('No content or no agent');
+    return;
+  }
+
+  input.value = '';
+
+  // Show user message
+  addChatMessage('You', content, 'user');
+
+  if (currentConversationId === 'demo') {
+    // Demo mode - fake AI response
+    showTypingIndicator();
+    setTimeout(() => {
+      removeTypingIndicator();
+      const response = getDemoResponse(content);
+      addChatMessage(currentChatAgent.name, response, 'agent');
+      showChatBubble(currentChatAgent.id, response);
+    }, 1000 + Math.random() * 1000);
+    return;
+  }
+
+  // Send to backend
+  try {
+    showTypingIndicator();
+    await api.sendMessage(currentConversationId, content);
+    // Response will come via WebSocket or we poll
+
+    // If no WebSocket, poll for response
+    if (!chatWebSocket || chatWebSocket.readyState !== WebSocket.OPEN) {
+      setTimeout(async () => {
+        const msgData = await api.getMessages(currentConversationId);
+        removeTypingIndicator();
+        const lastMsg = msgData.messages[msgData.messages.length - 1];
+        if (lastMsg && lastMsg.sender.type === 'agent') {
+          addChatMessage(lastMsg.sender.name, lastMsg.content, 'agent');
+          showChatBubble(currentChatAgent?.id, lastMsg.content);
+        }
+      }, 2000);
+    }
+  } catch (err) {
+    removeTypingIndicator();
+    addSystemMessage('Failed to send message');
+  }
+}
+
+function getDemoResponse(message) {
+  const responses = [
+    "That's interesting! Tell me more about yourself.",
+    "I love that! What else do you enjoy?",
+    "Hmm, I think we might have similar interests!",
+    "That sounds wonderful! I'd love to know more.",
+    "Oh really? That's so cool!",
+    "I feel the same way sometimes.",
+    "We should definitely talk more about this!",
+  ];
+  return responses[Math.floor(Math.random() * responses.length)];
+}
+
+function addChatMessage(sender, content, type) {
+  const body = document.getElementById('chatBody');
+  const msgEl = document.createElement('div');
+  msgEl.className = `chat-msg from-${type}`;
+  msgEl.innerHTML = `
+    <div class="sender ${type}">${sender}</div>
+    <div class="content">${content}</div>
+  `;
+  body.appendChild(msgEl);
+  body.scrollTop = body.scrollHeight;
+}
+
+function addSystemMessage(text) {
+  const body = document.getElementById('chatBody');
+  const msgEl = document.createElement('div');
+  msgEl.className = 'chat-msg';
+  msgEl.innerHTML = `
+    <div class="sender system">System</div>
+    <div class="content">${text}</div>
+  `;
+  body.appendChild(msgEl);
+  body.scrollTop = body.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const body = document.getElementById('chatBody');
+  const existing = body.querySelector('.typing-indicator');
+  if (existing) return;
+
+  const msgEl = document.createElement('div');
+  msgEl.className = 'chat-msg from-agent typing-indicator';
+  msgEl.innerHTML = `
+    <div class="sender agent">${currentChatAgent?.name || 'AI'}</div>
+    <div class="content typing">typing<span class="loading-dots"></span></div>
+  `;
+  body.appendChild(msgEl);
+  body.scrollTop = body.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const indicator = document.querySelector('.typing-indicator');
+  if (indicator) indicator.remove();
+}
+
+function toggleChat() {
+  document.getElementById('chatBox').classList.toggle('collapsed');
+}
+
+// Chat bubble in game
+function showChatBubble(agentId, text) {
+  if (!gameScene) return;
+
+  const avatar = gameScene.avatars?.[agentId];
+  if (!avatar) return;
+
+  // Create or update bubble
+  if (avatar.bubble) {
+    avatar.bubble.destroy();
+  }
+
+  const bubble = gameScene.add.dom(
+    avatar.sprite.x,
+    avatar.sprite.y - 80,
+    'div',
+    'background: #fff; color: #333; padding: 8px 12px; border-radius: 12px; font-size: 12px; max-width: 180px; box-shadow: 0 3px 10px rgba(0,0,0,0.3);',
+    text.substring(0, 80) + (text.length > 80 ? '...' : '')
+  );
+  bubble.setDepth(10000);
+  avatar.bubble = bubble;
+
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    if (avatar.bubble === bubble) {
+      bubble.destroy();
+      avatar.bubble = null;
+    }
+  }, 5000);
+}
+
+// Handle Enter key in chat input
+document.getElementById('chatIn').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+
+// =============================================
+// Phaser Game
+// =============================================
+function gridToScreen(gx, gy, originX, originY) {
+  return {
+    x: originX + (gx - gy) * (TILE_W / 2),
+    y: originY + (gx + gy) * (TILE_H / 2)
+  };
+}
+
+function screenToGrid(sx, sy, originX, originY) {
+  const dx = sx - originX;
+  const dy = sy - originY;
+  return {
+    x: Math.floor((dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2),
+    y: Math.floor((dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2)
+  };
+}
+
+class RoomScene extends Phaser.Scene {
+  constructor() {
+    super('RoomScene');
+  }
+
+  preload() {
+    // Load agent avatars
+    agents.forEach(agent => {
+      const url = `${AVATAR_API}?figure=${agent.figure}&direction=2&head_direction=2&gesture=sml&size=l&action=std`;
+      this.load.image(`avatar_${agent.id}`, url);
+    });
+  }
+
+  create() {
+    gameScene = this;
+    this.loadRoom(currentRoom);
+
+    // Click handling
+    this.input.on('pointerdown', (pointer) => {
+      const cam = this.cameras.main;
+      const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+      const g = screenToGrid(worldPoint.x, worldPoint.y, this.originX, this.originY);
+
+      if (this.isValidTile(g.x, g.y) && !this.blocked.has(`${g.x},${g.y}`)) {
+        // Move user's agent (if any)
+      }
+    });
+
+    // Zoom
+    this.input.on('wheel', (p, g, dx, dy) => {
+      const newZoom = Phaser.Math.Clamp(this.cameras.main.zoom - dy * 0.001, 0.6, 2);
+      this.cameras.main.zoom = newZoom;
+    });
+
+    // Pan
+    let dragging = false;
+    let lastPos = { x: 0, y: 0 };
+    this.input.on('pointermove', (pointer) => {
+      if (!pointer.isDown) { dragging = false; return; }
+      if (!dragging) { dragging = true; lastPos = { x: pointer.x, y: pointer.y }; return; }
+
+      const dx = pointer.x - lastPos.x;
+      const dy = pointer.y - lastPos.y;
+      lastPos = { x: pointer.x, y: pointer.y };
+
+      this.cameras.main.scrollX -= dx / this.cameras.main.zoom;
+      this.cameras.main.scrollY -= dy / this.cameras.main.zoom;
+    });
+  }
+
+  loadRoom(roomId) {
+    this.children.removeAll();
+
+    const room = ROOMS[roomId];
+    if (!room) return;
+
+    this.room = room;
+    this.blocked = new Set();
+    this.avatars = {};
+
+    const { width, height } = this.scale;
+    this.originX = width / 2 + 50;
+    this.originY = height * 0.18;
+
+    this.drawWalls();
+    this.drawFloor();
+    this.placeFurniture();
+    this.placeAgents();
+
+    document.getElementById('roomInfo').textContent = room.name;
+  }
+
+  drawWalls() {
+    const room = this.room;
+    const wallH = room.walls.height;
+    const g = this.add.graphics();
+    g.setDepth(-10000);
+
+    const p00 = gridToScreen(0, 0, this.originX, this.originY);
+    const pW0 = gridToScreen(room.gridW, 0, this.originX, this.originY);
+
+    // Back wall
+    g.fillStyle(room.walls.main, 1);
+    g.beginPath();
+    g.moveTo(p00.x, p00.y - wallH);
+    g.lineTo(pW0.x, pW0.y - wallH);
+    g.lineTo(pW0.x, pW0.y);
+    g.lineTo(p00.x, p00.y);
+    g.closePath();
+    g.fillPath();
+
+    // Stripes
+    g.fillStyle(room.walls.stripe, 1);
+    for (let i = 0; i < 20; i += 2) {
+      const x1 = p00.x + i * 24;
+      const x2 = p00.x + (i + 1) * 24;
+      if (x1 > pW0.x) break;
+      g.beginPath();
+      g.moveTo(Math.max(p00.x, x1), p00.y - wallH);
+      g.lineTo(Math.min(pW0.x, x2), pW0.y - wallH);
+      g.lineTo(Math.min(pW0.x, x2), pW0.y);
+      g.lineTo(Math.max(p00.x, x1), p00.y);
+      g.closePath();
+      g.fillPath();
+    }
+
+    // Right wall
+    const rightColor = Phaser.Display.Color.ValueToColor(room.walls.main).darken(25).color;
+    g.fillStyle(rightColor, 1);
+    g.beginPath();
+    g.moveTo(pW0.x, pW0.y - wallH);
+    g.lineTo(pW0.x + (room.gridH * TILE_W / 2), pW0.y + (room.gridH * TILE_H / 2) - wallH);
+    g.lineTo(pW0.x + (room.gridH * TILE_W / 2), pW0.y + (room.gridH * TILE_H / 2));
+    g.lineTo(pW0.x, pW0.y);
+    g.closePath();
+    g.fillPath();
+
+    // Baseboard
+    g.lineStyle(10, room.walls.baseboard, 1);
+    g.beginPath();
+    g.moveTo(p00.x, p00.y);
+    g.lineTo(pW0.x, pW0.y);
+    g.strokePath();
+    g.beginPath();
+    g.moveTo(pW0.x, pW0.y);
+    g.lineTo(pW0.x + (room.gridH * TILE_W / 2), pW0.y + (room.gridH * TILE_H / 2));
+    g.strokePath();
+  }
+
+  drawFloor() {
+    const room = this.room;
+
+    for (let y = 0; y < room.gridH; y++) {
+      for (let x = 0; x < room.gridW; x++) {
+        const p = gridToScreen(x, y, this.originX, this.originY);
+        const isLight = (x + y) % 2 === 0;
+        const g = this.add.graphics();
+        g.setDepth(p.y);
+
+        const tileColor = isLight ? room.floor.base : room.floor.accent;
+        g.fillStyle(tileColor, 1);
+        g.beginPath();
+        g.moveTo(p.x, p.y);
+        g.lineTo(p.x + TILE_W/2, p.y + TILE_H/2);
+        g.lineTo(p.x, p.y + TILE_H);
+        g.lineTo(p.x - TILE_W/2, p.y + TILE_H/2);
+        g.closePath();
+        g.fillPath();
+
+        // Tile thickness
+        if (y === room.gridH - 1 || x === 0) {
+          const leftColor = Phaser.Display.Color.ValueToColor(tileColor).darken(30).color;
+          g.fillStyle(leftColor, 1);
+          g.beginPath();
+          g.moveTo(p.x - TILE_W/2, p.y + TILE_H/2);
+          g.lineTo(p.x, p.y + TILE_H);
+          g.lineTo(p.x, p.y + TILE_H + TILE_DEPTH);
+          g.lineTo(p.x - TILE_W/2, p.y + TILE_H/2 + TILE_DEPTH);
+          g.closePath();
+          g.fillPath();
+        }
+
+        if (y === room.gridH - 1 || x === room.gridW - 1) {
+          const rightColor = Phaser.Display.Color.ValueToColor(tileColor).darken(45).color;
+          g.fillStyle(rightColor, 1);
+          g.beginPath();
+          g.moveTo(p.x + TILE_W/2, p.y + TILE_H/2);
+          g.lineTo(p.x, p.y + TILE_H);
+          g.lineTo(p.x, p.y + TILE_H + TILE_DEPTH);
+          g.lineTo(p.x + TILE_W/2, p.y + TILE_H/2 + TILE_DEPTH);
+          g.closePath();
+          g.fillPath();
+        }
+
+        g.lineStyle(1, 0x000000, 0.2);
+        g.beginPath();
+        g.moveTo(p.x, p.y);
+        g.lineTo(p.x + TILE_W/2, p.y + TILE_H/2);
+        g.lineTo(p.x, p.y + TILE_H);
+        g.lineTo(p.x - TILE_W/2, p.y + TILE_H/2);
+        g.closePath();
+        g.strokePath();
+      }
+    }
+  }
+
+  placeFurniture() {
+    const room = this.room;
+
+    room.furni.forEach((f, idx) => {
+      const p = gridToScreen(f.x, f.y, this.originX, this.originY);
+      const depth = p.y + 100;
+      this.blocked.add(`${f.x},${f.y}`);
+
+      const shadow = this.add.ellipse(p.x, p.y + 14, 44, 16, 0x000000, 0.3);
+      shadow.setDepth(depth - 1);
+
+      switch(f.type) {
+        case 'sofa': this.drawSofa(p.x, p.y, f.color || 0xcc4455, depth); break;
+        case 'table': this.drawTable(p.x, p.y, depth); break;
+        case 'plant': this.drawPlant(p.x, p.y, depth, idx); break;
+        case 'lamp': this.drawLamp(p.x, p.y, depth); break;
+      }
+    });
+  }
+
+  drawSofa(cx, cy, color, depth) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+    const dark1 = Phaser.Display.Color.ValueToColor(color).darken(15).color;
+    const dark2 = Phaser.Display.Color.ValueToColor(color).darken(30).color;
+    const light = Phaser.Display.Color.ValueToColor(color).lighten(10).color;
+
+    g.fillStyle(dark2, 1);
+    g.fillRoundedRect(cx - 26, cy - 38, 52, 24, 4);
+    g.fillStyle(color, 1);
+    g.fillRoundedRect(cx - 28, cy - 18, 56, 22, 6);
+    g.fillStyle(light, 1);
+    g.fillRoundedRect(cx - 24, cy - 16, 48, 8, 3);
+    g.fillStyle(dark1, 1);
+    g.fillRoundedRect(cx - 32, cy - 24, 10, 28, 4);
+    g.fillRoundedRect(cx + 22, cy - 24, 10, 28, 4);
+    g.fillStyle(0x4a3020, 1);
+    g.fillRect(cx - 26, cy + 2, 6, 8);
+    g.fillRect(cx + 20, cy + 2, 6, 8);
+  }
+
+  drawTable(cx, cy, depth) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+    g.fillStyle(0x8b5a2b, 1);
+    g.beginPath();
+    g.moveTo(cx, cy - 22);
+    g.lineTo(cx + 32, cy - 10);
+    g.lineTo(cx, cy + 2);
+    g.lineTo(cx - 32, cy - 10);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(0x5a3a1b, 1);
+    g.fillRect(cx - 24, cy - 8, 6, 20);
+    g.fillRect(cx + 18, cy - 8, 6, 20);
+  }
+
+  drawPlant(cx, cy, depth, index) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+    g.fillStyle(0xc4785a, 1);
+    g.beginPath();
+    g.moveTo(cx - 14, cy - 4);
+    g.lineTo(cx + 14, cy - 4);
+    g.lineTo(cx + 10, cy + 12);
+    g.lineTo(cx - 10, cy + 12);
+    g.closePath();
+    g.fillPath();
+    const leafColors = [0x228844, 0x33aa55, 0x117733];
+    g.fillStyle(leafColors[index % 3], 1);
+    g.fillEllipse(cx, cy - 36, 10, 28);
+    g.fillEllipse(cx - 12, cy - 28, 10, 22);
+    g.fillEllipse(cx + 12, cy - 28, 10, 22);
+  }
+
+  drawLamp(cx, cy, depth) {
+    const g = this.add.graphics();
+    g.setDepth(depth);
+    g.fillStyle(0xffffaa, 0.3);
+    g.fillCircle(cx, cy - 44, 24);
+    g.fillStyle(0xffeedd, 1);
+    g.beginPath();
+    g.moveTo(cx - 6, cy - 58);
+    g.lineTo(cx + 6, cy - 58);
+    g.lineTo(cx + 18, cy - 32);
+    g.lineTo(cx - 18, cy - 32);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(0x888888, 1);
+    g.fillRect(cx - 3, cy - 32, 6, 38);
+    g.fillStyle(0x666666, 1);
+    g.fillEllipse(cx, cy + 8, 16, 7);
+  }
+
+  placeAgents() {
+    agents.forEach(agent => {
+      const x = Math.min(agent.x, this.room.gridW - 1);
+      const y = Math.min(agent.y, this.room.gridH - 1);
+      const p = gridToScreen(x, y, this.originX, this.originY);
+
+      // Shadow
+      const shadow = this.add.ellipse(p.x, p.y + 14, 40, 16, 0x000000, 0.4);
+      shadow.setDepth(p.y + 199);
+
+      // Avatar
+      let sprite;
+      if (this.textures.exists(`avatar_${agent.id}`)) {
+        sprite = this.add.image(p.x, p.y - 30, `avatar_${agent.id}`);
+        sprite.setScale(0.9);
+      } else {
+        sprite = this.add.circle(p.x, p.y - 24, 16, 0x5599ff);
+      }
+      sprite.setDepth(p.y + 200);
+      sprite.setInteractive({ useHandCursor: true });
+
+      // Name tag
+      const nameBg = this.add.graphics();
+      nameBg.fillStyle(0x000000, 0.75);
+      nameBg.fillRoundedRect(p.x - 36, p.y + 20, 72, 22, 10);
+      nameBg.setDepth(p.y + 201);
+
+      const nameText = this.add.text(p.x, p.y + 31, agent.name, {
+        fontSize: '11px',
+        fontFamily: 'Arial',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      nameText.setDepth(p.y + 202);
+
+      // Compatibility badge (if available)
+      if (agent.compatibility) {
+        const score = Math.round(agent.compatibility);
+        const badgeBg = this.add.graphics();
+        badgeBg.fillStyle(score > 70 ? 0x44ff88 : 0xffaa44, 0.9);
+        badgeBg.fillRoundedRect(p.x + 20, p.y - 60, 28, 18, 4);
+        badgeBg.setDepth(p.y + 203);
+
+        const badge = this.add.text(p.x + 34, p.y - 51, `${score}%`, {
+          fontSize: '10px',
+          fontFamily: 'Arial',
+          color: '#000',
+          fontStyle: 'bold'
+        }).setOrigin(0.5);
+        badge.setDepth(p.y + 204);
+      }
+
+      // Click to chat (not for self)
+      sprite.on('pointerdown', (pointer) => {
+        if (pointer.event) pointer.event.stopPropagation();
+        console.log('Clicked agent:', agent.name, 'isMe:', agent.isMe);
+        if (agent.isMe) {
+          addSystemMessage("That's you! Click on other agents to chat.");
+        } else {
+          startChatWithAgent(agent);
+        }
+      });
+
+      // Hover effect
+      sprite.on('pointerover', () => {
+        sprite.setScale(1.0);
+        nameText.setStyle({ color: '#7ecfff' });
+      });
+      sprite.on('pointerout', () => {
+        sprite.setScale(0.9);
+        nameText.setStyle({ color: '#ffffff' });
+      });
+
+      this.avatars[agent.id] = { sprite, shadow, nameBg, nameText, gridX: x, gridY: y };
+    });
+  }
+
+  isValidTile(x, y) {
+    return x >= 0 && x < this.room.gridW && y >= 0 && y < this.room.gridH;
+  }
+}
+
+function initGame() {
+  const config = {
+    type: Phaser.AUTO,
+    parent: 'game',
+    backgroundColor: 0x1b1b2f,
+    pixelArt: true,
+    antialias: false,
+    dom: { createContainer: true },
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    scene: [RoomScene]
+  };
+
+  new Phaser.Game(config);
+}
+
+function changeRoom(roomId) {
+  currentRoom = roomId;
+  if (gameScene) {
+    gameScene.loadRoom(roomId);
+  }
+
+  document.querySelectorAll('.room-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.room === roomId);
+  });
+
+  addSystemMessage(`Entered ${ROOMS[roomId].name}`);
+}
+
+// Room button events
+document.querySelectorAll('.room-btn').forEach(btn => {
+  btn.addEventListener('click', () => changeRoom(btn.dataset.room));
+});
+
+// =============================================
+// Auto-login if token exists
+// =============================================
+(async function() {
+  if (authToken) {
+    try {
+      currentUser = await api.getProfile();
+      enterGame();
+    } catch (err) {
+      // Token invalid - silently logout and show login screen
+      console.log('Auto-login failed:', err.message);
+      authToken = null;
+      localStorage.removeItem('authToken');
+      // Login screen is already visible by default
+    }
+  }
+})();
+  </script>
+</body>
 </html>
