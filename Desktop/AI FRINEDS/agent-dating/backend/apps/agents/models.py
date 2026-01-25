@@ -50,6 +50,19 @@ class Agent(models.Model):
         help_text='目前互動對象的 Agent ID'
     )
 
+    # 最近的聊天訊息（用於前端顯示氣泡）
+    last_chat_message = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text='最近說的話'
+    )
+    last_chat_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='最近說話時間'
+    )
+
     # 線上狀態
     is_online = models.BooleanField(default=False)
     is_autonomous = models.BooleanField(

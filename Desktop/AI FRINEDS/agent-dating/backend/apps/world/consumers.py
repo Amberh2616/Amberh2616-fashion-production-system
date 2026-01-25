@@ -1,9 +1,12 @@
 """
 World WebSocket consumers
 虛擬世界 WebSocket 消費者
+
+Enhanced for autonomous AI social system
 """
 
 import json
+import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
@@ -12,12 +15,23 @@ class WorldConsumer(AsyncWebsocketConsumer):
     """
     虛擬世界 WebSocket 消費者
     Handles real-time world updates (agent positions, actions, chat)
+
+    Events (Server -> Client):
+    - room_state: Initial room data with all agents
+    - agent_path: Agent moving along a path [{x, y, direction}, ...]
+    - agent_position: Instant position update (teleport)
+    - agent_chat: Chat bubble with message
+    - agent_action: Action like wave, sit, dance
+    - agent_emotion: Emotion change (happy, sad, excited)
+    - agent_enter: New agent entered room
+    - agent_leave: Agent left room
+    - pong: Heartbeat response
     """
 
     async def connect(self):
         self.room_id = self.scope['url_route']['kwargs']['room_id']
         self.room_group_name = f'world_{self.room_id}'
-        self.user = self.scope['user']
+        self.user = self.scope.get('user')
 
         # 加入房間群組
         await self.channel_layer.group_add(
@@ -43,15 +57,24 @@ class WorldConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         """接收前端訊息"""
-        data = json.loads(text_data)
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+
         event_type = data.get('type')
 
-        if event_type == 'move_agent':
+        if event_type == 'ping':
+            # 心跳回應
+            await self.send(text_data=json.dumps({'type': 'pong'}))
+        elif event_type == 'move_agent':
             await self.handle_move_agent(data)
         elif event_type == 'agent_chat':
             await self.handle_agent_chat(data)
         elif event_type == 'agent_action':
             await self.handle_agent_action(data)
+        elif event_type == 'request_path':
+            await self.handle_path_request(data)
 
     async def handle_move_agent(self, data):
         """處理 Agent 移動"""
@@ -107,6 +130,33 @@ class WorldConsumer(AsyncWebsocketConsumer):
             }
         )
 
+    async def handle_path_request(self, data):
+        """處理路徑請求 - 使用 A* 計算路徑"""
+        agent_id = data.get('agent_id')
+        target_x = data.get('x')
+        target_y = data.get('y')
+
+        if not await self.can_control_agent(agent_id):
+            return
+
+        # 計算路徑
+        path = await self.calculate_path(agent_id, target_x, target_y)
+
+        if path:
+            # 更新目標位置
+            await self.update_agent_position(agent_id, target_x, target_y)
+
+            # 廣播路徑給所有客戶端
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'agent_path_update',
+                    'agent_id': agent_id,
+                    'path': path,
+                    'speed': 200,  # 毫秒/格
+                }
+            )
+
     # === 事件處理器 (發送到客戶端) ===
 
     async def agent_position_update(self, event):
@@ -146,6 +196,32 @@ class WorldConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'agent_leave',
             'agent_id': event['agent_id'],
+        }))
+
+    async def agent_path_update(self, event):
+        """發送 Agent 移動路徑 (用於平滑動畫)"""
+        await self.send(text_data=json.dumps({
+            'type': 'agent_path',
+            'agent_id': event['agent_id'],
+            'path': event['path'],  # [{x, y, direction}, ...]
+            'speed': event.get('speed', 200),  # ms per tile
+        }))
+
+    async def agent_emotion_update(self, event):
+        """發送 Agent 情緒變化"""
+        await self.send(text_data=json.dumps({
+            'type': 'agent_emotion',
+            'agent_id': event['agent_id'],
+            'emotion': event['emotion'],  # happy, sad, excited, thinking
+        }))
+
+    async def agent_interaction(self, event):
+        """發送 Agent 互動事件 (用於顯示互動動畫)"""
+        await self.send(text_data=json.dumps({
+            'type': 'agent_interaction',
+            'initiator_id': event['initiator_id'],
+            'target_id': event['target_id'],
+            'interaction_type': event['interaction_type'],  # greet, talk, gift
         }))
 
     # === 資料庫操作 ===
@@ -206,3 +282,31 @@ class WorldConsumer(AsyncWebsocketConsumer):
             target_y=y,
             is_moving=True
         )
+
+    @database_sync_to_async
+    def calculate_path(self, agent_id, target_x, target_y):
+        """使用 A* 計算路徑"""
+        from .models import Room, AgentPosition
+        from .pathfinding import find_path_in_room
+
+        try:
+            position = AgentPosition.objects.select_related('room').get(agent_id=agent_id)
+            room = position.room
+
+            if not room:
+                return None
+
+            start = (position.x, position.y)
+            goal = (target_x, target_y)
+
+            path = find_path_in_room(
+                room=room,
+                start=start,
+                goal=goal,
+                exclude_agent_id=agent_id
+            )
+
+            return path
+
+        except AgentPosition.DoesNotExist:
+            return None

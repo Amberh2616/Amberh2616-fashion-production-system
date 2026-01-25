@@ -12,8 +12,8 @@
       font-family: 'Segoe UI', Arial, sans-serif;
       height: 100%;
     }
-    #game { width: 100vw; height: 100vh; pointer-events: auto; }
-    #game canvas { pointer-events: auto; }
+    #game { width: 100vw; height: 100vh; pointer-events: auto; position: relative; z-index: 1; }
+    #game canvas { pointer-events: auto; position: relative; z-index: 1; }
 
     /* ==================== Login Screen ==================== */
     #loginScreen {
@@ -385,7 +385,7 @@
 
     /* ==================== AI Reports Panel ==================== */
     .ai-reports {
-      top: 70px; right: 16px; width: 320px;
+      top: 70px; left: 16px; width: 320px;
       background: linear-gradient(180deg, #2a2a48 0%, #1e1e36 100%);
       border: 2px solid #4a4a7a;
       border-radius: 12px;
@@ -643,16 +643,16 @@
       <span class="title">Chat with <span id="chatTarget">-</span></span>
       <span class="toggle">&#9660;</span>
     </div>
-    <div class="mode-toggle" id="modeToggle" style="display: none;">
-      <button class="mode-btn ai-mode active" id="modeAI" onclick="switchMode('ai')">AI 代聊</button>
-      <button class="mode-btn" id="modeUser" onclick="switchMode('user')">我來聊</button>
+    <div class="mode-toggle" id="modeToggle" style="display: flex;">
+      <button class="mode-btn ai-mode active" id="modeAI" onclick="switchMode('ai')">AI Chat</button>
+      <button class="mode-btn" id="modeUser" onclick="switchMode('user')">Me Chat</button>
     </div>
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-input">
       <input id="chatIn" placeholder="Say something..." disabled>
       <button id="chatSendBtn" onclick="sendChat()" disabled>Send</button>
     </div>
-    <div class="mode-indicator ai" id="modeIndicator">目前: AI 代聊模式</div>
+    <div class="mode-indicator ai" id="modeIndicator">Mode: AI Chat</div>
   </div>
 
   <div class="ui user-count" style="display: none;" id="userCountPanel">
@@ -671,10 +671,13 @@
     </div>
   </div>
 
-  <!-- DEBUG OVERLAY - highest z-index, pointer-events enabled -->
-  <div id="debugOverlay" style="position:fixed; top:0; left:0; right:0; bottom:0; z-index:2147483647; pointer-events:none;">
-    <!-- Test button - pointer-events enabled -->
-    <button id="testBubbleBtn" onclick="alert('CLICK OK'); testBubbleNow();" style="position:absolute; bottom:80px; left:20px; pointer-events:auto; background:#ff5588; color:#fff; border:none; padding:15px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">
+  <!-- Bubble Layer - must be before scripts that use it -->
+  <div id="bubble-layer" style="position:fixed; inset:0; pointer-events:none; z-index:999999;"></div>
+
+  <!-- DEBUG OVERLAY -->
+  <div id="debugOverlay" style="position:fixed; top:0; left:0; right:0; bottom:0; z-index:1000000; pointer-events:none;">
+    <!-- Test button - high z-index, pointer-events enabled -->
+    <button id="testBubbleBtn" onclick="alert('CLICK OK'); testBubbleNow();" style="position:absolute; bottom:80px; left:20px; pointer-events:auto; background:#ff5588; color:#fff; border:none; padding:15px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px; z-index:1000001;">
       TEST BUBBLE
     </button>
 
@@ -709,32 +712,45 @@
 
       var id = 'bubble-' + name.replace(/[^a-zA-Z0-9]/g, '_') + '-' + Date.now();
 
-      // Calculate vertical offset for stacking
-      var existingBubbles = layer.querySelectorAll('.agent-bubble');
-      var topOffset = 70 + (existingBubbles.length * 60);
+      // Different colors and positions for different agents
+      var agentStyles = {
+        'Amber': { border: '#ff69b4', text: '#ff69b4', side: 'left' },   // Pink, left
+        'Mike': { border: '#5588ff', text: '#5588ff', side: 'right' },   // Blue, right
+      };
+      var style = agentStyles[name] || { border: '#5588ff', text: '#5588ff', side: 'left' };
+
+      // Count bubbles on same side for stacking
+      var sameSideBubbles = layer.querySelectorAll('.agent-bubble[data-side="' + style.side + '"]');
+      var topOffset = 70 + (sameSideBubbles.length * 80);
 
       var bubble = document.createElement('div');
       bubble.id = id;
       bubble.className = 'agent-bubble';
+      bubble.setAttribute('data-side', style.side);
+
+      // Position: left side or right side (right side offset to avoid chat box)
+      var positionStyle = style.side === 'left'
+        ? 'left:20px;'
+        : 'right:400px;';
+
       bubble.style.cssText = [
         'position:fixed',
         'top:' + topOffset + 'px',
-        'left:50%',
-        'transform:translateX(-50%)',
+        positionStyle,
         'background:#fff',
         'color:#333',
         'padding:12px 18px',
         'border-radius:14px',
         'font-size:14px',
         'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
-        'border:3px solid #5588ff',
-        'max-width:320px',
-        'text-align:center',
+        'border:3px solid ' + style.border,
+        'max-width:280px',
+        'text-align:left',
         'pointer-events:none',
         'z-index:2147483647',
         'animation:fadeIn 0.3s ease'
       ].join(';');
-      bubble.innerHTML = '<b style="color:#5588ff">' + name + ':</b> ' + msg;
+      bubble.innerHTML = '<b style="color:' + style.text + '">' + name + ':</b> ' + msg;
       layer.appendChild(bubble);
 
       console.log('Bubble shown via bubble-layer:', name, msg);
@@ -748,7 +764,7 @@
           el.style.transition = 'opacity 0.3s';
           setTimeout(function() { el.remove(); }, 300);
         }
-      }, 8000);
+      }, 30000);  // 30 seconds display time
     }
 
     document.getElementById('debugStatus').innerHTML = 'Ready - click TEST BUBBLE';
@@ -1461,7 +1477,7 @@ async function switchMode(mode) {
   if (!currentConversationId || currentConversationId === 'demo') {
     // Demo mode - just toggle UI
     updateModeUI(mode);
-    addSystemMessage(`已切換為「${mode === 'ai' ? 'AI 代聊' : '我來聊'}」模式`);
+    addSystemMessage(`Switched to "${mode === 'ai' ? 'AI Chat' : 'Me Chat'}" mode`);
     return;
   }
 
@@ -1487,10 +1503,10 @@ function updateModeUI(mode) {
   // Update indicator
   const indicator = document.getElementById('modeIndicator');
   if (mode === 'ai') {
-    indicator.textContent = '目前: AI 代聊模式';
+    indicator.textContent = 'Mode: AI Chat';
     indicator.className = 'mode-indicator ai';
   } else {
-    indicator.textContent = '目前: 我來聊模式';
+    indicator.textContent = 'Mode: Me Chat';
     indicator.className = 'mode-indicator user';
   }
 
@@ -1499,7 +1515,7 @@ function updateModeUI(mode) {
   const sendBtn = document.getElementById('chatSendBtn');
 
   if (mode === 'ai') {
-    input.placeholder = 'AI 正在代聊...';
+    input.placeholder = 'AI is chatting for you...';
     // Still allow user to type if they want
   } else {
     input.placeholder = 'Say something...';
@@ -2598,8 +2614,5 @@ document.querySelectorAll('.room-btn').forEach(btn => {
   }
 })();
   </script>
-
-  <!-- Bubble Layer - Top-level container for chat bubbles, avoids Phaser/overlay interference -->
-  <div id="bubble-layer" style="position:fixed; inset:0; pointer-events:none; z-index:2147483647;"></div>
 </body>
 </html>

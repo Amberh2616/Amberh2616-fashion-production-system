@@ -653,12 +653,17 @@ def run_ai_to_ai_conversation(self, agent_id: str, target_agent_id: str, room_id
             )
             context.append({'sender_type': 'agent', 'sender_name': agent.name, 'content': agent_message})
 
+            # 更新 Agent 的 last_chat_message (供前端輪詢顯示)
+            agent.last_chat_message = agent_message
+            agent.last_chat_time = timezone.now()
+            agent.save(update_fields=['last_chat_message', 'last_chat_time'])
+
             # 廣播對話氣泡
             broadcast_agent_chat(room_id, str(agent.id), agent_message, duration=4000)
             logger.debug(f"{agent.name}: {agent_message[:50]}...")
 
-            # 等待 2 秒
-            time.sleep(2)
+            # 等待 10 秒
+            time.sleep(10)
 
             # === Target 回覆 ===
             async def generate_target_response():
@@ -680,13 +685,18 @@ def run_ai_to_ai_conversation(self, agent_id: str, target_agent_id: str, room_id
             )
             context.append({'sender_type': 'agent', 'sender_name': target.name, 'content': target_message})
 
+            # 更新 Target 的 last_chat_message (供前端輪詢顯示)
+            target.last_chat_message = target_message
+            target.last_chat_time = timezone.now()
+            target.save(update_fields=['last_chat_message', 'last_chat_time'])
+
             # 廣播對話氣泡
             broadcast_agent_chat(room_id, str(target.id), target_message, duration=4000)
             logger.debug(f"{target.name}: {target_message[:50]}...")
 
-            # 等待 2 秒 (除了最後一輪)
+            # 等待 10 秒 (除了最後一輪)
             if round_num < num_rounds - 1:
-                time.sleep(2)
+                time.sleep(10)
 
         # === 對話結束處理 ===
 
@@ -802,12 +812,16 @@ def generate_conversation_summary(conversation_id: str, context: list, agent_id:
 
     # 使用 LLM 生成摘要
     try:
-        from ai.services.llm_service import LLMService
+        from ai.llm import LLMService
         llm_service = LLMService()
 
         async def generate():
-            return await llm_service.generate(
-                prompt=prompt,
+            messages = [
+                {"role": "system", "content": "You are an AI assistant that analyzes conversations and generates structured summaries in JSON format."},
+                {"role": "user", "content": prompt}
+            ]
+            return await llm_service.generate_response(
+                messages=messages,
                 max_tokens=500,
                 temperature=0.3
             )
