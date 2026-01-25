@@ -12,7 +12,8 @@
       font-family: 'Segoe UI', Arial, sans-serif;
       height: 100%;
     }
-    #game { width: 100vw; height: 100vh; }
+    #game { width: 100vw; height: 100vh; pointer-events: auto; }
+    #game canvas { pointer-events: auto; }
 
     /* ==================== Login Screen ==================== */
     #loginScreen {
@@ -382,6 +383,152 @@
     }
     .user-count span { color: #44ff88; font-weight: bold; }
 
+    /* ==================== AI Reports Panel ==================== */
+    .ai-reports {
+      top: 70px; right: 16px; width: 320px;
+      background: linear-gradient(180deg, #2a2a48 0%, #1e1e36 100%);
+      border: 2px solid #4a4a7a;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      max-height: 400px;
+    }
+    .reports-header {
+      background: linear-gradient(135deg, #ff8855 0%, #ff5588 100%);
+      color: #fff;
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .reports-header .badge {
+      background: #fff;
+      color: #ff5588;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .reports-body {
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .report-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid #4a4a7a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .report-card:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: #7ecfff;
+    }
+    .report-card.unread {
+      border-left: 3px solid #ff8855;
+    }
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .report-agent {
+      color: #7ecfff;
+      font-weight: bold;
+      font-size: 13px;
+    }
+    .report-score {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .report-score .delta {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .report-score .delta.positive { background: rgba(68,255,136,0.2); color: #44ff88; }
+    .report-score .delta.negative { background: rgba(255,100,100,0.2); color: #ff6666; }
+    .report-score .delta.neutral { background: rgba(255,255,255,0.1); color: #aaa; }
+    .report-summary {
+      color: #ccc;
+      font-size: 12px;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    .report-topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .report-topic {
+      background: rgba(126,207,255,0.15);
+      color: #7ecfff;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+    }
+    .report-time {
+      color: #888;
+      font-size: 10px;
+      margin-top: 6px;
+    }
+    .reports-empty {
+      text-align: center;
+      color: #888;
+      padding: 30px;
+      font-size: 13px;
+    }
+
+    /* ==================== Chat Mode Toggle ==================== */
+    .mode-toggle {
+      display: flex;
+      gap: 6px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid #4a4a7a;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #4a4a7a;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      color: #a0a0cc;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    .mode-btn.active {
+      background: linear-gradient(135deg, #5588ff 0%, #7755ee 100%);
+      color: #fff;
+      border-color: transparent;
+    }
+    .mode-btn.ai-mode.active {
+      background: linear-gradient(135deg, #ff8855 0%, #ff5588 100%);
+    }
+    .mode-indicator {
+      font-size: 10px;
+      color: #888;
+      padding: 4px 12px;
+      background: rgba(0,0,0,0.2);
+      border-top: 1px solid #4a4a7a;
+      text-align: center;
+    }
+    .mode-indicator.ai { color: #ff8855; }
+    .mode-indicator.user { color: #44ff88; }
+
     /* Scrollbar */
     .chat-body::-webkit-scrollbar { width: 6px; }
     .chat-body::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
@@ -496,17 +643,86 @@
       <span class="title">Chat with <span id="chatTarget">-</span></span>
       <span class="toggle">&#9660;</span>
     </div>
+    <div class="mode-toggle" id="modeToggle" style="display: none;">
+      <button class="mode-btn ai-mode active" id="modeAI" onclick="switchMode('ai')">AI 代聊</button>
+      <button class="mode-btn" id="modeUser" onclick="switchMode('user')">我來聊</button>
+    </div>
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-input">
       <input id="chatIn" placeholder="Say something..." disabled>
       <button id="chatSendBtn" onclick="sendChat()" disabled>Send</button>
     </div>
+    <div class="mode-indicator ai" id="modeIndicator">目前: AI 代聊模式</div>
   </div>
 
   <div class="ui user-count" style="display: none;" id="userCountPanel">
     <div class="dot"></div>
     <span id="userCount">0</span> agents online
   </div>
+
+  <!-- AI Reports Panel -->
+  <div class="ui ai-reports" id="aiReportsPanel" style="display: none;">
+    <div class="reports-header" onclick="toggleReports()">
+      <span>AI 代聊報告</span>
+      <span class="badge" id="unreadCount">0</span>
+    </div>
+    <div class="reports-body" id="reportsBody">
+      <div class="reports-empty">登入後載入報告...</div>
+    </div>
+  </div>
+
+  <!-- DEBUG OVERLAY - highest z-index, pointer-events enabled -->
+  <div id="debugOverlay" style="position:fixed; top:0; left:0; right:0; bottom:0; z-index:2147483647; pointer-events:none;">
+    <!-- Test button - pointer-events enabled -->
+    <button id="testBubbleBtn" onclick="alert('CLICK OK'); testBubbleNow();" style="position:absolute; bottom:80px; left:20px; pointer-events:auto; background:#ff5588; color:#fff; border:none; padding:15px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px;">
+      TEST BUBBLE
+    </button>
+
+    <!-- Debug panel - pointer-events enabled -->
+    <div id="debugPanel" style="position:absolute; top:60px; right:20px; pointer-events:auto; background:rgba(0,0,0,0.9); color:#0f0; padding:15px; font-family:monospace; font-size:12px; border-radius:8px; width:320px; border:2px solid #0f0;">
+      <div style="margin-bottom:10px; font-weight:bold;">Debug Panel</div>
+      <div id="debugStatus">Loading...</div>
+    </div>
+
+    <!-- Bubble display area -->
+    <div id="bubbleDisplay" style="position:absolute; top:120px; left:50%; transform:translateX(-50%); pointer-events:none; background:yellow; color:black; padding:20px 30px; border-radius:15px; font-size:18px; font-weight:bold; border:4px solid red; box-shadow:0 0 30px red; display:none;">
+      <span id="bubbleText"></span>
+    </div>
+  </div>
+
+  <script>
+    function testBubbleNow() {
+      var bubble = document.getElementById('bubbleDisplay');
+      var text = document.getElementById('bubbleText');
+      var status = document.getElementById('debugStatus');
+
+      text.innerHTML = 'TEST: Hello! ' + new Date().toLocaleTimeString();
+      bubble.style.display = 'block';
+      status.innerHTML = 'Bubble shown!';
+
+      setTimeout(function() {
+        document.getElementById('bubbleDisplay').style.display = 'none';
+        document.getElementById('debugStatus').innerHTML = 'Bubble hidden.';
+      }, 8000);
+    }
+
+    function showBubble(name, msg) {
+      var bubble = document.getElementById('bubbleDisplay');
+      var text = document.getElementById('bubbleText');
+      var status = document.getElementById('debugStatus');
+
+      text.innerHTML = '<b>' + name + ':</b> ' + msg;
+      bubble.style.display = 'block';
+      status.innerHTML = 'Message from ' + name;
+
+      setTimeout(function() {
+        document.getElementById('bubbleDisplay').style.display = 'none';
+        document.getElementById('debugStatus').innerHTML = 'Ready';
+      }, 8000);
+    }
+
+    document.getElementById('debugStatus').innerHTML = 'Ready - click TEST BUBBLE';
+  </script>
 
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
   <script>
@@ -531,6 +747,13 @@ let currentChatAgent = null;
 let agents = [];
 let gameScene = null;
 let chatWebSocket = null;
+let worldWebSocket = null;
+let worldReconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+let heartbeatInterval = null;
+let pollingInterval = null;
+const POLL_INTERVAL = 3000; // 3 seconds
+let currentRoomDbId = null; // Database room ID for polling
 
 // === Room Data ===
 const ROOMS = {
@@ -669,6 +892,36 @@ const api = {
 
   async getMessages(conversationId) {
     return await this.request(`/chat/conversations/${conversationId}/`);
+  },
+
+  // World - Agent positions
+  async getRoomAgents(roomId) {
+    return await this.request(`/world/room/${roomId}/agents/`);
+  },
+
+  // AI Reports
+  async getAIReports(unreadOnly = false, limit = 20) {
+    return await this.request(`/chat/ai-reports/?unread_only=${unreadOnly}&limit=${limit}`);
+  },
+
+  async getAIReportDetail(reportId) {
+    return await this.request(`/chat/ai-reports/${reportId}/`);
+  },
+
+  // Chat Mode
+  async getConversationMode(conversationId) {
+    return await this.request(`/chat/conversations/${conversationId}/mode/`);
+  },
+
+  async setConversationMode(conversationId, mode) {
+    return await this.request(`/chat/conversations/${conversationId}/mode/`, {
+      method: 'POST',
+      body: JSON.stringify({ mode })
+    });
+  },
+
+  async getImpressionHistory(conversationId) {
+    return await this.request(`/chat/conversations/${conversationId}/impression/`);
   }
 };
 
@@ -714,11 +967,17 @@ function logout() {
   currentUser = null;
   localStorage.removeItem('authToken');
 
-  // Close WebSocket
+  // Close WebSockets
   if (chatWebSocket) {
     chatWebSocket.close();
     chatWebSocket = null;
   }
+  if (worldWebSocket) {
+    worldWebSocket.close();
+    worldWebSocket = null;
+  }
+  stopHeartbeat();
+  stopPolling();
 
   // Hide game UI
   document.getElementById('gameUI').style.display = 'none';
@@ -740,6 +999,16 @@ async function enterGame() {
   document.getElementById('chatBox').style.display = 'block';
   document.getElementById('userCountPanel').style.display = 'flex';
 
+  // Show debug elements
+  document.getElementById('testBubbleBtn').style.display = 'block';
+  document.getElementById('debugPanel').style.display = 'block';
+
+  // Wire up test button
+  document.getElementById('testBubbleBtn').onclick = () => {
+    showSimpleBubble('Test Agent', 'This is a test message! ' + new Date().toLocaleTimeString());
+    updateDebug('Button clicked - bubble shown');
+  };
+
   // Update user info
   document.getElementById('userName').textContent = currentUser.username || currentUser.email.split('@')[0];
   document.getElementById('userAvatar').textContent = (currentUser.username || 'U')[0].toUpperCase();
@@ -754,6 +1023,24 @@ async function enterGame() {
     gameScene.loadRoom(currentRoom);
   }
 
+  // Connect to World WebSocket for real-time updates
+  // 使用實際的房間 ID
+  const roomId = '6230e61d-4907-4557-ab0c-fea1564199a3';
+
+  try {
+    connectWorldWebSocket(roomId);
+  } catch (err) {
+    console.log('World WebSocket not available:', err);
+  }
+
+  // Start polling as fallback (works even if WebSocket fails)
+  // Polling will get agent positions every 3 seconds
+  startPolling(roomId);
+
+  // Show AI reports panel and load reports
+  document.getElementById('aiReportsPanel').style.display = 'block';
+  loadAIReports();
+
   addSystemMessage('Welcome to BE 76! Click on an agent to chat.');
 }
 
@@ -763,7 +1050,7 @@ async function loadAgents() {
   try {
     const myAgentData = await api.getMyAgent();
     myAgent = {
-      id: 'me',  // Special ID for self
+      id: myAgentData.id,  // Use real agent ID for polling to work
       name: myAgentData.name + ' (You)',
       figure: myAgentData.avatar_look || 'hr-545-45.hd-600-1.ch-665-71.lg-710-71.sh-906-71',
       bio: myAgentData.bio,
@@ -848,6 +1135,9 @@ async function startChatWithAgent(agent) {
   document.getElementById('chatIn').disabled = false;
   document.getElementById('chatSendBtn').disabled = false;
 
+  // Show mode toggle
+  document.getElementById('modeToggle').style.display = 'flex';
+
   // Focus on input
   setTimeout(() => document.getElementById('chatIn').focus(), 100);
 
@@ -860,6 +1150,14 @@ async function startChatWithAgent(agent) {
     const data = await api.startChat(agent.id);
     console.log('Chat started:', data);
     currentConversationId = data.conversation_id;
+
+    // Get current mode
+    try {
+      const modeData = await api.getConversationMode(currentConversationId);
+      updateModeUI(modeData.mode || 'ai');
+    } catch (err) {
+      updateModeUI('ai'); // Default to AI mode
+    }
 
     // Load existing messages
     if (!data.created) {
@@ -1026,41 +1324,773 @@ function toggleChat() {
   document.getElementById('chatBox').classList.toggle('collapsed');
 }
 
-// Chat bubble in game
+// =============================================
+// AI Reports System
+// =============================================
+let currentChatMode = 'ai';
+let reportsCollapsed = false;
+
+async function loadAIReports() {
+  try {
+    const data = await api.getAIReports(false, 10);
+    displayReports(data.reports);
+    document.getElementById('unreadCount').textContent = data.unread_count;
+  } catch (err) {
+    console.log('Failed to load AI reports:', err.message);
+    document.getElementById('reportsBody').innerHTML = '<div class="reports-empty">無報告</div>';
+    document.getElementById('unreadCount').textContent = '0';
+  }
+}
+
+function displayReports(reports) {
+  const body = document.getElementById('reportsBody');
+
+  if (!reports || reports.length === 0) {
+    body.innerHTML = '<div class="reports-empty">AI 還沒幫你聊天<br>配對後會自動開始!</div>';
+    return;
+  }
+
+  body.innerHTML = '';
+
+  reports.forEach(report => {
+    const card = document.createElement('div');
+    card.className = 'report-card' + (report.is_read ? '' : ' unread');
+    card.onclick = () => openReportDetail(report);
+
+    const deltaClass = report.impression_delta > 0 ? 'positive' :
+                       report.impression_delta < 0 ? 'negative' : 'neutral';
+    const deltaText = report.impression_delta > 0 ? `+${report.impression_delta}` :
+                      report.impression_delta < 0 ? report.impression_delta : '±0';
+
+    const topicsHtml = (report.topics || []).slice(0, 3).map(t =>
+      `<span class="report-topic">${t}</span>`
+    ).join('');
+
+    const timeAgo = formatTimeAgo(new Date(report.created_at));
+
+    card.innerHTML = `
+      <div class="report-header">
+        <span class="report-agent">${report.other_agent?.name || 'Unknown'}</span>
+        <div class="report-score">
+          <span>${report.impression_score}分</span>
+          <span class="delta ${deltaClass}">${deltaText}</span>
+        </div>
+      </div>
+      <div class="report-summary">${report.summary || '對話已完成'}</div>
+      <div class="report-topics">${topicsHtml}</div>
+      <div class="report-time">${timeAgo} · ${report.message_count} 則訊息</div>
+    `;
+
+    body.appendChild(card);
+  });
+}
+
+function formatTimeAgo(date) {
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+
+  if (diff < 60) return '剛剛';
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分鐘前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小時前`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)} 天前`;
+  return date.toLocaleDateString('zh-TW');
+}
+
+function toggleReports() {
+  const body = document.getElementById('reportsBody');
+  reportsCollapsed = !reportsCollapsed;
+  body.style.display = reportsCollapsed ? 'none' : 'block';
+}
+
+async function openReportDetail(report) {
+  // Mark as read
+  try {
+    await api.getAIReportDetail(report.id);
+    loadAIReports(); // Refresh to update unread count
+  } catch (err) {
+    console.log('Failed to mark report as read:', err.message);
+  }
+
+  // Show detailed view in chat
+  addSystemMessage(`--- AI 代聊報告 ---`);
+  addSystemMessage(`與 ${report.other_agent?.name} 的對話`);
+  addSystemMessage(`摘要: ${report.summary}`);
+  if (report.best_moment) {
+    addSystemMessage(`亮點: ${report.best_moment}`);
+  }
+  if (report.shared_interests && report.shared_interests.length > 0) {
+    addSystemMessage(`共同興趣: ${report.shared_interests.join(', ')}`);
+  }
+  addSystemMessage(`印象分: ${report.impression_score} (${report.impression_delta > 0 ? '+' : ''}${report.impression_delta})`);
+}
+
+// =============================================
+// Chat Mode Switching
+// =============================================
+async function switchMode(mode) {
+  if (!currentConversationId || currentConversationId === 'demo') {
+    // Demo mode - just toggle UI
+    updateModeUI(mode);
+    addSystemMessage(`已切換為「${mode === 'ai' ? 'AI 代聊' : '我來聊'}」模式`);
+    return;
+  }
+
+  try {
+    const result = await api.setConversationMode(currentConversationId, mode);
+    updateModeUI(mode);
+    addSystemMessage(result.message);
+  } catch (err) {
+    addSystemMessage(`切換模式失敗: ${err.message}`);
+  }
+}
+
+function updateModeUI(mode) {
+  currentChatMode = mode;
+
+  // Update buttons
+  const aiBtn = document.getElementById('modeAI');
+  const userBtn = document.getElementById('modeUser');
+
+  aiBtn.classList.toggle('active', mode === 'ai');
+  userBtn.classList.toggle('active', mode === 'user');
+
+  // Update indicator
+  const indicator = document.getElementById('modeIndicator');
+  if (mode === 'ai') {
+    indicator.textContent = '目前: AI 代聊模式';
+    indicator.className = 'mode-indicator ai';
+  } else {
+    indicator.textContent = '目前: 我來聊模式';
+    indicator.className = 'mode-indicator user';
+  }
+
+  // If in AI mode, disable input
+  const input = document.getElementById('chatIn');
+  const sendBtn = document.getElementById('chatSendBtn');
+
+  if (mode === 'ai') {
+    input.placeholder = 'AI 正在代聊...';
+    // Still allow user to type if they want
+  } else {
+    input.placeholder = 'Say something...';
+  }
+}
+
+// Debug helper
+function updateDebug(msg) {
+  const el = document.getElementById('debugStatus');
+  if (el) {
+    const time = new Date().toLocaleTimeString();
+    el.innerHTML = `<div>[${time}] ${msg}</div>` + el.innerHTML;
+    // Keep only last 10 lines
+    const lines = el.querySelectorAll('div');
+    if (lines.length > 10) lines[lines.length - 1].remove();
+  }
+}
+
+// Simple bubble - fixed position at top of screen
+function showSimpleBubble(name, text) {
+  // Remove old
+  const old = document.getElementById('simple-bubble');
+  if (old) old.remove();
+
+  const bubble = document.createElement('div');
+  bubble.id = 'simple-bubble';
+  bubble.style.cssText = 'position:fixed; top:70px; left:50%; transform:translateX(-50%); background:#fff; color:#333; padding:12px 20px; border-radius:15px; font-size:14px; box-shadow:0 4px 20px rgba(0,0,0,0.4); z-index:99999; border:3px solid #5588ff; max-width:300px; text-align:center;';
+  bubble.innerHTML = '<b style="color:#5588ff">' + name + ':</b> ' + text;
+  document.body.appendChild(bubble);
+
+  console.log('Simple bubble shown:', name, text);
+  updateDebug('Bubble: ' + name + ' - ' + text.substring(0, 20) + '...');
+
+  setTimeout(() => {
+    const el = document.getElementById('simple-bubble');
+    if (el) el.remove();
+  }, 8000);
+}
+
+// Chat bubble using HTML overlay (more reliable)
 function showChatBubble(agentId, text) {
   if (!gameScene) return;
 
   const avatar = gameScene.avatars?.[agentId];
-  if (!avatar) return;
-
-  // Create or update bubble
-  if (avatar.bubble) {
-    avatar.bubble.destroy();
+  if (!avatar) {
+    console.log('Avatar not found for bubble:', agentId);
+    return;
   }
 
-  const bubble = gameScene.add.dom(
-    avatar.sprite.x,
-    avatar.sprite.y - 80,
-    'div',
-    'background: #fff; color: #333; padding: 8px 12px; border-radius: 12px; font-size: 12px; max-width: 180px; box-shadow: 0 3px 10px rgba(0,0,0,0.3);',
-    text.substring(0, 80) + (text.length > 80 ? '...' : '')
-  );
-  bubble.setDepth(10000);
-  avatar.bubble = bubble;
+  // Find agent name
+  const agent = agents.find(a => a.id === agentId || gameScene.avatars[a.id] === avatar);
+  const name = agent?.name?.replace(' (You)', '') || 'Agent';
 
-  // Auto remove after 5 seconds
+  // Remove old bubble
+  const oldBubble = document.getElementById('bubble-' + agentId);
+  if (oldBubble) oldBubble.remove();
+
+  // Get screen position from Phaser camera
+  const cam = gameScene.cameras.main;
+  const screenX = (avatar.sprite.x - cam.scrollX) * cam.zoom + cam.width / 2;
+  const screenY = (avatar.sprite.y - cam.scrollY - 100) * cam.zoom + cam.height / 2;
+
+  // Create HTML bubble
+  const bubble = document.createElement('div');
+  bubble.id = 'bubble-' + agentId;
+  bubble.className = 'chat-bubble';
+  bubble.style.cssText = 'position:fixed; background:#fff; color:#333; padding:8px 12px; border-radius:12px; font-size:13px; max-width:200px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:9999; border:2px solid #5588ff; transform:translateX(-50%);';
+  bubble.style.left = screenX + 'px';
+  bubble.style.top = Math.max(60, screenY) + 'px';
+  bubble.innerHTML = '<b>' + name + ':</b> ' + text.substring(0, 50);
+  document.body.appendChild(bubble);
+
+  console.log('HTML Bubble created:', name, text);
+
+  // Auto remove after 10 seconds
   setTimeout(() => {
-    if (avatar.bubble === bubble) {
-      bubble.destroy();
-      avatar.bubble = null;
-    }
-  }, 5000);
+    const el = document.getElementById('bubble-' + agentId);
+    if (el) el.remove();
+  }, 10000);
 }
 
 // Handle Enter key in chat input
 document.getElementById('chatIn').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') sendChat();
 });
+
+// =============================================
+// World WebSocket - Real-time Agent Updates
+// =============================================
+function connectWorldWebSocket(roomId) {
+  if (worldWebSocket) {
+    worldWebSocket.close();
+  }
+
+  // Use a default room ID if none specified
+  const wsRoomId = roomId || 'default-room';
+
+  try {
+    const wsUrl = `${WS_BASE}/world/room/${wsRoomId}/?token=${authToken}`;
+    console.log('Connecting to World WebSocket:', wsUrl);
+    worldWebSocket = new WebSocket(wsUrl);
+
+    worldWebSocket.onopen = () => {
+      console.log('World WebSocket connected');
+      worldReconnectAttempts = 0;
+
+      // Start heartbeat
+      startHeartbeat();
+    };
+
+    worldWebSocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handleWorldEvent(data);
+    };
+
+    worldWebSocket.onclose = (event) => {
+      console.log('World WebSocket closed:', event.code);
+      stopHeartbeat();
+
+      // Auto-reconnect
+      if (worldReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        worldReconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, worldReconnectAttempts), 30000);
+        console.log(`Reconnecting in ${delay}ms (attempt ${worldReconnectAttempts})`);
+        setTimeout(() => connectWorldWebSocket(roomId), delay);
+      }
+    };
+
+    worldWebSocket.onerror = (error) => {
+      console.log('World WebSocket error - will use polling fallback');
+    };
+
+  } catch (err) {
+    console.log('World WebSocket connection failed:', err);
+  }
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatInterval = setInterval(() => {
+    if (worldWebSocket && worldWebSocket.readyState === WebSocket.OPEN) {
+      worldWebSocket.send(JSON.stringify({ type: 'ping' }));
+    }
+  }, 30000); // Ping every 30 seconds
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+function handleWorldEvent(data) {
+  console.log('World event:', data.type, data);
+
+  switch (data.type) {
+    case 'room_state':
+      // Initial room state with all agents
+      if (data.data && data.data.agents) {
+        updateAgentsFromServer(data.data.agents);
+      }
+      break;
+
+    case 'agent_path':
+      // Agent moving along a path
+      animateAgentPath(data.agent_id, data.path, data.speed || 200);
+      break;
+
+    case 'agent_position':
+      // Instant position update
+      updateAgentPosition(data.agent_id, data.x, data.y, data.direction);
+      break;
+
+    case 'agent_chat':
+      // Chat bubble in world
+      showChatBubble(data.agent_id, data.message, data.duration || 5000);
+      break;
+
+    case 'agent_action':
+      // Action animation (wave, sit, dance)
+      playAgentAction(data.agent_id, data.action);
+      break;
+
+    case 'agent_emotion':
+      // Emotion change
+      updateAgentEmotion(data.agent_id, data.emotion);
+      break;
+
+    case 'agent_enter':
+      // New agent entered room
+      if (data.agent) {
+        addAgentToScene(data.agent);
+      }
+      break;
+
+    case 'agent_leave':
+      // Agent left room
+      removeAgentFromScene(data.agent_id);
+      break;
+
+    case 'agent_interaction':
+      // Show interaction between agents
+      showInteraction(data.initiator_id, data.target_id, data.interaction_type);
+      break;
+
+    case 'pong':
+      // Heartbeat response - connection is alive
+      break;
+
+    default:
+      console.log('Unknown world event:', data.type);
+  }
+}
+
+// =============================================
+// Agent Animation System
+// =============================================
+function animateAgentPath(agentId, path, speed) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const avatar = gameScene.avatars[agentId];
+  if (!avatar || !path || path.length < 2) return;
+
+  console.log(`Animating ${agentId} along path:`, path);
+
+  // Cancel any existing tween
+  if (avatar.moveTween) {
+    avatar.moveTween.stop();
+  }
+
+  let currentIndex = 0;
+
+  function moveToNext() {
+    if (currentIndex >= path.length - 1) {
+      // Reached destination
+      return;
+    }
+
+    const nextPoint = path[currentIndex + 1];
+    const screenPos = gridToScreen(nextPoint.x, nextPoint.y, gameScene.originX, gameScene.originY);
+
+    // Create tween for smooth movement
+    avatar.moveTween = gameScene.tweens.add({
+      targets: [avatar.sprite, avatar.shadow, avatar.nameBg, avatar.nameText],
+      x: screenPos.x,
+      duration: speed,
+      ease: 'Linear',
+      onUpdate: () => {
+        // Update Y position for sprite and nameText (different offsets)
+        avatar.sprite.y = screenPos.y - 30;
+        avatar.shadow.y = screenPos.y + 14;
+        avatar.nameBg.clear();
+        avatar.nameBg.fillStyle(0x000000, 0.75);
+        avatar.nameBg.fillRoundedRect(screenPos.x - 36, screenPos.y + 20, 72, 22, 10);
+        avatar.nameText.y = screenPos.y + 31;
+
+        // Update depth for correct rendering order
+        const depth = screenPos.y;
+        avatar.sprite.setDepth(depth + 200);
+        avatar.shadow.setDepth(depth + 199);
+        avatar.nameBg.setDepth(depth + 201);
+        avatar.nameText.setDepth(depth + 202);
+      },
+      onComplete: () => {
+        currentIndex++;
+        avatar.gridX = nextPoint.x;
+        avatar.gridY = nextPoint.y;
+        moveToNext();
+      }
+    });
+  }
+
+  moveToNext();
+}
+
+function updateAgentPosition(agentId, x, y, direction) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const avatar = gameScene.avatars[agentId];
+  if (!avatar) return;
+
+  const screenPos = gridToScreen(x, y, gameScene.originX, gameScene.originY);
+
+  // Instant position update
+  avatar.sprite.x = screenPos.x;
+  avatar.sprite.y = screenPos.y - 30;
+  avatar.shadow.x = screenPos.x;
+  avatar.shadow.y = screenPos.y + 14;
+  avatar.nameBg.clear();
+  avatar.nameBg.fillStyle(0x000000, 0.75);
+  avatar.nameBg.fillRoundedRect(screenPos.x - 36, screenPos.y + 20, 72, 22, 10);
+  avatar.nameText.x = screenPos.x;
+  avatar.nameText.y = screenPos.y + 31;
+
+  avatar.gridX = x;
+  avatar.gridY = y;
+
+  // Update depth
+  const depth = screenPos.y;
+  avatar.sprite.setDepth(depth + 200);
+  avatar.shadow.setDepth(depth + 199);
+  avatar.nameBg.setDepth(depth + 201);
+  avatar.nameText.setDepth(depth + 202);
+}
+
+function playAgentAction(agentId, action) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const avatar = gameScene.avatars[agentId];
+  if (!avatar) return;
+
+  console.log(`Playing action ${action} for ${agentId}`);
+
+  // Visual feedback based on action
+  switch (action) {
+    case 'wave':
+      // Quick scale animation
+      gameScene.tweens.add({
+        targets: avatar.sprite,
+        scaleX: 1.1,
+        scaleY: 1.1,
+        yoyo: true,
+        duration: 200,
+        repeat: 2
+      });
+      break;
+
+    case 'dance':
+      // Rhythmic movement
+      gameScene.tweens.add({
+        targets: avatar.sprite,
+        y: avatar.sprite.y - 10,
+        yoyo: true,
+        duration: 300,
+        repeat: 5,
+        ease: 'Bounce'
+      });
+      break;
+
+    case 'sit':
+      // Lower position
+      gameScene.tweens.add({
+        targets: avatar.sprite,
+        y: avatar.sprite.y + 10,
+        duration: 300
+      });
+      break;
+
+    case 'think':
+      // Pulsing effect
+      gameScene.tweens.add({
+        targets: avatar.sprite,
+        alpha: 0.7,
+        yoyo: true,
+        duration: 500,
+        repeat: 3
+      });
+      break;
+  }
+}
+
+function updateAgentEmotion(agentId, emotion) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const avatar = gameScene.avatars[agentId];
+  if (!avatar) return;
+
+  // Update name color based on emotion
+  const emotionColors = {
+    'happy': '#88ff88',
+    'sad': '#8888ff',
+    'excited': '#ffff88',
+    'thinking': '#88ffff',
+    'neutral': '#ffffff'
+  };
+
+  const color = emotionColors[emotion] || '#ffffff';
+  avatar.nameText.setStyle({ color: color });
+
+  // Brief glow effect
+  gameScene.tweens.add({
+    targets: avatar.sprite,
+    tint: emotion === 'happy' ? 0x88ff88 : emotion === 'excited' ? 0xffff88 : 0xffffff,
+    duration: 500,
+    yoyo: true
+  });
+}
+
+function addAgentToScene(agentData) {
+  if (!gameScene) return;
+
+  // Check if agent already exists
+  if (gameScene.avatars && gameScene.avatars[agentData.id]) {
+    return;
+  }
+
+  // Add to agents list
+  const newAgent = {
+    id: agentData.id,
+    name: agentData.name,
+    figure: agentData.look || getDefaultFigure(agentData.name),
+    x: agentData.x || 5,
+    y: agentData.y || 5
+  };
+
+  agents.push(newAgent);
+
+  // Load avatar image and add to scene
+  const avatarUrl = `${AVATAR_API}?figure=${newAgent.figure}&direction=2&head_direction=2&gesture=sml&size=l&action=std`;
+  gameScene.load.image(`avatar_${newAgent.id}`, avatarUrl);
+  gameScene.load.once('complete', () => {
+    // Place in scene (simplified - just position)
+    const p = gridToScreen(newAgent.x, newAgent.y, gameScene.originX, gameScene.originY);
+
+    const shadow = gameScene.add.ellipse(p.x, p.y + 14, 40, 16, 0x000000, 0.4);
+    shadow.setDepth(p.y + 199);
+
+    const sprite = gameScene.add.image(p.x, p.y - 30, `avatar_${newAgent.id}`);
+    sprite.setScale(0.9);
+    sprite.setDepth(p.y + 200);
+    sprite.setInteractive({ useHandCursor: true });
+
+    const nameBg = gameScene.add.graphics();
+    nameBg.fillStyle(0x000000, 0.75);
+    nameBg.fillRoundedRect(p.x - 36, p.y + 20, 72, 22, 10);
+    nameBg.setDepth(p.y + 201);
+
+    const nameText = gameScene.add.text(p.x, p.y + 31, newAgent.name, {
+      fontSize: '11px',
+      fontFamily: 'Arial',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    nameText.setDepth(p.y + 202);
+
+    sprite.on('pointerdown', () => startChatWithAgent(newAgent));
+
+    gameScene.avatars[newAgent.id] = { sprite, shadow, nameBg, nameText, gridX: newAgent.x, gridY: newAgent.y };
+  });
+  gameScene.load.start();
+
+  document.getElementById('userCount').textContent = agents.length;
+  addSystemMessage(`${agentData.name} entered the room`);
+}
+
+function removeAgentFromScene(agentId) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const avatar = gameScene.avatars[agentId];
+  if (!avatar) return;
+
+  // Destroy all components
+  avatar.sprite.destroy();
+  avatar.shadow.destroy();
+  avatar.nameBg.destroy();
+  avatar.nameText.destroy();
+  if (avatar.bubble) avatar.bubble.destroy();
+  if (avatar.moveTween) avatar.moveTween.stop();
+
+  delete gameScene.avatars[agentId];
+
+  // Remove from agents list
+  const agentName = agents.find(a => a.id === agentId)?.name || 'Someone';
+  agents = agents.filter(a => a.id !== agentId);
+
+  document.getElementById('userCount').textContent = agents.length;
+  addSystemMessage(`${agentName} left the room`);
+}
+
+function showInteraction(initiatorId, targetId, type) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const initiator = gameScene.avatars[initiatorId];
+  const target = gameScene.avatars[targetId];
+
+  if (!initiator || !target) return;
+
+  // Draw a brief line between them
+  const line = gameScene.add.graphics();
+  line.lineStyle(2, type === 'greet' ? 0x88ff88 : 0x88ffff, 0.6);
+  line.beginPath();
+  line.moveTo(initiator.sprite.x, initiator.sprite.y);
+  line.lineTo(target.sprite.x, target.sprite.y);
+  line.strokePath();
+  line.setDepth(10000);
+
+  // Fade out
+  gameScene.tweens.add({
+    targets: line,
+    alpha: 0,
+    duration: 1000,
+    onComplete: () => line.destroy()
+  });
+}
+
+function updateAgentsFromServer(serverAgents) {
+  // Sync local agents with server state
+  // This is called when first connecting to get initial state
+  console.log('Syncing agents from server:', serverAgents);
+
+  serverAgents.forEach(serverAgent => {
+    const existing = agents.find(a => a.id === serverAgent.id);
+    if (existing) {
+      // Update position
+      existing.x = serverAgent.x;
+      existing.y = serverAgent.y;
+      updateAgentPosition(serverAgent.id, serverAgent.x, serverAgent.y, serverAgent.direction);
+    }
+  });
+}
+
+// =============================================
+// Polling Fallback (when WebSocket unavailable)
+// =============================================
+function startPolling(roomId) {
+  stopPolling();
+  currentRoomDbId = roomId;
+  console.log('Starting polling for room:', roomId);
+
+  // Initial fetch
+  pollAgentPositions();
+
+  // Start periodic polling
+  pollingInterval = setInterval(pollAgentPositions, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+}
+
+async function pollAgentPositions() {
+  if (!currentRoomDbId || !gameScene || !gameScene.avatars) {
+    updateDebug('Poll skip: no room/scene');
+    return;
+  }
+
+  try {
+    const data = await api.getRoomAgents(currentRoomDbId);
+
+    if (data.agents && Array.isArray(data.agents)) {
+      updateDebug('Poll: ' + data.agents.length + ' agents');
+
+      data.agents.forEach(serverAgent => {
+        // ALWAYS show chat bubble if there's a message (regardless of avatar)
+        if (serverAgent.chat_message) {
+          // Use a global tracker for shown messages
+          const msgKey = serverAgent.name + ':' + serverAgent.chat_message;
+          if (!window.shownMessages) window.shownMessages = {};
+
+          if (!window.shownMessages[msgKey]) {
+            console.log('New message from', serverAgent.name, ':', serverAgent.chat_message);
+            window.shownMessages[msgKey] = Date.now();
+            showBubble(serverAgent.name, serverAgent.chat_message);
+
+            // Clean old entries after 60 seconds
+            setTimeout(() => { delete window.shownMessages[msgKey]; }, 60000);
+          }
+        }
+
+        // Try to find avatar by ID or by name for position updates
+        const agentId = serverAgent.id;
+        let avatar = gameScene.avatars[agentId];
+
+        // If not found by ID, try to find by name
+        if (!avatar) {
+          const localAgent = agents.find(a => a.name.replace(' (You)', '') === serverAgent.name);
+          if (localAgent) {
+            avatar = gameScene.avatars[localAgent.id];
+          }
+        }
+
+        if (avatar) {
+          // Check if position changed
+          const oldX = avatar.gridX;
+          const oldY = avatar.gridY;
+          const newX = serverAgent.x;
+          const newY = serverAgent.y;
+
+          if (oldX !== newX || oldY !== newY) {
+            console.log(`Agent ${serverAgent.name} moved: (${oldX},${oldY}) -> (${newX},${newY})`);
+
+            // Animate the movement
+            const localId = agents.find(a => a.name.replace(' (You)', '') === serverAgent.name)?.id || agentId;
+            animateAgentPath(localId, [
+              { x: oldX, y: oldY },
+              { x: newX, y: newY }
+            ], 500);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    updateDebug('Poll error: ' + err.message);
+    console.log('Polling error:', err.message);
+  }
+}
+
+function showAgentStatus(agentId, action) {
+  if (!gameScene || !gameScene.avatars) return;
+
+  const avatar = gameScene.avatars[agentId];
+  if (!avatar) return;
+
+  // Show brief action indicator
+  const actionLabels = {
+    'moving': 'Walking...',
+    'chatting': 'Chatting',
+    'waving': 'Waving',
+    'thinking': 'Thinking...',
+    'observing': 'Looking around'
+  };
+
+  const label = actionLabels[action];
+  if (label) {
+    showChatBubble(agentId, label, 2000);
+  }
+}
 
 // =============================================
 // Phaser Game

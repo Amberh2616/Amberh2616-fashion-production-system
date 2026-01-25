@@ -19,9 +19,19 @@ class Conversation(models.Model):
         ('user_to_user', '真人對話'),       # 配對成功後的真人對話
     ]
 
+    CHAT_MODES = [
+        ('ai', 'AI 代聊'),
+        ('user', '用戶親自'),
+        ('paused', '暫停'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     conversation_type = models.CharField(max_length=20, choices=CONVERSATION_TYPES)
+
+    # 聊天模式 - AI 代聊 / 用戶親自 / 暫停
+    mode = models.CharField(max_length=10, choices=CHAT_MODES, default='ai')
+    mode_changed_at = models.DateTimeField(null=True, blank=True)
 
     # 參與者 - 用戶 (可選)
     user_participant = models.ForeignKey(
@@ -193,3 +203,67 @@ class ChatContext(models.Model):
 
     def __str__(self):
         return f"Context for {self.conversation_id}"
+
+
+class ConversationSummary(models.Model):
+    """
+    對話摘要 - AI 代聊後生成的報告
+    Conversation Summary - Report generated after AI conversations
+    """
+    COMPATIBILITY_TRENDS = [
+        ('up', '上升'),
+        ('down', '下降'),
+        ('neutral', '持平'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='summaries'
+    )
+
+    # 時間範圍
+    period_start = models.DateTimeField(help_text='摘要涵蓋的開始時間')
+    period_end = models.DateTimeField(help_text='摘要涵蓋的結束時間')
+    message_count = models.IntegerField(default=0, help_text='此期間的訊息數')
+
+    # AI 生成的內容
+    summary_text = models.TextField(help_text='AI 生成的對話摘要')
+    key_topics = models.JSONField(default=list, help_text='關鍵話題列表')
+    emotional_tone = models.CharField(max_length=50, blank=True, help_text='情感基調')
+    best_moment = models.TextField(blank=True, help_text='最佳時刻/亮點')
+    shared_interests_found = models.JSONField(default=list, help_text='發現的共同興趣')
+
+    # 印象分數
+    impression_score = models.IntegerField(
+        default=50,
+        help_text='當前印象分 (0-100)'
+    )
+    impression_delta = models.IntegerField(
+        default=0,
+        help_text='印象分變化 (-10 to +10)'
+    )
+    compatibility_trend = models.CharField(
+        max_length=20,
+        choices=COMPATIBILITY_TRENDS,
+        default='neutral',
+        help_text='配對趨勢'
+    )
+
+    # 狀態
+    is_read = models.BooleanField(default=False, help_text='用戶是否已讀')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'conversation_summaries'
+        verbose_name = '對話摘要'
+        verbose_name_plural = '對話摘要'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['conversation', '-created_at']),
+            models.Index(fields=['is_read', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Summary for {self.conversation_id} ({self.period_start.date()})"

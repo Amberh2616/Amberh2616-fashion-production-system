@@ -1,11 +1,30 @@
 """
 AI 分身 Celery 任務
 Agent Celery Tasks
+
+Enhanced for autonomous AI social system with:
+- Full action execution (move, chat, wave, etc.)
+- A* pathfinding integration
+- AI-to-AI conversation system
+- WebSocket broadcasting
+- LLM cost control
 """
 
+import logging
+import random
+from datetime import datetime, timedelta
 from celery import shared_task
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.utils import timezone
+from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
+
+# Cost control settings
+MAX_LLM_CALLS_PER_HOUR = 10
+LLM_COOLDOWN_SECONDS = 30
+AI_CONVERSATION_MAX_ROUNDS = 3
 
 
 @shared_task
@@ -23,6 +42,16 @@ def generate_agent_response(conversation_id: str):
     try:
         conversation = Conversation.objects.get(id=conversation_id)
     except Conversation.DoesNotExist:
+        return
+
+    # 檢查聊天模式 - 用戶親自聊天時跳過 AI 回覆
+    if conversation.mode == 'user':
+        logger.info(f"Conversation {conversation_id} in user mode, skipping AI response")
+        return
+
+    # 檢查暫停模式
+    if conversation.mode == 'paused':
+        logger.info(f"Conversation {conversation_id} is paused, skipping AI response")
         return
 
     # 獲取 AI 分身
@@ -150,30 +179,65 @@ def run_agent_simulation():
     """
     執行 AI 分身模擬 (定期任務)
     讓所有在線的 AI 分身自主行動
+
+    建議使用 APScheduler 每 5 秒調用一次
     """
     from .models import Agent
 
     online_agents = Agent.objects.filter(is_online=True, is_autonomous=True)
+    logger.info(f"Running simulation for {online_agents.count()} agents")
 
     for agent in online_agents:
+        # 分散執行避免併發
         process_agent_tick.delay(str(agent.id))
 
 
-@shared_task
-def process_agent_tick(agent_id: str):
+@shared_task(bind=True, max_retries=1)
+def process_agent_tick(self, agent_id: str):
     """
     處理單個 AI 分身的 tick
+
+    流程:
+    1. 感知環境 (附近 Agent、房間、時間)
+    2. 檢索記憶
+    3. 決策行動 (rule-based + optional LLM)
+    4. 執行行動 (移動/對話/動作)
+    5. 廣播到 WebSocket
 
     Args:
         agent_id: Agent ID
     """
-    from .models import Agent, Memory
-    from apps.world.models import AgentPosition
+    from .models import Agent, Memory, AgentAction
+    from apps.world.models import AgentPosition, Room
+    from apps.world.pathfinding import find_path_in_room
+    from apps.world.utils import (
+        broadcast_agent_path, broadcast_agent_chat,
+        broadcast_agent_action, broadcast_agent_emotion,
+        update_agent_position_in_db, get_nearby_agents
+    )
     from ai.agents.social_agent import SocialAgent
 
     try:
-        agent = Agent.objects.get(id=agent_id)
+        agent = Agent.objects.select_related('user').get(id=agent_id)
     except Agent.DoesNotExist:
+        logger.warning(f"Agent {agent_id} not found")
+        return
+
+    # 檢查 Agent 是否正在忙碌 (移動中或對話中)
+    if agent.current_action in ['walking', 'talking']:
+        logger.debug(f"Agent {agent.name} is busy: {agent.current_action}")
+        return
+
+    # 獲取位置
+    try:
+        position = AgentPosition.objects.select_related('room').get(agent=agent)
+        room = position.room
+        if not room:
+            logger.warning(f"Agent {agent.name} has no room")
+            return
+        room_id = str(room.id)
+    except AgentPosition.DoesNotExist:
+        logger.warning(f"Agent {agent.name} has no position")
         return
 
     # 獲取靈魂檔案
@@ -194,52 +258,179 @@ def process_agent_tick(agent_id: str):
     )
 
     # 獲取感知數據
-    try:
-        position = agent.position
-        room = position.room
+    nearby_agents = get_nearby_agents(str(agent.id), room_id, radius=8)
 
-        # 獲取同房間的其他 agent
-        nearby_positions = AgentPosition.objects.filter(
-            room=room
-        ).exclude(agent=agent).select_related('agent')
-
-        nearby_agents = [
-            {
-                'id': str(pos.agent.id),
-                'name': pos.agent.name,
-                'x': pos.x,
-                'y': pos.y,
-            }
-            for pos in nearby_positions
-        ]
-    except Exception:
-        nearby_agents = []
+    # 計算時段
+    hour = datetime.now().hour
+    if 6 <= hour < 12:
+        time_of_day = 'morning'
+    elif 12 <= hour < 18:
+        time_of_day = 'afternoon'
+    elif 18 <= hour < 22:
+        time_of_day = 'evening'
+    else:
+        time_of_day = 'night'
 
     perception = {
         'nearby_agents': nearby_agents,
-        'location': {'room_id': str(room.id) if room else None},
-        'time_of_day': 'afternoon',  # 可以根據實際時間計算
+        'location': {
+            'room_id': room_id,
+            'room_type': room.room_type,
+            'x': position.x,
+            'y': position.y,
+        },
+        'time_of_day': time_of_day,
     }
 
-    # 獲取記憶
-    memories = list(Memory.objects.filter(agent=agent).order_by('-created_at')[:10].values())
+    # 獲取記憶 (最近 10 條)
+    memories = list(Memory.objects.filter(agent=agent).order_by('-created_at')[:10].values(
+        'type', 'content', 'emotion', 'related_agents', 'created_at'
+    ))
 
-    # 決定下一步行動
+    # 決定下一步行動 (大部分使用 rule-based，減少 LLM 調用)
     async def decide():
         return await social_agent.decide_next_action(perception, memories)
 
-    action = async_to_sync(decide)()
+    try:
+        action = async_to_sync(decide)()
+    except Exception as e:
+        logger.error(f"Error deciding action for {agent.name}: {e}")
+        action = {'type': 'idle', 'target': None, 'parameters': {}}
 
-    # 執行行動
+    logger.info(f"Agent {agent.name} decided: {action['type']}")
+
+    # === 執行行動 ===
+
     if action['type'] == 'chat' and action.get('target'):
-        # 發起對話
-        initiate_conversation.delay(str(agent.id), action['target'])
-    elif action['type'] == 'move' and action.get('target'):
-        # 移動 (更新位置)
-        pass
+        # 發起 AI-to-AI 對話
+        target_id = action['target']
+
+        # 檢查 LLM 冷卻時間
+        cache_key = f"agent_chat_cooldown_{agent_id}"
+        if cache.get(cache_key):
+            logger.debug(f"Agent {agent.name} is on chat cooldown")
+            action = {'type': 'wander', 'target': None, 'parameters': {}}
+        else:
+            # 設置冷卻
+            cache.set(cache_key, True, LLM_COOLDOWN_SECONDS)
+
+            # 更新狀態
+            agent.current_action = 'talking'
+            agent.current_target = target_id
+            agent.save(update_fields=['current_action', 'current_target'])
+
+            # 廣播互動開始
+            broadcast_agent_action(room_id, str(agent.id), 'wave')
+
+            # 發起對話任務
+            run_ai_to_ai_conversation.delay(str(agent.id), target_id, room_id)
+            return
+
     elif action['type'] == 'wave' and action.get('target'):
-        # 打招呼 (通過 WebSocket 廣播)
-        pass
+        # 打招呼動作
+        target_id = action['target']
+
+        # 廣播打招呼動畫
+        broadcast_agent_action(room_id, str(agent.id), 'wave')
+
+        # 更新情緒
+        agent.current_emotion = 'happy'
+        agent.save(update_fields=['current_emotion'])
+        broadcast_agent_emotion(room_id, str(agent.id), 'happy')
+
+        # 創建記憶
+        target_name = next((a['name'] for a in nearby_agents if a['id'] == target_id), 'someone')
+        Memory.objects.create(
+            agent=agent,
+            type='observation',
+            content=f"向 {target_name} 打了招呼",
+            importance=3,
+            related_agents=[target_id],
+            location={'room_id': room_id, 'x': position.x, 'y': position.y},
+            emotion='happy'
+        )
+
+    elif action['type'] in ['move', 'wander']:
+        # 移動行動
+        if action['type'] == 'wander':
+            # 隨機選擇目標位置
+            target_x = random.randint(max(0, position.x - 5), min(room.width - 1, position.x + 5))
+            target_y = random.randint(max(0, position.y - 5), min(room.height - 1, position.y + 5))
+        else:
+            target_x = action.get('parameters', {}).get('x', position.x)
+            target_y = action.get('parameters', {}).get('y', position.y)
+
+        # 使用 A* 計算路徑
+        start = (position.x, position.y)
+        goal = (target_x, target_y)
+
+        if start != goal:
+            path = find_path_in_room(room, start, goal, exclude_agent_id=str(agent.id))
+
+            if path and len(path) > 1:
+                # 更新狀態
+                agent.current_action = 'walking'
+                agent.save(update_fields=['current_action'])
+
+                # 廣播路徑
+                broadcast_agent_path(room_id, str(agent.id), path, speed=200)
+
+                # 更新最終位置 (前端會做動畫，這裡更新DB)
+                final_pos = path[-1]
+                update_agent_position_in_db(
+                    str(agent.id),
+                    final_pos['x'],
+                    final_pos['y'],
+                    final_pos['direction']
+                )
+
+                # 計算移動時間後重置狀態
+                move_duration = len(path) * 0.2  # 200ms per tile
+                reset_agent_action.apply_async(
+                    args=[str(agent.id)],
+                    countdown=move_duration
+                )
+
+    elif action['type'] == 'sit':
+        # 坐下
+        broadcast_agent_action(room_id, str(agent.id), 'sit')
+        agent.current_action = 'sitting'
+        agent.save(update_fields=['current_action'])
+
+    elif action['type'] == 'dance':
+        # 跳舞
+        broadcast_agent_action(room_id, str(agent.id), 'dance')
+        agent.current_action = 'dancing'
+        agent.save(update_fields=['current_action'])
+
+        # 5 秒後停止
+        reset_agent_action.apply_async(args=[str(agent.id)], countdown=5)
+
+    elif action['type'] == 'observe':
+        # 觀察 (只是看著目標)
+        agent.current_emotion = 'thinking'
+        agent.save(update_fields=['current_emotion'])
+        broadcast_agent_emotion(room_id, str(agent.id), 'thinking')
+
+    else:
+        # idle 或其他
+        if agent.current_action != 'idle':
+            agent.current_action = 'idle'
+            agent.save(update_fields=['current_action'])
+
+
+@shared_task
+def reset_agent_action(agent_id: str):
+    """重置 Agent 動作狀態為 idle"""
+    from .models import Agent
+
+    try:
+        Agent.objects.filter(id=agent_id).update(
+            current_action='idle',
+            current_target=None
+        )
+    except Exception as e:
+        logger.error(f"Error resetting agent action: {e}")
 
 
 @shared_task
@@ -329,3 +520,456 @@ def initiate_conversation(agent_id: str, target_agent_id: str):
     # 更新 agent 統計
     agent.total_conversations += 1
     agent.save()
+
+
+@shared_task(bind=True, max_retries=0)
+def run_ai_to_ai_conversation(self, agent_id: str, target_agent_id: str, room_id: str):
+    """
+    執行 AI-to-AI 對話
+
+    特點:
+    - 2-4 輪對話
+    - 每輪間隔 2 秒
+    - 更新記憶和關係
+    - 廣播對話氣泡到房間
+    - 硬限制防止無限循環
+
+    Args:
+        agent_id: 發起方 Agent ID
+        target_agent_id: 目標 Agent ID
+        room_id: 房間 ID
+    """
+    import time
+    from .models import Agent, Memory
+    from apps.chat.models import Conversation, Message
+    from apps.relationships.models import Relationship
+    from apps.world.utils import broadcast_agent_chat, broadcast_agent_emotion
+    from ai.agents.soul_agent import SoulAgent
+
+    logger.info(f"Starting AI-to-AI conversation: {agent_id} -> {target_agent_id}")
+
+    try:
+        agent = Agent.objects.select_related('user').get(id=agent_id)
+        target = Agent.objects.select_related('user').get(id=target_agent_id)
+    except Agent.DoesNotExist:
+        logger.error("Agent not found for AI-to-AI conversation")
+        return
+
+    # 獲取或創建對話
+    conversation = Conversation.objects.filter(
+        conversation_type='agent_to_agent',
+        agent_participant=agent,
+        other_agent=target
+    ).first()
+
+    if not conversation:
+        conversation = Conversation.objects.create(
+            conversation_type='agent_to_agent',
+            agent_participant=agent,
+            other_agent=target
+        )
+
+    # 獲取靈魂檔案
+    def get_soul_data(ag):
+        try:
+            sp = ag.user.soul_profile
+            return {
+                'worldview': sp.worldview,
+                'interests': sp.interests,
+                'personality': sp.personality,
+                'communication_style': sp.communication_style,
+            }
+        except Exception:
+            return {}
+
+    agent_soul = get_soul_data(agent)
+    target_soul = get_soul_data(target)
+
+    # 獲取關係
+    try:
+        relationship = Relationship.objects.get(
+            user_a=min(agent.user, target.user, key=lambda u: u.id),
+            user_b=max(agent.user, target.user, key=lambda u: u.id)
+        )
+        relationship_data = {
+            'stage': relationship.stage,
+            'closeness': relationship.closeness,
+        }
+    except Relationship.DoesNotExist:
+        relationship = None
+        relationship_data = {'stage': 'stranger', 'closeness': 0}
+
+    # 決定對話輪數 (2-3 輪，根據親密度)
+    num_rounds = 2 if relationship_data['closeness'] < 30 else 3
+
+    # 對話歷史
+    context = []
+
+    # 創建 SoulAgent 實例
+    agent_soul_agent = SoulAgent(
+        agent_data={'id': str(agent.id), 'name': agent.name},
+        soul_profile=agent_soul
+    )
+    target_soul_agent = SoulAgent(
+        agent_data={'id': str(target.id), 'name': target.name},
+        soul_profile=target_soul
+    )
+
+    # 語言偏好
+    agent_lang = agent.user.preferred_language if agent.user else 'zh-hant'
+    target_lang = target.user.preferred_language if target.user else 'zh-hant'
+
+    try:
+        for round_num in range(num_rounds):
+            logger.debug(f"AI conversation round {round_num + 1}/{num_rounds}")
+
+            # === Agent 說話 ===
+            if round_num == 0:
+                # 第一輪：打招呼
+                async def generate_greeting():
+                    return await agent_soul_agent.generate_first_message(
+                        {'id': str(target.id), 'name': target.name, 'preferred_language': target_lang},
+                        target_soul
+                    )
+                agent_message = async_to_sync(generate_greeting)()
+            else:
+                # 後續輪：回應
+                async def generate_response():
+                    return await agent_soul_agent.generate_response(
+                        message=context[-1]['content'] if context else '',
+                        other_agent_data={'name': target.name, 'preferred_language': target_lang},
+                        relationship_data=relationship_data,
+                        conversation_context=context
+                    )
+                agent_message = async_to_sync(generate_response)()
+
+            # 儲存並廣播
+            msg = Message.objects.create(
+                conversation=conversation,
+                sender_type='agent',
+                sender_agent=agent,
+                content=agent_message,
+                is_ai_generated=True
+            )
+            context.append({'sender_type': 'agent', 'sender_name': agent.name, 'content': agent_message})
+
+            # 廣播對話氣泡
+            broadcast_agent_chat(room_id, str(agent.id), agent_message, duration=4000)
+            logger.debug(f"{agent.name}: {agent_message[:50]}...")
+
+            # 等待 2 秒
+            time.sleep(2)
+
+            # === Target 回覆 ===
+            async def generate_target_response():
+                return await target_soul_agent.generate_response(
+                    message=agent_message,
+                    other_agent_data={'name': agent.name, 'preferred_language': agent_lang},
+                    relationship_data=relationship_data,
+                    conversation_context=context
+                )
+            target_message = async_to_sync(generate_target_response)()
+
+            # 儲存並廣播
+            msg = Message.objects.create(
+                conversation=conversation,
+                sender_type='agent',
+                sender_agent=target,
+                content=target_message,
+                is_ai_generated=True
+            )
+            context.append({'sender_type': 'agent', 'sender_name': target.name, 'content': target_message})
+
+            # 廣播對話氣泡
+            broadcast_agent_chat(room_id, str(target.id), target_message, duration=4000)
+            logger.debug(f"{target.name}: {target_message[:50]}...")
+
+            # 等待 2 秒 (除了最後一輪)
+            if round_num < num_rounds - 1:
+                time.sleep(2)
+
+        # === 對話結束處理 ===
+
+        # 更新情緒
+        broadcast_agent_emotion(room_id, str(agent.id), 'happy')
+        broadcast_agent_emotion(room_id, str(target.id), 'happy')
+
+        # 創建記憶
+        Memory.objects.create(
+            agent=agent,
+            type='conversation',
+            content=f"和 {target.name} 進行了愉快的對話",
+            importance=5,
+            related_agents=[str(target.id)],
+            emotion='happy'
+        )
+        Memory.objects.create(
+            agent=target,
+            type='conversation',
+            content=f"和 {agent.name} 進行了愉快的對話",
+            importance=5,
+            related_agents=[str(agent.id)],
+            emotion='happy'
+        )
+
+        # 更新關係
+        if relationship:
+            relationship.interaction_count += 1
+            relationship.ai_interaction_count += 1
+            if relationship.closeness < 100:
+                relationship.closeness = min(100, relationship.closeness + 2)
+            relationship.update_stage()
+
+        # 更新 Agent 統計
+        agent.total_conversations += 1
+        target.total_conversations += 1
+        agent.save(update_fields=['total_conversations'])
+        target.save(update_fields=['total_conversations'])
+
+        # 生成對話摘要
+        generate_conversation_summary.delay(
+            str(conversation.id),
+            context,
+            str(agent.id),
+            str(target.id)
+        )
+
+        logger.info(f"AI-to-AI conversation completed: {agent.name} <-> {target.name}")
+
+    except Exception as e:
+        logger.error(f"Error in AI-to-AI conversation: {e}")
+
+    finally:
+        # 重置 Agent 狀態
+        Agent.objects.filter(id__in=[agent_id, target_agent_id]).update(
+            current_action='idle',
+            current_target=None
+        )
+
+
+@shared_task
+def generate_conversation_summary(conversation_id: str, context: list, agent_id: str, target_id: str):
+    """
+    生成對話摘要
+    Generate conversation summary after AI-to-AI chat
+
+    Args:
+        conversation_id: Conversation ID
+        context: List of message dicts with sender_name and content
+        agent_id: Initiating agent ID
+        target_id: Target agent ID
+    """
+    import json
+    from .models import Agent
+    from apps.chat.models import Conversation, ConversationSummary, Message
+    from ai.prompts.summary import get_summary_prompt
+
+    logger.info(f"Generating summary for conversation {conversation_id}")
+
+    try:
+        conversation = Conversation.objects.get(id=conversation_id)
+        agent = Agent.objects.select_related('user').get(id=agent_id)
+        target = Agent.objects.select_related('user').get(id=target_id)
+    except (Conversation.DoesNotExist, Agent.DoesNotExist) as e:
+        logger.error(f"Error loading data for summary: {e}")
+        return
+
+    # 獲取最近的摘要以取得之前的印象分
+    last_summary = ConversationSummary.objects.filter(
+        conversation=conversation
+    ).order_by('-created_at').first()
+    previous_score = last_summary.impression_score if last_summary else 50
+
+    # 獲取語言偏好
+    owner_lang = agent.user.preferred_language if agent.user else 'zh-hant'
+
+    # 格式化對話內容
+    messages_text = "\n".join([
+        f"{msg.get('sender_name', 'Unknown')}: {msg.get('content', '')}"
+        for msg in context
+    ])
+
+    # 構建提示語
+    prompt_template = get_summary_prompt(owner_lang)
+    prompt = prompt_template.format(
+        agent_name=agent.name,
+        owner_name=agent.user.username if agent.user else 'User',
+        other_agent_name=target.name,
+        other_owner_name=target.user.username if target.user else 'User',
+        conversation_messages=messages_text,
+        previous_impression_score=previous_score
+    )
+
+    # 使用 LLM 生成摘要
+    try:
+        from ai.services.llm_service import LLMService
+        llm_service = LLMService()
+
+        async def generate():
+            return await llm_service.generate(
+                prompt=prompt,
+                max_tokens=500,
+                temperature=0.3
+            )
+
+        response_text = async_to_sync(generate)()
+
+        # 解析 JSON
+        # 處理可能的 markdown 代碼塊
+        json_text = response_text
+        if '```json' in json_text:
+            json_text = json_text.split('```json')[1].split('```')[0]
+        elif '```' in json_text:
+            json_text = json_text.split('```')[1].split('```')[0]
+
+        result = json.loads(json_text.strip())
+
+        # 計算新的印象分
+        delta = max(-10, min(10, result.get('impression_delta', 0)))
+        new_score = max(0, min(100, previous_score + delta))
+
+        # 決定趨勢
+        if delta > 2:
+            trend = 'up'
+        elif delta < -2:
+            trend = 'down'
+        else:
+            trend = 'neutral'
+
+        # 獲取對話時間範圍
+        messages = Message.objects.filter(
+            conversation=conversation
+        ).order_by('created_at')
+
+        first_msg = messages.first()
+        last_msg = messages.last()
+
+        # 創建摘要
+        summary = ConversationSummary.objects.create(
+            conversation=conversation,
+            period_start=first_msg.created_at if first_msg else timezone.now(),
+            period_end=last_msg.created_at if last_msg else timezone.now(),
+            message_count=len(context),
+            summary_text=result.get('summary', '對話已完成'),
+            key_topics=result.get('topics', []),
+            emotional_tone=result.get('tone', 'neutral'),
+            best_moment=result.get('best_moment', ''),
+            shared_interests_found=result.get('shared_interests', []),
+            impression_score=new_score,
+            impression_delta=delta,
+            compatibility_trend=trend,
+        )
+
+        logger.info(f"Summary created for conversation {conversation_id}: score {new_score} (delta {delta:+d})")
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse summary JSON: {e}")
+        # 創建基本摘要
+        ConversationSummary.objects.create(
+            conversation=conversation,
+            period_start=timezone.now(),
+            period_end=timezone.now(),
+            message_count=len(context),
+            summary_text='AI 代聊已完成',
+            impression_score=previous_score,
+            impression_delta=0,
+            compatibility_trend='neutral',
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating summary: {e}")
+
+
+@shared_task
+def trigger_scheduled_ai_conversations():
+    """
+    定期觸發 AI 代聊
+    Trigger scheduled AI-to-AI conversations
+
+    建議每小時執行一次，選擇:
+    - 高配對分 (>60%) 的配對
+    - 6 小時內未聊天的配對
+    - 聊天模式為 'ai' 的對話
+    """
+    from .models import Agent
+    from apps.chat.models import Conversation
+    from apps.matching.models import MatchScore
+    from apps.world.models import Room, AgentPosition
+
+    logger.info("Triggering scheduled AI conversations")
+
+    # 獲取一個活躍房間
+    room = Room.objects.filter(is_active=True).first()
+    if not room:
+        logger.warning("No active room found for AI conversations")
+        return
+
+    # 找出高配對分的配對 (match_score > 60)
+    # 且最後聊天時間超過 6 小時
+    cutoff_time = timezone.now() - timedelta(hours=6)
+
+    high_matches = MatchScore.objects.filter(
+        score__gte=60
+    ).select_related('user_a', 'user_b').order_by('-score')[:10]
+
+    conversations_triggered = 0
+
+    for match in high_matches:
+        try:
+            # 獲取雙方的 Agent
+            agent_a = Agent.objects.filter(user=match.user_a).first()
+            agent_b = Agent.objects.filter(user=match.user_b).first()
+
+            if not agent_a or not agent_b:
+                continue
+
+            # 檢查是否已有對話
+            conversation = Conversation.objects.filter(
+                conversation_type='agent_to_agent',
+                agent_participant=agent_a,
+                other_agent=agent_b
+            ).first()
+
+            # 跳過非 AI 模式的對話
+            if conversation and conversation.mode != 'ai':
+                continue
+
+            # 檢查最後聊天時間
+            if conversation and conversation.last_message_at:
+                if conversation.last_message_at > cutoff_time:
+                    continue  # 最近聊過了
+
+            # 確保 Agent 在房間裡有位置
+            for ag in [agent_a, agent_b]:
+                pos, created = AgentPosition.objects.get_or_create(
+                    agent=ag,
+                    defaults={
+                        'room': room,
+                        'x': random.randint(2, 8),
+                        'y': random.randint(2, 6),
+                        'direction': 2
+                    }
+                )
+                if not pos.room:
+                    pos.room = room
+                    pos.save()
+
+            # 觸發 AI 對話
+            run_ai_to_ai_conversation.delay(
+                str(agent_a.id),
+                str(agent_b.id),
+                str(room.id)
+            )
+
+            conversations_triggered += 1
+            logger.info(f"Triggered AI conversation: {agent_a.name} <-> {agent_b.name}")
+
+            # 限制每次最多觸發 3 個對話
+            if conversations_triggered >= 3:
+                break
+
+        except Exception as e:
+            logger.error(f"Error triggering conversation for match: {e}")
+            continue
+
+    logger.info(f"Triggered {conversations_triggered} AI conversations")
