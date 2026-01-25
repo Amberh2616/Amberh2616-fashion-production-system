@@ -98,6 +98,14 @@ class RoomAgentsView(APIView):
 
         agents = []
         for pos in positions:
+            # 檢查訊息是否在 60 秒內
+            chat_message = ''
+            if pos.agent.last_chat_message and pos.agent.last_chat_time:
+                from django.utils import timezone
+                from datetime import timedelta
+                if timezone.now() - pos.agent.last_chat_time < timedelta(seconds=60):
+                    chat_message = pos.agent.last_chat_message
+
             agents.append({
                 'id': str(pos.agent.id),
                 'name': pos.agent.name,
@@ -108,6 +116,7 @@ class RoomAgentsView(APIView):
                 'action': pos.agent.current_action,
                 'emotion': pos.agent.current_emotion,
                 'is_online': pos.agent.is_online,
+                'chat_message': chat_message,  # 最近的對話訊息
             })
 
         return Response({'agents': agents})

@@ -692,32 +692,62 @@
 
   <script>
     function testBubbleNow() {
-      var bubble = document.getElementById('bubbleDisplay');
-      var text = document.getElementById('bubbleText');
-      var status = document.getElementById('debugStatus');
-
-      text.innerHTML = 'TEST: Hello! ' + new Date().toLocaleTimeString();
-      bubble.style.display = 'block';
-      status.innerHTML = 'Bubble shown!';
-
-      setTimeout(function() {
-        document.getElementById('bubbleDisplay').style.display = 'none';
-        document.getElementById('debugStatus').innerHTML = 'Bubble hidden.';
-      }, 8000);
+      // Use the new showBubble function that uses bubble-layer
+      showBubble('Test', 'Hello! ' + new Date().toLocaleTimeString());
     }
 
-    function showBubble(name, msg) {
-      var bubble = document.getElementById('bubbleDisplay');
-      var text = document.getElementById('bubbleText');
-      var status = document.getElementById('debugStatus');
+    // Track bubble positions to stack them
+    var bubbleOffsets = {};
 
-      text.innerHTML = '<b>' + name + ':</b> ' + msg;
-      bubble.style.display = 'block';
-      status.innerHTML = 'Message from ' + name;
+    function showBubble(name, msg) {
+      // Use dedicated bubble-layer to avoid Phaser/overlay interference
+      var layer = document.getElementById('bubble-layer');
+      if (!layer) {
+        console.error('bubble-layer not found');
+        return;
+      }
+
+      var id = 'bubble-' + name.replace(/[^a-zA-Z0-9]/g, '_') + '-' + Date.now();
+
+      // Calculate vertical offset for stacking
+      var existingBubbles = layer.querySelectorAll('.agent-bubble');
+      var topOffset = 70 + (existingBubbles.length * 60);
+
+      var bubble = document.createElement('div');
+      bubble.id = id;
+      bubble.className = 'agent-bubble';
+      bubble.style.cssText = [
+        'position:fixed',
+        'top:' + topOffset + 'px',
+        'left:50%',
+        'transform:translateX(-50%)',
+        'background:#fff',
+        'color:#333',
+        'padding:12px 18px',
+        'border-radius:14px',
+        'font-size:14px',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
+        'border:3px solid #5588ff',
+        'max-width:320px',
+        'text-align:center',
+        'pointer-events:none',
+        'z-index:2147483647',
+        'animation:fadeIn 0.3s ease'
+      ].join(';');
+      bubble.innerHTML = '<b style="color:#5588ff">' + name + ':</b> ' + msg;
+      layer.appendChild(bubble);
+
+      console.log('Bubble shown via bubble-layer:', name, msg);
+      var status = document.getElementById('debugStatus');
+      if (status) status.innerHTML = 'Bubble: ' + name;
 
       setTimeout(function() {
-        document.getElementById('bubbleDisplay').style.display = 'none';
-        document.getElementById('debugStatus').innerHTML = 'Ready';
+        var el = document.getElementById(id);
+        if (el) {
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.3s';
+          setTimeout(function() { el.remove(); }, 300);
+        }
       }, 8000);
     }
 
@@ -1488,19 +1518,41 @@ function updateDebug(msg) {
   }
 }
 
-// Simple bubble - fixed position at top of screen
+// Simple bubble - uses bubble-layer for reliable display
 function showSimpleBubble(name, text) {
+  const layer = document.getElementById('bubble-layer');
+  if (!layer) {
+    console.error('bubble-layer not found');
+    return;
+  }
+
   // Remove old
   const old = document.getElementById('simple-bubble');
   if (old) old.remove();
 
   const bubble = document.createElement('div');
   bubble.id = 'simple-bubble';
-  bubble.style.cssText = 'position:fixed; top:70px; left:50%; transform:translateX(-50%); background:#fff; color:#333; padding:12px 20px; border-radius:15px; font-size:14px; box-shadow:0 4px 20px rgba(0,0,0,0.4); z-index:99999; border:3px solid #5588ff; max-width:300px; text-align:center;';
+  bubble.style.cssText = [
+    'position:fixed',
+    'top:70px',
+    'left:50%',
+    'transform:translateX(-50%)',
+    'background:#fff',
+    'color:#333',
+    'padding:12px 20px',
+    'border-radius:15px',
+    'font-size:14px',
+    'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
+    'border:3px solid #5588ff',
+    'max-width:300px',
+    'text-align:center',
+    'pointer-events:none',
+    'z-index:2147483647'
+  ].join(';');
   bubble.innerHTML = '<b style="color:#5588ff">' + name + ':</b> ' + text;
-  document.body.appendChild(bubble);
+  layer.appendChild(bubble);
 
-  console.log('Simple bubble shown:', name, text);
+  console.log('Simple bubble shown via bubble-layer:', name, text);
   updateDebug('Bubble: ' + name + ' - ' + text.substring(0, 20) + '...');
 
   setTimeout(() => {
@@ -1509,8 +1561,14 @@ function showSimpleBubble(name, text) {
   }, 8000);
 }
 
-// Chat bubble using HTML overlay (more reliable)
+// Chat bubble using bubble-layer (positioned near avatar)
 function showChatBubble(agentId, text) {
+  const layer = document.getElementById('bubble-layer');
+  if (!layer) {
+    console.error('bubble-layer not found');
+    return;
+  }
+
   if (!gameScene) return;
 
   const avatar = gameScene.avatars?.[agentId];
@@ -1524,7 +1582,7 @@ function showChatBubble(agentId, text) {
   const name = agent?.name?.replace(' (You)', '') || 'Agent';
 
   // Remove old bubble
-  const oldBubble = document.getElementById('bubble-' + agentId);
+  const oldBubble = document.getElementById('pos-bubble-' + agentId);
   if (oldBubble) oldBubble.remove();
 
   // Get screen position from Phaser camera
@@ -1532,21 +1590,34 @@ function showChatBubble(agentId, text) {
   const screenX = (avatar.sprite.x - cam.scrollX) * cam.zoom + cam.width / 2;
   const screenY = (avatar.sprite.y - cam.scrollY - 100) * cam.zoom + cam.height / 2;
 
-  // Create HTML bubble
+  // Create HTML bubble in bubble-layer
   const bubble = document.createElement('div');
-  bubble.id = 'bubble-' + agentId;
+  bubble.id = 'pos-bubble-' + agentId;
   bubble.className = 'chat-bubble';
-  bubble.style.cssText = 'position:fixed; background:#fff; color:#333; padding:8px 12px; border-radius:12px; font-size:13px; max-width:200px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:9999; border:2px solid #5588ff; transform:translateX(-50%);';
+  bubble.style.cssText = [
+    'position:fixed',
+    'background:#fff',
+    'color:#333',
+    'padding:8px 12px',
+    'border-radius:12px',
+    'font-size:13px',
+    'max-width:200px',
+    'box-shadow:0 4px 15px rgba(0,0,0,0.3)',
+    'border:2px solid #5588ff',
+    'transform:translateX(-50%)',
+    'pointer-events:none',
+    'z-index:2147483647'
+  ].join(';');
   bubble.style.left = screenX + 'px';
   bubble.style.top = Math.max(60, screenY) + 'px';
   bubble.innerHTML = '<b>' + name + ':</b> ' + text.substring(0, 50);
-  document.body.appendChild(bubble);
+  layer.appendChild(bubble);
 
-  console.log('HTML Bubble created:', name, text);
+  console.log('Position bubble created via bubble-layer:', name, text);
 
   // Auto remove after 10 seconds
   setTimeout(() => {
-    const el = document.getElementById('bubble-' + agentId);
+    const el = document.getElementById('pos-bubble-' + agentId);
     if (el) el.remove();
   }, 10000);
 }
@@ -2527,5 +2598,8 @@ document.querySelectorAll('.room-btn').forEach(btn => {
   }
 })();
   </script>
+
+  <!-- Bubble Layer - Top-level container for chat bubbles, avoids Phaser/overlay interference -->
+  <div id="bubble-layer" style="position:fixed; inset:0; pointer-events:none; z-index:2147483647;"></div>
 </body>
 </html>
