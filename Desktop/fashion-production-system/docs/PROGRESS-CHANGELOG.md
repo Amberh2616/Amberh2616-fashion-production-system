@@ -1,6 +1,6 @@
 # Fashion Production System - Progress Changelog
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-26
 
 此文檔記錄所有功能開發的詳細進度和技術實現細節。
 
@@ -9,6 +9,7 @@
 ## 目錄
 
 - [已完成功能總覽](#已完成功能總覽)
+- [FIX-0126: API URL 統一 + 健康檢查](#fix-0126-api-url-統一--健康檢查)
 - [P0-P3: 基礎功能](#p0-p3-基礎功能)
 - [P4-P8: 翻譯流程](#p4-p8-翻譯流程)
 - [P9-P11: 甘特圖與準確度提升](#p9-p11-甘特圖與準確度提升)
@@ -52,6 +53,89 @@
 | **QA-1** | 系統驗收報告 + 觸發點交叉比對 | 2026-01-16 |
 | **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| 2026-01-17 |
 | **FIX-0117** | 完整工作流程跳轉路徑修復 | 2026-01-17 |
+| **FIX-0126** | API URL 統一 + 健康檢查 | 2026-01-26 |
+
+---
+
+## FIX-0126: API URL 統一 + 健康檢查（2026-01-26）
+
+### 問題來源
+
+根據專案分析報告 `Desktop/0126.txt` 發現的整合問題。
+
+### P0 修復 - 阻塞性問題
+
+| 問題 | 位置 | 修復內容 |
+|------|------|----------|
+| API 版本混用 | `lib/api/techpack.ts:124` | `/api` → `/api/v2` |
+| 上傳硬編 URL | `app/dashboard/upload/page.tsx:210` | 硬編 URL → 使用 `API_BASE_URL` |
+
+### P1 修復 - 統一 API URL
+
+**問題：** 19 個文件存在硬編 `http://localhost:8000` 或 `127.0.0.1`，部署後會失效。
+
+**修復方式：** 統一從 `lib/api/client.ts` 導入 `API_BASE_URL`
+
+**修改文件清單：**
+
+| 類型 | 文件 |
+|------|------|
+| API 層 | `techpack.ts`, `approve.ts`, `samples.ts`, `purchase-orders.ts` |
+| Hooks | `useDraft.ts`, `useDraftBlockPosition.ts` |
+| 頁面 | `upload/page.tsx`, `processing/page.tsx`, `review/page.tsx`, `tech-packs/page.tsx` |
+| 頁面 | `bom/page.tsx`, `spec/page.tsx`, `costing/page.tsx` |
+| 頁面 | `revisions/page.tsx`, `revisions/[id]/review/page.tsx`, `revisions/[id]/bom/page.tsx`, `revisions/[id]/spec/page.tsx` |
+| 頁面 | `samples/[requestId]/page.tsx`, `techpack-translation/[id]/page.tsx` |
+
+### P1 修復 - Celery/Redis 健康檢查
+
+**新增 API 端點：**
+```
+GET /api/v2/health/services/
+```
+
+**返回格式：**
+```json
+{
+  "status": "healthy|degraded|unhealthy",
+  "database": {"status": "ok", "message": "Connected"},
+  "redis": {"status": "ok", "message": "Connected to localhost:6379"},
+  "celery": {"status": "ok", "message": "2 worker(s) online"},
+  "async_ready": true,
+  "sync_available": true
+}
+```
+
+**後端文件：**
+- `apps/core/views.py` - 新增 `services_health_check()` 函數
+- `apps/core/urls.py` - 新增 `/services/` 路由
+- `config/urls.py` - 新增 `/api/v2/health/` 路徑
+
+**前端功能：**
+- `processing/page.tsx` - 自動檢查服務狀態
+- 當 Redis/Celery 不可用時顯示 amber 色警告橫幅
+- 提示用戶同步模式仍可運作
+
+### P2 修復 - README 更新
+
+- ✅ 移除過時的 `ai_service` 目錄說明
+- ✅ 更新技術架構圖
+- ✅ 更新啟動指令
+- ✅ 添加健康檢查端點說明
+- ✅ 更新版本記錄
+
+### 驗證結果
+
+```bash
+# TypeScript 編譯檢查
+cd frontend && npx tsc --noEmit --skipLibCheck  # ✅ 通過
+
+# 硬編 URL 檢查
+grep -r "localhost:8000" frontend/lib frontend/app --include="*.ts" --include="*.tsx"
+# 結果：僅剩 2 處（皆為必要）
+# - next.config.ts:9 (代理配置)
+# - lib/api/client.ts:6 (統一定義點)
+```
 
 ---
 

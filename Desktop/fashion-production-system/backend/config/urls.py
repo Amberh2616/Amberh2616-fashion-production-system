@@ -41,8 +41,9 @@ urlpatterns = [
     # path("api/v2/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     # path("api/v2/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 
-    # Health check
+    # Health check (both paths for compatibility)
     path("health/", include("apps.core.urls")),
+    path("api/v2/health/", include("apps.core.urls")),  # API path for frontend
 
     # DRF auth
     path("api-auth/", include("rest_framework.urls")),

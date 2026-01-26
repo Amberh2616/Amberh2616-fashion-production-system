@@ -2,7 +2,7 @@
  * Purchase Order API Client - P16
  */
 
-import { apiClient } from './client';
+import { apiClient, API_BASE_URL } from './client';
 import type {
   PurchaseOrder,
   POListResponse,
@@ -223,8 +223,7 @@ export async function updatePOLineReceived(id: string, quantityReceived: string)
  * Get PO PDF export URL
  */
 export function getPOPdfUrl(id: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2';
-  return `${baseUrl}/purchase-orders/${id}/export-pdf/`;
+  return `${API_BASE_URL}/purchase-orders/${id}/export-pdf/`;
 }
 
 /**

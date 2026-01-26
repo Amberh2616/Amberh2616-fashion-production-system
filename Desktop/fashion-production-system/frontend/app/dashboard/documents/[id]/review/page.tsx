@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react'
+import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen, Clock } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
+import { API_BASE_URL } from '@/lib/api/client'
 
 interface ClassificationPage {
   page: number
@@ -29,6 +31,25 @@ interface DocumentStatus {
   tech_pack_revision_id?: string  // ⚡ For translation review navigation
 }
 
+// DA-2: Task status interface for async mode
+interface TaskStatus {
+  task_id: string
+  status: 'PENDING' | 'STARTED' | 'SUCCESS' | 'FAILURE' | 'RETRY' | 'REVOKED'
+  ready: boolean
+  successful?: boolean
+  result?: {
+    status: string
+    document_id: string
+    style_revision_id?: string
+    tech_pack_revision_id?: string
+    extraction_stats?: any
+    error?: string
+  }
+}
+
+// DA-2: Async mode disabled - Redis not running
+const USE_ASYNC_MODE = false
+
 export default function ReviewPage() {
   const router = useRouter()
   const params = useParams()
@@ -43,15 +64,124 @@ export default function ReviewPage() {
     pages: false,
   })
 
+  // DA-2: Async mode state
+  const [extractTaskId, setExtractTaskId] = useState<string | null>(null)
+  const [extractTaskStatus, setExtractTaskStatus] = useState<TaskStatus | null>(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
+  const startTimeRef = useRef<number | null>(null)
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const timeIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
     if (!documentId) return
     fetchStatus()
   }, [documentId])
 
+  // DA-2: Poll task status when extracting in async mode
+  useEffect(() => {
+    if (!extractTaskId || !isExtracting) return
+
+    // Start elapsed time counter
+    startTimeRef.current = Date.now()
+    timeIntervalRef.current = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000))
+      }
+    }, 1000)
+
+    // Poll task status every 2.5 seconds
+    pollIntervalRef.current = setInterval(pollExtractTaskStatus, 2500)
+
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+      if (timeIntervalRef.current) clearInterval(timeIntervalRef.current)
+    }
+  }, [extractTaskId, isExtracting])
+
+  // DA-2: Poll Celery task status for extraction
+  const pollExtractTaskStatus = async () => {
+    if (!extractTaskId) return
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/tasks/${extractTaskId}/`
+      )
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch task status')
+      }
+
+      const data: TaskStatus = await response.json()
+      setExtractTaskStatus(data)
+      console.log('[DA-2] Extract task status:', data.status, data.ready)
+
+      // If task completed successfully
+      if (data.ready && data.successful && data.result) {
+        if (data.result.status === 'success') {
+          // Clear intervals
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+          if (timeIntervalRef.current) clearInterval(timeIntervalRef.current)
+
+          setIsExtracting(false)
+          setIsCompleted(true)
+          toast.success('AI 提取完成!')
+
+          // Navigate based on result
+          const styleRevId = data.result.style_revision_id
+          const techPackRevId = data.result.tech_pack_revision_id
+
+          if (styleRevId || techPackRevId) {
+            const fileType = status?.classification_result?.file_type || 'tech_pack'
+            const hasBOM = status?.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
+            const hasSpec = status?.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
+
+            let targetUrl: string
+            if ((fileType === 'bom' || hasBOM) && styleRevId) {
+              targetUrl = `/dashboard/revisions/${styleRevId}/bom`
+            } else if ((fileType === 'measurement' || hasSpec) && styleRevId) {
+              targetUrl = `/dashboard/revisions/${styleRevId}/spec`
+            } else if (techPackRevId) {
+              targetUrl = `/dashboard/revisions/${techPackRevId}/review`
+            } else {
+              targetUrl = `/dashboard/styles`
+            }
+
+            router.push(targetUrl)
+          }
+        } else if (data.result.error) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+          if (timeIntervalRef.current) clearInterval(timeIntervalRef.current)
+          toast.error('Extraction failed')
+          setError(data.result.error)
+          setIsExtracting(false)
+        }
+      }
+
+      // If task failed
+      if (data.ready && !data.successful) {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+        if (timeIntervalRef.current) clearInterval(timeIntervalRef.current)
+        toast.error('Task failed')
+        setError(data.result?.error || 'Extraction task failed')
+        setIsExtracting(false)
+      }
+    } catch (err) {
+      console.error('Failed to poll extract task status:', err)
+    }
+  }
+
+  // Helper to format elapsed time
+  const formatElapsedTime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}秒`
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}分${secs}秒`
+  }
+
   const fetchStatus = async () => {
     try {
       const response = await fetch(
-        `http://localhost:8000/api/v2/uploaded-documents/${documentId}/status/`
+        `${API_BASE_URL}/uploaded-documents/${documentId}/status/`
       )
 
       if (!response.ok) {
@@ -96,14 +226,36 @@ export default function ReviewPage() {
   const handleExtract = async () => {
     setIsExtracting(true)
     setError(null)
+    setElapsedTime(0)
+    setExtractTaskId(null)
+    setExtractTaskStatus(null)
 
     try {
-      // Use AbortController for timeout (10 minutes for large PDFs with many BOM items)
+      // DA-2: Use async mode if enabled
+      if (USE_ASYNC_MODE) {
+        const response = await fetch(
+          `${API_BASE_URL}/uploaded-documents/${documentId}/extract/?async=true`,
+          { method: 'POST' }
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to start extraction')
+        }
+
+        const data = await response.json()
+        console.log('[DA-2] Async extraction started, task_id:', data.task_id)
+        setExtractTaskId(data.task_id)
+        toast.info('AI 提取已開始，請稍候...')
+        return  // Let the useEffect handle polling
+      }
+
+      // Sync mode (original behavior)
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 600000)
 
       const response = await fetch(
-        `http://localhost:8000/api/v2/uploaded-documents/${documentId}/extract/`,
+        `${API_BASE_URL}/uploaded-documents/${documentId}/extract/`,
         {
           method: 'POST',
           signal: controller.signal,
@@ -154,7 +306,7 @@ export default function ReviewPage() {
       // Fallback: Poll for extraction completion if not in response
       const pollInterval = setInterval(async () => {
         const statusResponse = await fetch(
-          `http://localhost:8000/api/v2/uploaded-documents/${documentId}/status/`
+          `${API_BASE_URL}/uploaded-documents/${documentId}/status/`
         )
         const statusData = await statusResponse.json()
 
@@ -388,6 +540,42 @@ export default function ReviewPage() {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* DA-2: Async extraction progress indicator */}
+      {isExtracting && USE_ASYNC_MODE && extractTaskId && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+              <div>
+                <p className="font-medium text-blue-900">AI 正在提取資料...</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  <Clock className="inline-block w-3 h-3 mr-1" />
+                  已花時間: {formatElapsedTime(elapsedTime)}
+                </p>
+              </div>
+            </div>
+            {extractTaskStatus && (
+              <div className="text-xs text-gray-500">
+                <span className="font-mono">Task: {extractTaskId.slice(0, 8)}...</span>
+                <span className="ml-2">
+                  Status: <span className={
+                    extractTaskStatus.status === 'SUCCESS' ? 'text-green-600' :
+                    extractTaskStatus.status === 'FAILURE' ? 'text-red-600' :
+                    extractTaskStatus.status === 'STARTED' ? 'text-blue-600' :
+                    'text-gray-600'
+                  }>{extractTaskStatus.status}</span>
+                </span>
+              </div>
+            )}
+          </div>
+          {elapsedTime > 60 && (
+            <p className="mt-2 text-xs text-blue-600">
+              大型 PDF 提取可能需要 1-3 分鐘，請耐心等待...
+            </p>
+          )}
         </div>
       )}
 

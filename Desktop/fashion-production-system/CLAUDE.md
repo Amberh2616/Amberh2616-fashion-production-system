@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-24
-**Version:** 4.39.0
-**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0124 完成 ✅ | 詞彙庫修正 + Tech Pack 提取修復
+**Last Updated:** 2026-01-26
+**Version:** 4.40.0
+**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0126 完成 ✅ | API URL 統一 + 健康檢查
 
 ---
 
@@ -262,6 +262,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | **P23** | 採購優化（交期追蹤 + 狀態改善）| ✅ 完成 (2026-01-21) |
 | **GLO-1** | 成衣詞彙庫整合翻譯（1252 條術語）| ✅ 完成 (2026-01-22) |
 | **FIX-0124** | 詞彙庫修正 + Tech Pack 提取修復 | ✅ 完成 (2026-01-24) |
+| **FIX-0126** | API URL 統一 + 健康檢查 | ✅ 完成 (2026-01-26) |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
@@ -771,3 +772,56 @@ lookup_glossary('ZIPPER')  # → '拉鏈'
 - 提取技術：pdfplumber（文字層）+ GPT-4o Vision（圖形標註）
 - 翻譯技術：GPT-4o-mini + 成衣詞彙庫參考
 - 新 TechPackRevision ID：`ca07cbb4-8292-48a3-9e1a-a9fbba97389f`
+
+### FIX-0126 API URL 統一 + 健康檢查 ✅ 完成 (2026-01-26)
+
+**問題來源：** 專案分析報告 `Desktop/0126.txt`
+
+**1. P0 修復 - API 版本混用：**
+- ✅ `lib/api/techpack.ts:124` - `/api` → `/api/v2`
+- ✅ `app/dashboard/upload/page.tsx` - 硬編 URL → 使用 `API_BASE_URL`
+
+**2. P1 修復 - 統一 API URL：**
+- ✅ 修復 19 個文件的硬編 URL
+- ✅ 統一使用 `API_BASE_URL` 從 `lib/api/client.ts` 導入
+- ✅ 移除 `127.0.0.1` vs `localhost` 不一致問題
+
+**修改文件清單：**
+| 類型 | 文件 |
+|------|------|
+| API | `techpack.ts`, `approve.ts`, `samples.ts`, `purchase-orders.ts` |
+| Hooks | `useDraft.ts`, `useDraftBlockPosition.ts` |
+| Pages | `upload`, `processing`, `review`, `tech-packs`, `bom`, `spec`, `costing`, `revisions/*`, `samples/*`, `techpack-translation/*` |
+
+**3. P1 修復 - Celery/Redis 健康檢查：**
+
+**後端新增：**
+- ✅ `apps/core/views.py` - `services_health_check()` 函數
+- ✅ `config/urls.py` - `/api/v2/health/` 路由
+- ✅ 檢查項目：Database / Redis / Celery Worker
+
+**API 端點：**
+```
+GET /api/v2/health/services/
+
+Response:
+{
+  "status": "healthy|degraded|unhealthy",
+  "database": {"status": "ok", "message": "Connected"},
+  "redis": {"status": "ok", "message": "Connected to localhost:6379"},
+  "celery": {"status": "ok", "message": "2 worker(s) online"},
+  "async_ready": true,
+  "sync_available": true
+}
+```
+
+**前端新增：**
+- ✅ `processing/page.tsx` - 服務狀態檢查 + 警告橫幅
+- ✅ 當 Redis/Celery 不可用時顯示 amber 色提示
+- ✅ 提示用戶同步模式仍可運作
+
+**4. P2 修復 - README 更新：**
+- ✅ 移除過時的 `ai_service` 目錄說明
+- ✅ 更新技術架構圖
+- ✅ 更新啟動指令
+- ✅ 添加健康檢查端點說明

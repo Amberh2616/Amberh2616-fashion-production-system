@@ -78,14 +78,18 @@ def extract_text_from_pdf_page_vision(pdf_path: str, page_number: int) -> list[d
         img_base64 = base64.b64encode(img_bytes).decode('utf-8')
         doc.close()
 
-        # AI 提取圖形標註
-        prompt = """Extract ONLY graphic annotations from this technical drawing:
+        # 2026-01-23: 根據是否有文字層選擇不同的提取策略
+        has_text_layer = len(text_layer_blocks) > 0
+
+        if has_text_layer:
+            # 有文字層：只提取圖形標註（避免重複）
+            prompt = """Extract ONLY graphic annotations from this technical drawing:
 - Dimension lines with measurements (e.g., "5.5\" from CB")
 - Arrow callouts pointing to design elements
 - Handwritten notes
-- Text embedded in graphics
+- Text embedded in graphics/images
 
-DO NOT extract regular body text. Focus on annotations that are part of the drawing.
+DO NOT extract regular body text (already extracted separately).
 
 Return JSON array:
 [
@@ -95,6 +99,30 @@ Return JSON array:
 
 Types: "dimension", "callout", "note"
 Return ONLY JSON, no explanation."""
+        else:
+            # 無文字層：提取所有可見文字（封面、圖形重的頁面）
+            logger.info(f"Page {page_number}: No text layer found, using comprehensive Vision extraction")
+            prompt = """Extract ALL visible text from this garment tech pack page, including:
+- Title and headers
+- Style numbers, season codes
+- Construction notes and annotations
+- Dimension callouts (e.g., "5.5\" from CB")
+- Material descriptions
+- Any labels or captions
+
+Return JSON array:
+[
+  {"text": "extracted text", "type": "note"},
+  ...
+]
+
+Types:
+- "title" for headers/titles
+- "callout" for labels pointing to parts
+- "dimension" for measurements
+- "note" for construction notes and other text
+
+Return ONLY JSON, no explanation. Extract everything you can read."""
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -139,7 +167,7 @@ Return ONLY JSON, no explanation."""
                 "is_vision": True  # 標記來源
             })
 
-        logger.info(f"Page {page_number}: Extracted {len(annotation_blocks)} vision annotations")
+        logger.info(f"Page {page_number}: Extracted {len(annotation_blocks)} vision annotations (comprehensive={not has_text_layer})")
     except Exception as e:
         logger.warning(f"Vision extraction failed: {str(e)}")
 

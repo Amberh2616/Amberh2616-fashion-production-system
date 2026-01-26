@@ -37,6 +37,7 @@ import {
   type BatchProcessResponse,
   type StyleResult,
 } from '@/lib/api/batch-upload';
+import { API_BASE_URL } from '@/lib/api/client';
 
 // ============================================
 // Single Upload Types
@@ -207,7 +208,7 @@ function SingleUpload() {
         resolve(null);
       });
 
-      xhr.open('POST', 'http://localhost:8000/api/v2/uploaded-documents/');
+      xhr.open('POST', `${API_BASE_URL}/uploaded-documents/`);
       xhr.send(formData);
     });
   };

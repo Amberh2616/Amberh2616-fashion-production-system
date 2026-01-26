@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, API_BASE_URL } from './client';
 
 export interface TechPack {
   id: string;
@@ -121,7 +121,6 @@ export async function uploadTechPack(data: UploadTechPackData): Promise<TechPack
   formData.append('customer', data.customer);
   formData.append('file', data.file);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
   const response = await fetch(`${API_BASE_URL}/techpacks/`, {
     method: 'POST',
     body: formData,

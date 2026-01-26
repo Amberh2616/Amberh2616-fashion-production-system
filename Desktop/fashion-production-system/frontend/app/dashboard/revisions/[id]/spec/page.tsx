@@ -31,13 +31,14 @@ import { MeasurementEditDrawer } from "@/components/measurement/MeasurementEditD
 import type { MeasurementItem, CreateMeasurementPayload } from "@/lib/types/measurement";
 import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft, Trash2, Plus, Package, DollarSign } from "lucide-react";
 import Link from "next/link";
+import { API_BASE_URL } from "@/lib/api/client";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = API_BASE_URL;
 
 // 取得 Style 資訊（透過 revision → style）
 async function fetchStyleInfo(revisionId: string) {
   // 先取得 revision
-  const revResponse = await fetch(`${API_BASE}/api/v2/style-revisions/${revisionId}/`);
+  const revResponse = await fetch(`${API_BASE}/style-revisions/${revisionId}/`);
   if (!revResponse.ok) throw new Error("Failed to fetch revision");
   const revData = await revResponse.json();
   const styleId = revData.data?.style || revData.style;
@@ -45,7 +46,7 @@ async function fetchStyleInfo(revisionId: string) {
   if (!styleId) return null;
 
   // 再取得 style
-  const styleResponse = await fetch(`${API_BASE}/api/v2/styles/${styleId}/`);
+  const styleResponse = await fetch(`${API_BASE}/styles/${styleId}/`);
   if (!styleResponse.ok) throw new Error("Failed to fetch style");
   const styleData = await styleResponse.json();
   return styleData.data || styleData;

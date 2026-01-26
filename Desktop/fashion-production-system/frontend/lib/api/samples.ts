@@ -3,7 +3,7 @@
  * Phase 3-1: Sample Request System MVP
  */
 
-import { apiClient } from './client';
+import { apiClient, API_BASE_URL } from './client';
 import type {
   SampleRequest,
   SampleRun,
@@ -876,7 +876,7 @@ export async function fetchAlerts(params?: AlertsParams): Promise<AlertsResponse
  * GET /sample-runs/{id}/export-mwo/
  */
 export async function exportMWO(runId: string): Promise<Blob> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-mwo/`, {
+  const response = await fetch(`${API_BASE_URL}/sample-runs/${runId}/export-mwo/`, {
     method: 'GET',
     headers: {
       // Add auth headers if needed
@@ -895,7 +895,7 @@ export async function exportMWO(runId: string): Promise<Blob> {
  * GET /sample-runs/{id}/export-estimate/
  */
 export async function exportEstimate(runId: string): Promise<Blob> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-estimate/`, {
+  const response = await fetch(`${API_BASE_URL}/sample-runs/${runId}/export-estimate/`, {
     method: 'GET',
     headers: {
       // Add auth headers if needed
@@ -914,7 +914,7 @@ export async function exportEstimate(runId: string): Promise<Blob> {
  * GET /sample-runs/{id}/export-po/
  */
 export async function exportPO(runId: string): Promise<Blob> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-po/`, {
+  const response = await fetch(`${API_BASE_URL}/sample-runs/${runId}/export-po/`, {
     method: 'GET',
     headers: {
       // Add auth headers if needed
@@ -951,7 +951,7 @@ export function downloadBlob(blob: Blob, filename: string) {
  */
 export async function exportMWOPDF(runId: string): Promise<Blob> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-mwo-pdf/`,
+    `${API_BASE_URL}/sample-runs/${runId}/export-mwo-pdf/`,
     { method: 'GET' }
   );
 
@@ -968,7 +968,7 @@ export async function exportMWOPDF(runId: string): Promise<Blob> {
  */
 export async function exportEstimatePDF(runId: string): Promise<Blob> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-estimate-pdf/`,
+    `${API_BASE_URL}/sample-runs/${runId}/export-estimate-pdf/`,
     { method: 'GET' }
   );
 
@@ -985,7 +985,7 @@ export async function exportEstimatePDF(runId: string): Promise<Blob> {
  */
 export async function exportPOPDF(runId: string): Promise<Blob> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-po-pdf/`,
+    `${API_BASE_URL}/sample-runs/${runId}/export-po-pdf/`,
     { method: 'GET' }
   );
 
@@ -1024,7 +1024,7 @@ export interface ExportReadinessResult {
  */
 export async function fetchExportReadiness(runId: string): Promise<ExportReadinessResult> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-readiness/`,
+    `${API_BASE_URL}/sample-runs/${runId}/export-readiness/`,
     { method: 'GET' }
   );
 
@@ -1051,7 +1051,7 @@ export async function exportMWOCompletePDF(
   params.set('include_techpack', String(includeTechpack));
 
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/${runId}/export-mwo-complete-pdf/?${params.toString()}`,
+    `${API_BASE_URL}/sample-runs/${runId}/export-mwo-complete-pdf/?${params.toString()}`,
     { method: 'GET' }
   );
 
@@ -1074,7 +1074,7 @@ export async function batchExportSampleRuns(
   format: 'pdf' | 'excel' = 'pdf'
 ): Promise<Blob> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2'}/sample-runs/batch-export/`,
+    `${API_BASE_URL}/sample-runs/batch-export/`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

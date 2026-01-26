@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  FolderKanban,
   FileText,
   Package,
   Shirt,
@@ -30,10 +28,8 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Progress", href: "/dashboard/progress", icon: Activity },
   { name: "Upload", href: "/dashboard/upload", icon: Upload },
-  { name: "Styles", href: "/dashboard/styles", icon: FolderKanban },
   { name: "Documents", href: "/dashboard/tech-packs", icon: FileText },
   { name: "BOM", href: "/dashboard/bom", icon: Package },
   { name: "Spec", href: "/dashboard/spec", icon: Ruler },

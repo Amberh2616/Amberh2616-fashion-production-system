@@ -52,7 +52,7 @@ import {
 import { Loader2, ArrowLeft, Plus, Calendar, Package, AlertCircle, FileText, Ruler, CheckCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { apiClient } from '@/lib/api/client';
+import { apiClient, API_BASE_URL } from '@/lib/api/client';
 
 // 取得 StyleRevision 詳細資訊
 interface StyleRevisionInfo {
@@ -67,7 +67,7 @@ interface StyleRevisionInfo {
 
 async function fetchRevisionInfo(revisionId: string): Promise<StyleRevisionInfo | null> {
   try {
-    const response = await fetch(`http://localhost:8000/api/v2/style-revisions/${revisionId}/`);
+    const response = await fetch(`${API_BASE_URL}/style-revisions/${revisionId}/`);
     if (!response.ok) return null;
     const data = await response.json();
     const revData = data.data || data;

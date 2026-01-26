@@ -9,7 +9,7 @@
 
 ---
 
-## 🎯 專案概述
+## 專案概述
 
 一個專為**一個人管理 300 款外銷跟單**設計的智能生產管理系統。
 
@@ -18,29 +18,22 @@
 ### 核心價值
 
 ```
-傳統方式：
-├─ 1 人最多管 50 款
-├─ Tech Pack 手動輸入 2 小時/款
-├─ Email 處理佔 30% 時間
-└─ 累到爆... 😫
-
-AI 系統：
-├─ 1 人可管 300 款 ✅
-├─ Tech Pack 自動解析 5 分鐘/款 ✅
-├─ 70-80% 工作自動化 ✅
-└─ 節省 $2300/月 人力成本 ✅
+傳統方式：                    AI 系統：
+├─ 1 人最多管 50 款           ├─ 1 人可管 300 款 ✅
+├─ Tech Pack 手動輸入 2hr/款  ├─ Tech Pack 自動解析 5min/款 ✅
+├─ Email 處理佔 30% 時間      ├─ 70-80% 工作自動化 ✅
+└─ 累到爆... 😫               └─ 節省 $2300/月 人力成本 ✅
 ```
 
 ---
 
-## ⚡ 快速開始
+## 快速開始
 
 ### 前置需求
 
 - Node.js >= 18.x
 - Python >= 3.11
-- PostgreSQL >= 15.x
-- Redis >= 7.x
+- Redis >= 7.x (可選，用於異步處理)
 
 ### 安裝與運行
 
@@ -52,52 +45,51 @@ cd fashion-production-system
 # 2. 啟動後端 (Django)
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements/development.txt
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Mac/Linux
+pip install -e .
 python manage.py migrate
-python manage.py runserver
+python manage.py runserver 8000
 
-# 3. 啟動前端 (Next.js)
-cd ../frontend
+# 3. 啟動前端 (Next.js) - 開新終端
+cd frontend
 npm install
 npm run dev
 
-# 4. 啟動 AI 服務 (FastAPI)
-cd ../ai_service
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8001
+# 4. (可選) 啟動異步處理服務
+redis-server                                      # 啟動 Redis
+celery -A config worker -l info --pool=solo      # 啟動 Celery Worker
 ```
 
-訪問：
-- 前端：http://localhost:3000
-- Django API：http://localhost:8000/api/
-- AI Service：http://localhost:8001/docs
+### 服務地址
+
+| 服務 | URL |
+|------|-----|
+| 前端 | http://localhost:3000 |
+| 後端 API | http://localhost:8000/api/v2/ |
+| Admin | http://localhost:8000/admin/ |
+| 健康檢查 | http://localhost:8000/api/v2/health/services/ |
 
 ---
 
-## 🏗️ 技術架構
+## 技術架構
 
 ```
-┌─────────────────────────────────────────────┐
-│     Next.js Frontend (TypeScript)            │
-│  - Draft Review Dashboard                    │
-│  - Tech Pack Upload                          │
-│  - Manufacturing Sheet Preview               │
-└─────────────────┬───────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│     Next.js 14 Frontend (TypeScript)            │
+│  - Document Upload & AI Processing              │
+│  - Draft Review Dashboard                       │
+│  - Kanban Board & Scheduler                     │
+│  - BOM / Spec / Costing Editor                  │
+└─────────────────┬───────────────────────────────┘
                   │ REST API
-┌─────────────────┴───────────────────────────┐
-│     Django Backend + DRF                     │
-│  - Business Logic                            │
-│  - PostgreSQL ORM                            │
-│  - Celery Background Tasks                   │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────┴───────────────────────────┐
-│     AI Service (FastAPI)                     │
-│  - Tech Pack Parser (OCR + GPT-4)           │
-│  - BOM Extractor                             │
-│  - Risk Analyzer                             │
-└─────────────────────────────────────────────┘
+┌─────────────────┴───────────────────────────────┐
+│     Django 4.2 Backend + DRF                    │
+│  - OpenAI GPT-4o Vision (AI 解析)               │
+│  - PyMuPDF + Pillow (PDF 處理)                  │
+│  - Celery + Redis (異步任務)                    │
+│  - SQLite (開發) / PostgreSQL (生產)            │
+└─────────────────────────────────────────────────┘
 ```
 
 ### 技術棧
@@ -106,185 +98,115 @@ uvicorn main:app --reload --port 8001
 - Next.js 14 (App Router)
 - TypeScript
 - shadcn/ui + Tailwind CSS
-- Zustand + TanStack Query
+- TanStack Query / Table
 - react-pdf
 
 **後端**
-- Django 4.2
-- Django REST Framework
-- PostgreSQL + pgVector
-- Celery + Redis
-- AWS S3 / MinIO
-
-**AI 服務**
-- FastAPI
-- PaddleOCR / Tesseract
-- OpenAI GPT-4 Vision
-- Claude 3.5 Sonnet
+- Django 4.2 + Django REST Framework
+- OpenAI GPT-4o Vision
+- PyMuPDF + Pillow (PDF/圖片處理)
+- Celery + Redis (異步處理)
+- 成衣詞彙庫 (1252 條專業術語)
 
 ---
 
-## ✨ 核心功能
+## 核心功能
 
-### 🤖 AI 自動化核心
+### AI 自動化核心
 
-#### 1️⃣ Tech Pack 精準解析
-```python
-# 上傳 PDF → AI 自動提取結構化資料
-{
-  "style_no": "LW1FLPS",
-  "style_name": "NULU CAMI TANK",
-  "season": "SPRING 2025",
-  "bom": [...],           # 物料清單
-  "measurements": [...],  # 尺寸表
-  "construction": {...},  # 工序說明
-  "confidence": 0.92      # 信心度 92%
-}
+#### 1. Tech Pack 智能解析
+```
+上傳 PDF → AI 分類頁面 → 提取 BOM/Spec/Construction → 翻譯 → 審核
 ```
 - **準確率**：90%+（經人工審核後 99%+）
-- **速度**：2-3 分鐘 vs 傳統 2 小時
+- **速度**：3-5 分鐘 vs 傳統 2 小時
+- **支援格式**：PDF（含掃描件）
 
-#### 2️⃣ BOM 表智能抓取
-- 支援 Excel / CSV / PDF
-- 自動欄位映射
-- 智能補全缺失資訊（供應商、色號、單位）
-- **準確率**：95%+
+#### 2. BOM 表智能提取
+- 自動識別物料清單
+- 中英文翻譯（整合成衣詞彙庫）
+- 用量四階段管理（AI → 驗證 → 實際 → 當前）
 
-#### 3️⃣ 製造單自動生成
-```
-Tech Pack → AI 解析 → Draft → 人工審核 → 製造單 PDF
-```
-- 固定模板 + AI 填欄位
-- 包含：工序 / 用料 / 尺寸 / QC 風險點
-- **生成時間**：3 秒
+#### 3. 製造單 (MWO) 自動生成
+- Tech Pack 翻譯疊加
+- BOM + Spec + Operations
+- 一鍵匯出 PDF
 
-#### 4️⃣ 採購單自動生成
-- 智能計算用量（含損耗率）
-- 供應商推薦
-- Email 草稿自動生成
-- **生成時間**：5 秒
+#### 4. 採購單自動生成
+- 按供應商拆分
+- MRP 物料需求計算
+- Email 發送功能
 
-#### 5️⃣ Email 自動化
-- AI 讀信 + 自動分類
-- 重點條列摘要
-- 草稿生成（需人工審核）
+### 完整功能列表
 
----
-
-## 🎨 核心 UI - Draft Review Dashboard
-
-最重要的頁面設計：
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  LW1FLPS - Nulu Cami Tank | Status: Draft                │
-├──────────────────────────────────────────────────────────┤
-│  [左 40%]                 │  [右 60%]                     │
-│  原始 Tech Pack PDF        │  AI 解析結果 + 編輯           │
-│  (可放大、可標註)          │                               │
-│                           │  📋 Manufacturing Sheet       │
-│  點擊 BOM 頁面 →          │  📋 BOM Table                 │
-│  右側自動跳轉             │  📋 Measurement               │
-│                           │                               │
-│                           │  ⚠️ AI Issues:                │
-│                           │  - Missing: Fabric code       │
-│                           │  - Low confidence: 65%        │
-│                           │                               │
-│                           │  [✅ Approve] [📧] [💾]        │
-└───────────────────────────┴───────────────────────────────┘
-```
-
-**設計理念**：
-- 左右分屏，方便對照原始檔案
-- AI Issues 清楚顯示，避免遺漏
-- 一鍵 Approve，快速審核
+| 模組 | 功能 |
+|------|------|
+| **文件管理** | 上傳、AI 分類、批量處理 |
+| **Tech Pack** | 翻譯框拖曳編輯、批量翻譯 |
+| **BOM** | 自動提取、翻譯、驗證 |
+| **Spec** | 尺寸規格管理 |
+| **Costing** | 報價單生成 |
+| **Samples** | 樣衣管理、Kanban 看板 |
+| **Scheduler** | 甘特圖排程 |
+| **Production** | 大貨訂單、MRP 計算 |
+| **Procurement** | 採購單、供應商管理 |
+| **Assistant** | 小助理（指令式對話）|
 
 ---
 
-## 📊 業務流程（6 大區塊）
-
-### 1️⃣ Intake（接單 / 收資料）
-- Email / Tech Pack / BOM / Spec
-- **自動化：100%**
-
-### 2️⃣ Interpretation（AI 解析）
-- 讀 BOM / Measurement / Construction
-- **自動化：80% AI + 20% 人工確認**
-
-### 3️⃣ Manufacturing Instruction（製造單）
-- 工序邏輯 / 用料對應 / 尺寸關聯
-- **AI 生成草稿 → 人工 Approve**
-
-### 4️⃣ Sourcing / Purchasing（採購）
-- 主料 / 副料 / 標籤 / 包裝
-- **AI 生成 PO Draft → 人工審核**
-
-### 5️⃣ Sampling（PLM 節點）
-- Proto / Fit / PP
-- **流程自動化 + 判斷需要人**
-
-### 6️⃣ Bulk Production（大貨）
-- 下單 / Lead Time / 測試 / 出貨
-- **追蹤 100% 自動化**
-
----
-
-## 💰 成本與 ROI
-
-### AI 成本估算（月）
-
-| 項目 | 數量 | 單價 | 月成本 |
-|------|------|------|--------|
-| Tech Pack 解析 | 20 個 | $1.20 | $24 |
-| BOM 抓取 | 30 個 | $0.30 | $9 |
-| Email 分析 | 500 封 | $0.05 | $25 |
-| 文件生成 | 100 份 | $0.20 | $20 |
-| 風險分析 | 每日 | - | $45 |
-| 採購建議 | 150 次 | $0.15 | $23 |
-
-**總計：~$146/月**
-**保守預算：$200/月**
-
-### ROI 分析
+## 頁面導航
 
 ```
-💰 人力節省: $2500/月 (70% 工作時間)
-💸 AI 成本:   $200/月
-✅ 淨節省:   $2300/月
-📈 ROI:      1150% 🚀
+Dashboard
+├── Progress              # 進度追蹤儀表板
+├── Upload                # 單筆 + 批量上傳
+├── Documents             # 文件管理（AI 分類 Tab）
+│   ├── Tech Pack Tab
+│   ├── BOM Tab
+│   ├── Mixed Tab
+│   └── 款式 Tab
+├── BOM                   # 物料表
+├── Spec                  # 尺寸規格
+├── Costing               # 報價
+├── Samples               # 樣衣列表
+├── Kanban                # 看板視圖
+├── Scheduler             # 甘特圖
+├── Production            # 大貨訂單
+├── Purchase Orders       # 採購單
+├── Suppliers             # 供應商
+└── Materials             # 物料主檔
 ```
 
 ---
 
-## 🗂️ 專案結構
+## 專案結構
 
 ```
 fashion-production-system/
 ├── frontend/                 # Next.js 前端
-│   ├── app/                  # App Router
+│   ├── app/                  # App Router 頁面
 │   ├── components/           # React 組件
-│   ├── lib/                  # API + Hooks
-│   └── store/                # Zustand 狀態管理
+│   ├── lib/                  # API + Hooks + Types
+│   └── public/               # 靜態資源
 │
 ├── backend/                  # Django 後端
-│   ├── config/               # Django 設定
+│   ├── config/               # Django 設定 + Celery
 │   ├── apps/
-│   │   ├── core/             # User, Org, Auth
-│   │   ├── techpack/         # TechPack, Style, BOM
-│   │   ├── manufacturing/    # Manufacturing Sheet
-│   │   ├── procurement/      # PO, Supplier
-│   │   └── sampling/         # Sample, Fit
-│   └── requirements/
-│
-├── ai_service/               # AI 服務 (FastAPI)
-│   ├── parsers/              # Tech Pack Parser
-│   ├── services/             # OCR + LLM
-│   └── tasks/                # Celery 背景任務
+│   │   ├── core/             # 健康檢查
+│   │   ├── styles/           # Style, Revision
+│   │   ├── documents/        # Document 管理
+│   │   ├── parsing/          # AI 解析 + 翻譯
+│   │   ├── costing/          # 報價單
+│   │   ├── samples/          # 樣衣管理
+│   │   ├── procurement/      # 採購單
+│   │   ├── orders/           # 大貨訂單
+│   │   └── assistant/        # 小助理
+│   └── demo_data/            # 測試資料
 │
 ├── docs/                     # 文檔
-│   ├── AI-AGENT-DESIGN.md    # AI 設計文檔
-│   ├── SYSTEM-UI-DESIGN.md   # UI 設計文檔
-│   └── TODO.md               # 待辦清單
+│   ├── PROGRESS-CHANGELOG.md # 開發進度記錄
+│   ├── SYSTEM-ACCEPTANCE-REPORT.md
+│   └── BUSINESS-FLOW.md
 │
 ├── CLAUDE.md                 # Claude 專案記憶
 └── README.md                 # 本檔案
@@ -292,106 +214,89 @@ fashion-production-system/
 
 ---
 
-## 📅 開發路線圖
+## 環境變數
 
-### Phase 1: 核心骨架（2 週）
-- ✅ Django + Next.js 專案結構
-- ✅ PostgreSQL 資料庫設計
-- ✅ 基礎 API (CRUD)
-- ✅ Tech Pack 上傳頁面
+### 後端 (.env)
 
-### Phase 2: AI 解析核心（3 週）
-- 🔄 OCR 整合 (PaddleOCR)
-- 🔄 GPT-4 Vision 整合
-- 🔄 BOM Extractor
-- 🔄 Draft Review Dashboard
+```env
+# OpenAI
+OPENAI_API_KEY=sk-xxx
 
-### Phase 3: 製造單 + 採購單（2 週）
-- ⏳ 製造單模板
-- ⏳ 自動生成 PDF
-- ⏳ Email 模板系統
+# Database (生產環境)
+DATABASE_URL=postgres://user:pass@host:5432/dbname
 
-### Phase 4: 優化 + 學習（持續）
-- ⏳ AI 學習機制
-- ⏳ 歷史數據分析
-- ⏳ 準確率優化
+# Celery
+CELERY_BROKER_URL=redis://localhost:6379/0
+
+# Email (可選)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=app-password
+```
+
+### 前端 (.env.local)
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v2
+```
 
 ---
 
-## 🔑 關鍵設計原則
+## 開發指令
 
-### ⚠️ AI 的角色定位
+```bash
+# 後端
+cd backend
+python manage.py runserver 8000          # 開發伺服器
+python manage.py migrate                  # 資料庫遷移
+pytest                                    # 測試
 
+# 前端
+cd frontend
+npm run dev                               # 開發伺服器
+npm run build                             # 生產建置
+npm run type-check                        # TypeScript 檢查
+npm run lint                              # ESLint
+
+# Celery (異步處理)
+redis-server                              # 啟動 Redis
+celery -A config worker -l info --pool=solo  # 啟動 Worker
 ```
-✅ AI 只做：結構化 + 草稿 + 風險提示
-❌ AI 不做：直接決策 + 直接下單
-✅ 人的角色：最後審核 + Approve + Send
-```
-
-### 為什麼這樣設計？
-
-1. **準確性**：AI 準確率 90%，但人工審核後 99%+
-2. **責任**：重要決策必須有人負責
-3. **學習**：人工修正會讓 AI 越來越準
-4. **信任**：使用者才敢真的用
 
 ---
 
-## 📚 文檔導航
+## 版本記錄
+
+| 版本 | 日期 | 重點功能 |
+|------|------|----------|
+| v4.39 | 2026-01-24 | 詞彙庫修正 + Tech Pack 提取修復 |
+| v4.38 | 2026-01-22 | 成衣詞彙庫整合 (1252 條術語) |
+| v4.37 | 2026-01-21 | Celery 異步處理 + 採購優化 |
+| v4.36 | 2026-01-20 | Kanban 四大改善 + 小助理 |
+
+詳細記錄請參見 [PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
+
+---
+
+## 文檔導航
 
 | 文檔 | 說明 |
 |------|------|
 | [CLAUDE.md](./CLAUDE.md) | **Claude 專案記憶** - 完整專案資訊 |
-| [AI-AGENT-DESIGN.md](./docs/AI-AGENT-DESIGN.md) | AI Agent 自動化設計 |
-| [SYSTEM-UI-DESIGN.md](./docs/SYSTEM-UI-DESIGN.md) | 系統 UI 設計 |
-| [TODO.md](./docs/TODO.md) | 開發待辦清單 |
+| [PROGRESS-CHANGELOG.md](./docs/PROGRESS-CHANGELOG.md) | 開發進度詳細記錄 |
+| [SYSTEM-ACCEPTANCE-REPORT.md](./docs/SYSTEM-ACCEPTANCE-REPORT.md) | 系統驗收報告 |
+| [BUSINESS-FLOW.md](./docs/BUSINESS-FLOW.md) | 業務流程說明 |
 
 ---
 
-## 🤝 貢獻指南
-
-歡迎提交 Issue 和 Pull Request！
-
-### 開發流程
-
-1. Fork 專案
-2. 創建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交變更 (`git commit -m 'Add: AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 開啟 Pull Request
-
----
-
-## 📞 聯繫方式
-
-- **專案維護者**: Amber
-- **Email**: [your-email@example.com]
-- **GitHub**: [your-github-profile]
-
----
-
-## 📄 授權
+## 授權
 
 本專案採用 MIT 授權 - 詳見 [LICENSE](LICENSE) 文件。
-
----
-
-## 🙏 致謝
-
-- [Next.js](https://nextjs.org/)
-- [Django](https://www.djangoproject.com/)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [OpenAI](https://openai.com/)
-- [Anthropic](https://www.anthropic.com/)
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 
 ---
 
 <div align="center">
   <p>
     <sub>Built with ❤️ for Fashion Merchandisers</sub>
-  </p>
-  <p>
-    <sub>⭐ 如果這個專案對你有幫助，請給個星星！</sub>
   </p>
 </div>

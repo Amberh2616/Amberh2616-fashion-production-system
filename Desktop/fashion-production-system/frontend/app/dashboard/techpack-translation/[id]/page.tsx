@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { FileText, ArrowLeft, Loader2 } from 'lucide-react'
+import { API_BASE_URL } from '@/lib/api/client'
 
 interface DraftBlock {
   id: string
@@ -52,7 +53,7 @@ export default function TechPackTranslationPage() {
   const fetchRevision = async () => {
     try {
       const response = await fetch(
-        `http://localhost:8000/api/v2/revisions/${revisionId}/`
+        `${API_BASE_URL}/revisions/${revisionId}/`
       )
 
       if (!response.ok) {

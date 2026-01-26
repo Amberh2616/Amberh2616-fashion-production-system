@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { CheckCircle2, Loader2, AlertCircle, Clock, XCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
+import { API_BASE_URL } from '@/lib/api/client'
 
 interface ProcessingStatus {
   id: string
@@ -26,6 +27,34 @@ interface ProcessingStatus {
   }
 }
 
+// DA-2: Task status interface for async mode
+interface TaskStatus {
+  task_id: string
+  status: 'PENDING' | 'STARTED' | 'SUCCESS' | 'FAILURE' | 'RETRY' | 'REVOKED'
+  ready: boolean
+  successful?: boolean
+  result?: {
+    status: string
+    document_id: string
+    classification_result?: any
+    error?: string
+  }
+}
+
+// Service health status interface
+interface ServiceHealth {
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  database: { status: string; message: string }
+  redis: { status: string; message: string }
+  celery: { status: string; message: string }
+  async_ready: boolean
+  sync_available: boolean
+  hint?: string
+}
+
+// DA-2: Check if async mode is enabled (via environment or URL param)
+const USE_ASYNC_MODE = false  // Disabled - Redis not running
+
 // 格式化時間
 function formatElapsedTime(seconds: number): string {
   if (seconds < 60) return `${seconds}秒`
@@ -47,6 +76,42 @@ export default function ProcessingPage() {
   const startTimeRef = useRef<number>(Date.now())
   const abortControllerRef = useRef<AbortController | null>(null)
 
+  // DA-2: Track Celery task ID for async mode
+  const [taskId, setTaskId] = useState<string | null>(null)
+  const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null)
+
+  // Service health status
+  const [serviceHealth, setServiceHealth] = useState<ServiceHealth | null>(null)
+  const [healthChecked, setHealthChecked] = useState(false)
+
+  // Check service health on mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/health/services/`)
+        if (response.ok) {
+          const data = await response.json()
+          setServiceHealth(data)
+        }
+      } catch (err) {
+        console.warn('Health check failed:', err)
+        // Set degraded status if health check fails
+        setServiceHealth({
+          status: 'degraded',
+          database: { status: 'unknown', message: '' },
+          redis: { status: 'unknown', message: '' },
+          celery: { status: 'unknown', message: '' },
+          async_ready: false,
+          sync_available: true,
+          hint: 'Could not verify service status. Proceeding with sync mode.'
+        })
+      } finally {
+        setHealthChecked(true)
+      }
+    }
+    checkHealth()
+  }, [])
+
   useEffect(() => {
     if (!documentId || isCancelled) return
 
@@ -57,8 +122,14 @@ export default function ProcessingPage() {
     // Auto-trigger classification when page loads
     triggerClassification()
 
-    // Poll status every 2 seconds
-    const statusInterval = setInterval(pollStatus, 2000)
+    // Poll status every 2.5 seconds (async mode polls task status)
+    const statusInterval = setInterval(() => {
+      if (USE_ASYNC_MODE && taskId) {
+        pollTaskStatus()
+      } else {
+        pollStatus()
+      }
+    }, 2500)
 
     // Update elapsed time every second
     const timeInterval = setInterval(() => {
@@ -70,7 +141,7 @@ export default function ProcessingPage() {
       clearInterval(timeInterval)
       abortControllerRef.current?.abort()
     }
-  }, [documentId, isCancelled])
+  }, [documentId, isCancelled, taskId])
 
   const handleCancel = () => {
     setIsCancelled(true)
@@ -80,8 +151,10 @@ export default function ProcessingPage() {
 
   const triggerClassification = async () => {
     try {
+      // DA-2: Use async mode if enabled
+      const asyncParam = USE_ASYNC_MODE ? '?async=true' : ''
       const response = await fetch(
-        `http://localhost:8000/api/v2/uploaded-documents/${documentId}/classify/`,
+        `${API_BASE_URL}/uploaded-documents/${documentId}/classify/${asyncParam}`,
         {
           method: 'POST',
         }
@@ -91,16 +164,62 @@ export default function ProcessingPage() {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Classification failed')
       }
+
+      const data = await response.json()
+
+      // DA-2: If async mode, save task ID for polling
+      if (USE_ASYNC_MODE && data.task_id) {
+        console.log('[DA-2] Async classification started, task_id:', data.task_id)
+        setTaskId(data.task_id)
+      }
     } catch (err) {
       console.error('Failed to trigger classification:', err)
       setError(err instanceof Error ? err.message : 'Classification failed')
     }
   }
 
+  // DA-2: Poll Celery task status
+  const pollTaskStatus = async () => {
+    if (!taskId) return
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/tasks/${taskId}/`
+      )
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch task status')
+      }
+
+      const data: TaskStatus = await response.json()
+      setTaskStatus(data)
+      console.log('[DA-2] Task status:', data.status, data.ready)
+
+      // If task completed successfully
+      if (data.ready && data.successful && data.result) {
+        if (data.result.status === 'success') {
+          // Update document status by polling
+          await pollStatus()
+        } else if (data.result.error) {
+          toast.error('Classification failed')
+          setError(data.result.error)
+        }
+      }
+
+      // If task failed
+      if (data.ready && !data.successful) {
+        toast.error('Task failed')
+        setError(data.result?.error || 'Classification task failed')
+      }
+    } catch (err) {
+      console.error('Failed to poll task status:', err)
+    }
+  }
+
   const pollStatus = async () => {
     try {
       const response = await fetch(
-        `http://localhost:8000/api/v2/uploaded-documents/${documentId}/status/`
+        `${API_BASE_URL}/uploaded-documents/${documentId}/status/`
       )
 
       if (!response.ok) {
@@ -132,6 +251,8 @@ export default function ProcessingPage() {
     setError(null)
     setRetryCount((prev) => prev + 1)
     setElapsedTime(0)
+    setTaskId(null)  // DA-2: Reset task ID
+    setTaskStatus(null)
     startTimeRef.current = Date.now()
     toast.info('重新開始處理...')
     triggerClassification()
@@ -191,6 +312,29 @@ export default function ProcessingPage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-3xl">
+      {/* Service Status Banner */}
+      {healthChecked && serviceHealth && serviceHealth.status === 'degraded' && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-start gap-2 text-amber-800 text-sm">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium">Background Services Unavailable</p>
+              <p className="text-amber-700 mt-1">
+                {serviceHealth.redis?.status !== 'ok' && (
+                  <span className="block">• Redis: {serviceHealth.redis?.message}</span>
+                )}
+                {serviceHealth.celery?.status !== 'ok' && (
+                  <span className="block">• Celery: {serviceHealth.celery?.message}</span>
+                )}
+              </p>
+              <p className="text-amber-600 mt-1 text-xs">
+                Using sync mode (slower but functional). For faster processing, start Redis and Celery.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
@@ -226,6 +370,23 @@ export default function ProcessingPage() {
             </div>
           )}
         </div>
+
+        {/* DA-2: Async task status indicator */}
+        {USE_ASYNC_MODE && taskId && (
+          <div className="mt-2 text-xs text-gray-500">
+            <span className="font-mono">Task: {taskId.slice(0, 8)}...</span>
+            {taskStatus && (
+              <span className="ml-2">
+                Status: <span className={
+                  taskStatus.status === 'SUCCESS' ? 'text-green-600' :
+                  taskStatus.status === 'FAILURE' ? 'text-red-600' :
+                  taskStatus.status === 'STARTED' ? 'text-blue-600' :
+                  'text-gray-600'
+                }>{taskStatus.status}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">

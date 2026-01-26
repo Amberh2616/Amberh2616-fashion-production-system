@@ -93,6 +93,20 @@ class UploadedDocument(models.Model):
         help_text="Created TechPackRevision for draft review (P0 interface)"
     )
 
+    # Celery task tracking (for async processing)
+    classify_task_id = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Celery task ID for async classification"
+    )
+    extract_task_id = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Celery task ID for async extraction"
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

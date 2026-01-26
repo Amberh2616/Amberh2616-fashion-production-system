@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.files.storage import default_storage
+from celery.result import AsyncResult
 from .models import ExtractionRun, DraftReviewItem, UploadedDocument
 from .models_blocks import Revision, RevisionPage, DraftBlock, DraftBlockHistory
 from .serializers import (
@@ -18,10 +19,72 @@ from .serializers import (
     DocumentUploadSerializer,
 )
 from .services import classify_document
+from .tasks import classify_document_task, extract_document_task
 import os
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+# DA-2: Task Status API
+# ============================================
+
+class TaskStatusViewSet(viewsets.ViewSet):
+    """
+    Task Status ViewSet for checking Celery task progress
+
+    GET /api/v2/tasks/{task_id}/status/
+    """
+
+    def retrieve(self, request, pk=None):
+        """
+        Get status of a Celery task
+
+        Returns:
+        - task_id: The task ID
+        - status: PENDING | STARTED | SUCCESS | FAILURE | RETRY | REVOKED
+        - ready: Whether the task has completed (success or failure)
+        - result: Task result if completed (None if still running)
+        - progress: Optional progress info (for tasks that report it)
+        """
+        if not pk:
+            return Response(
+                {'error': 'Task ID is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        result = AsyncResult(pk)
+
+        response_data = {
+            'task_id': pk,
+            'status': result.status,
+            'ready': result.ready(),
+            'successful': result.successful() if result.ready() else None,
+        }
+
+        # Include result if task is complete
+        if result.ready():
+            try:
+                task_result = result.result
+                # If result is an exception, convert to error dict
+                if isinstance(task_result, Exception):
+                    response_data['result'] = {
+                        'status': 'error',
+                        'error': str(task_result),
+                        'error_type': type(task_result).__name__
+                    }
+                else:
+                    response_data['result'] = task_result
+            except Exception as e:
+                # Handle cases where result can't be serialized
+                response_data['result'] = {'error': str(e)}
+
+        # For STARTED tasks, try to get progress info
+        if result.status == 'STARTED' and hasattr(result, 'info') and result.info:
+            response_data['progress'] = result.info
+
+        return Response(response_data)
 
 
 class ExtractionRunViewSet(viewsets.ModelViewSet):
@@ -403,6 +466,10 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
         Trigger AI classification for uploaded document
 
         POST /api/v2/uploaded-documents/{id}/classify/
+        POST /api/v2/uploaded-documents/{id}/classify/?async=true  (async mode)
+
+        Query params:
+        - async: Set to 'true' for async processing (returns task_id)
 
         This action:
         1. Reads the uploaded file
@@ -418,6 +485,34 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Check for async mode
+        use_async = request.query_params.get('async', 'false').lower() == 'true'
+
+        if use_async:
+            # DA-2: Async mode - dispatch Celery task
+            try:
+                task = classify_document_task.delay(str(doc.id))
+                doc.classify_task_id = task.id
+                doc.status = 'classifying'
+                doc.save(update_fields=['classify_task_id', 'status', 'updated_at'])
+
+                logger.info(f"[Async] Classification task dispatched for {doc.id}: task_id={task.id}")
+
+                return Response({
+                    'task_id': task.id,
+                    'document_id': str(doc.id),
+                    'status': 'pending',
+                    'message': 'Classification task dispatched'
+                }, status=status.HTTP_202_ACCEPTED)
+
+            except Exception as e:
+                logger.error(f"Failed to dispatch classification task for {doc.id}: {str(e)}")
+                return Response(
+                    {'error': f'Failed to dispatch task: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Sync mode (original behavior)
         try:
             # Update status
             doc.status = 'classifying'
@@ -502,6 +597,10 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
         Trigger AI extraction for classified document
 
         POST /api/v2/uploaded-documents/{id}/extract/
+        POST /api/v2/uploaded-documents/{id}/extract/?async=true  (async mode)
+
+        Query params:
+        - async: Set to 'true' for async processing (returns task_id)
 
         This action:
         1. Validates document is classified
@@ -517,6 +616,34 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Check for async mode
+        use_async = request.query_params.get('async', 'false').lower() == 'true'
+
+        if use_async:
+            # DA-2: Async mode - dispatch Celery task
+            try:
+                task = extract_document_task.delay(str(doc.id))
+                doc.extract_task_id = task.id
+                doc.status = 'extracting'
+                doc.save(update_fields=['extract_task_id', 'status', 'updated_at'])
+
+                logger.info(f"[Async] Extraction task dispatched for {doc.id}: task_id={task.id}")
+
+                return Response({
+                    'task_id': task.id,
+                    'document_id': str(doc.id),
+                    'status': 'pending',
+                    'message': 'Extraction task dispatched'
+                }, status=status.HTTP_202_ACCEPTED)
+
+            except Exception as e:
+                logger.error(f"Failed to dispatch extraction task for {doc.id}: {str(e)}")
+                return Response(
+                    {'error': f'Failed to dispatch task: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Sync mode (original behavior) - use refactored service
         try:
             # Update status
             doc.status = 'extracting'
@@ -524,199 +651,21 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
 
             logger.info(f"Starting extraction for document {doc.id}")
 
-            # Get classification result
-            classification = doc.classification_result
-            if not classification:
-                raise ValueError("No classification result found")
+            # Use extraction service
+            from .services.extraction_service import perform_extraction
+            result = perform_extraction(doc)
 
-            # 1. Create Revision (for Tech Pack review) and StyleRevision (for BOM/Measurement)
-            from apps.styles.models import Style, StyleRevision
-            from apps.parsing.models_blocks import Revision as TechPackRevision
-            import pdfplumber
+            logger.info(f"Extraction completed for {doc.id}: {result['extraction_stats']}")
 
-            # Extract style number from filename (e.g., "LW1FLWS TECH PACK.pdf" → "LW1FLWS")
-            style_number = doc.filename.split()[0] if ' ' in doc.filename else doc.filename.split('.')[0]
-
-            # Get or create Style
-            style, _ = Style.objects.get_or_create(
-                organization=doc.organization,
-                style_number=style_number,
-                defaults={
-                    'style_name': f'{style_number} (Auto-generated)',
-                    'season': 'SS25',  # Default season
-                    'customer': 'Unknown',  # Default customer
-                }
-            )
-
-            # Create StyleRevision (for BOM and Measurement)
-            style_revision = StyleRevision.objects.create(
-                organization=doc.organization,
-                style=style,
-                revision_label=f'Rev {StyleRevision.objects.filter(style=style).count() + 1}',
-                status='draft'
-            )
-
-            # Get page count
-            with pdfplumber.open(doc.file.path) as pdf:
-                page_count = len(pdf.pages)
-
-            # Create TechPackRevision (for Tech Pack review with DraftBlocks)
-            tech_pack_revision = TechPackRevision.objects.create(
-                file=doc.file,
-                filename=doc.filename,
-                page_count=page_count,
-                status='uploaded'
-            )
-
-            logger.info(f"Created StyleRevision {style_revision.id} and TechPackRevision {tech_pack_revision.id} for Style {style.style_number}")
-
-            # Use style_revision for BOM/Measurement, tech_pack_revision for DraftBlocks
-            revision = style_revision
-
-            # 2. Extract based on page types
-            tech_pack_pages = [p['page'] for p in classification['pages'] if p['type'] == 'tech_pack']
-            bom_pages = [p['page'] for p in classification['pages'] if p['type'] == 'bom_table']
-            measurement_pages = [p['page'] for p in classification['pages'] if p['type'] == 'measurement_table']
-
-            extraction_stats = {
-                'tech_pack_blocks': 0,
-                'bom_items': 0,
-                'measurements': 0,
-            }
-
-            # 3. Extract Tech Pack annotations (if any)
-            if tech_pack_pages:
-                logger.info(f"Extracting Tech Pack from pages: {tech_pack_pages}")
-                from apps.parsing.utils.vision_extract import extract_text_from_pdf_page_vision
-                from apps.parsing.utils.translate import batch_translate
-                from apps.parsing.models_blocks import RevisionPage, DraftBlock
-                from django.db import transaction
-                import fitz  # PyMuPDF for getting page dimensions
-
-                # Open PDF to get page dimensions
-                pdf_doc = fitz.open(doc.file.path)
-
-                # 处理所有 Tech Pack 页面
-                for page_num in tech_pack_pages:  # Process all pages
-                    try:
-                        # Extract text blocks
-                        extracted_blocks = extract_text_from_pdf_page_vision(doc.file.path, page_num)
-
-                        # Get page dimensions from PDF
-                        pdf_page = pdf_doc.load_page(page_num - 1)  # 0-indexed
-                        page_width = int(pdf_page.rect.width)
-                        page_height = int(pdf_page.rect.height)
-
-                        # Get or create page (use tech_pack_revision for DraftBlocks)
-                        page_obj, _ = RevisionPage.objects.get_or_create(
-                            revision=tech_pack_revision,
-                            page_number=page_num,
-                            defaults={
-                                'width': page_width,
-                                'height': page_height
-                            }
-                        )
-
-                        # ⚡ 批量翻译（10-20倍加速）
-                        texts_to_translate = [block.get('text', '').strip() for block in extracted_blocks]
-                        translations = batch_translate(texts_to_translate)
-
-                        # Save blocks with translation
-                        with transaction.atomic():
-                            for i, block in enumerate(extracted_blocks):
-                                text = texts_to_translate[i]
-                                if not text:
-                                    continue
-
-                                translation = translations[i] if i < len(translations) else ""
-
-                                # Get bbox from block (from pdfplumber)
-                                bbox = block.get('bbox', {})
-                                bbox_x = bbox.get('x', 0)
-                                bbox_y = bbox.get('y', 0)
-                                bbox_width = bbox.get('width', 100)
-                                bbox_height = bbox.get('height', 20)
-
-                                # ⚠️ 過濾策略：只保存重要的 block
-                                # 1. Vision 標註（圖形標註）→ 必須保留
-                                # 2. 文字層（text_layer）→ 只保留長度 > 3 的文本（過濾單字母）
-                                is_vision = block.get('is_vision', False)
-                                is_text_layer = block.get('type') == 'text_layer'
-
-                                # 過濾邏輯
-                                if is_text_layer and len(text) <= 3:
-                                    # 跳過短文本（單字母、縮寫）
-                                    continue
-
-                                # Create DraftBlock with real bbox
-                                DraftBlock.objects.create(
-                                    page=page_obj,
-                                    source_text=text,
-                                    translated_text=translation,
-                                    bbox_x=bbox_x,
-                                    bbox_y=bbox_y,
-                                    bbox_width=bbox_width,
-                                    bbox_height=bbox_height,
-                                    block_type=block.get('type', 'callout'),
-                                    status='auto',
-                                )
-                                extraction_stats['tech_pack_blocks'] += 1
-
-                        logger.info(f"Page {page_num}: Extracted {len(extracted_blocks)} blocks")
-                    except Exception as e:
-                        logger.error(f"Failed to extract Tech Pack page {page_num}: {str(e)}")
-
-                # Close PDF document
-                pdf_doc.close()
-
-            # 4. Extract BOM (if any)
-            if bom_pages:
-                logger.info(f"Extracting BOM from pages: {bom_pages}")
-                from apps.parsing.services.bom_extractor import extract_bom_from_pages
-
-                try:
-                    bom_count = extract_bom_from_pages(doc.file.path, bom_pages, revision)
-                    extraction_stats['bom_items'] = bom_count
-                    logger.info(f"BOM extraction completed: {bom_count} items")
-                except Exception as e:
-                    logger.error(f"BOM extraction failed: {str(e)}")
-                    doc.extraction_errors.append({
-                        'step': 'bom_extraction',
-                        'error': str(e)
-                    })
-
-            # 5. Extract Measurement (if any)
-            if measurement_pages:
-                logger.info(f"Extracting Measurement from pages: {measurement_pages}")
-                from apps.parsing.services.measurement_extractor import extract_measurements_from_page
-
-                for page_num in measurement_pages[:2]:  # Limit to first 2 pages
-                    try:
-                        measurement_count = extract_measurements_from_page(doc.file.path, page_num, revision)
-                        extraction_stats['measurements'] += measurement_count
-                        logger.info(f"Page {page_num}: Extracted {measurement_count} measurements")
-                    except Exception as e:
-                        logger.error(f"Measurement extraction failed for page {page_num}: {str(e)}")
-                        doc.extraction_errors.append({
-                            'step': 'measurement_extraction',
-                            'page': page_num,
-                            'error': str(e)
-                        })
-
-            # 6. Update document status
-            doc.style_revision = revision
-            doc.tech_pack_revision = tech_pack_revision  # ⚡ Save TechPackRevision reference
-            doc.status = 'extracted'
-            doc.save(update_fields=['style_revision', 'tech_pack_revision', 'status', 'extraction_errors', 'updated_at'])
-
-            logger.info(f"Extraction completed for {doc.id}: {extraction_stats}")
+            # Refresh doc from database to get updated values
+            doc.refresh_from_db()
 
             serializer = self.get_serializer(doc)
             response_data = serializer.data
-            response_data['extraction_stats'] = extraction_stats
-            response_data['revision_id'] = str(revision.id)
-            response_data['style_revision_id'] = str(revision.id)  # ⚡ For BOM/Spec navigation
-            response_data['tech_pack_revision_id'] = str(tech_pack_revision.id)  # ⚡ For translation review navigation
+            response_data['extraction_stats'] = result['extraction_stats']
+            response_data['revision_id'] = result['style_revision_id']
+            response_data['style_revision_id'] = result['style_revision_id']
+            response_data['tech_pack_revision_id'] = result['tech_pack_revision_id']
 
             return Response(response_data)
 
@@ -725,6 +674,8 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
 
             # Update status to failed
             doc.status = 'failed'
+            if not doc.extraction_errors:
+                doc.extraction_errors = []
             doc.extraction_errors.append({
                 'step': 'extraction',
                 'error': str(e)

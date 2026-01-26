@@ -4,8 +4,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Revision, RevisionResponse } from '@/lib/types/revision';
+import { API_BASE_URL } from '@/lib/api/client';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v2';
+const API_BASE = API_BASE_URL;
 
 // ===== Fetch Revision Data =====
 export function useDraft(revisionId: string) {
