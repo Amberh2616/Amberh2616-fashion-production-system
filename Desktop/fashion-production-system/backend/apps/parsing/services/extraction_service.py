@@ -100,11 +100,18 @@ def perform_extraction(doc: UploadedDocument) -> dict:
 
     # FIX: For mixed files, try to extract "other" pages as both tech_pack and bom
     # This prevents content loss when AI classification is uncertain
-    if is_mixed and other_pages:
-        logger.info(f"Mixed file detected with {len(other_pages)} 'other' pages - will attempt extraction")
+    if is_mixed:
         # Add "other" pages to both tech_pack and bom extraction lists
-        tech_pack_pages = sorted(set(tech_pack_pages + other_pages))
-        bom_pages = sorted(set(bom_pages + other_pages))
+        if other_pages:
+            logger.info(f"Mixed file: adding {len(other_pages)} 'other' pages to extraction")
+            tech_pack_pages = sorted(set(tech_pack_pages + other_pages))
+            bom_pages = sorted(set(bom_pages + other_pages))
+
+        # FIX: BOM pages may also contain Tech Pack text (e.g., BULK COMMENTS)
+        # Extract Tech Pack blocks from BOM pages too
+        if bom_pages:
+            logger.info(f"Mixed file: adding {len(bom_pages)} 'bom_table' pages to Tech Pack extraction")
+            tech_pack_pages = sorted(set(tech_pack_pages + bom_pages))
 
     extraction_stats = {
         'tech_pack_blocks': 0,
