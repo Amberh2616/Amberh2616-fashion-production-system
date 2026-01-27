@@ -4,6 +4,7 @@
 
 export * from './style';
 export * from './document';
+export * from './brand';
 // Note: bom.ts has its own BOMItem that conflicts with style.ts
 // Import from './bom' directly when needed for BOM-specific types
 export type { BOMCategory, ConsumptionMaturity, MaterialStatus, BOMListResponse, UpdateBOMItemPayload } from './bom';

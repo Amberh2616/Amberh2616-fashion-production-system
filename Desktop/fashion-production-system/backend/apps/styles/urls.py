@@ -1,5 +1,6 @@
 """
-Styles app URLs - v2.2.1
+Styles app URLs - v2.3.0
+Added: Brand routes for BOM format configuration
 """
 
 from django.urls import path, include
@@ -7,6 +8,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
+router.register(r'brands', views.BrandViewSet, basename='brands')
 router.register(r'styles', views.StyleViewSet, basename='styles')
 router.register(r'style-revisions', views.StyleRevisionViewSet, basename='style-revisions')  # Fix: Avoid conflict with parsing/revisions
 router.register(r'portfolio', views.PortfolioViewSet, basename='portfolio')  # Portfolio Kanban API

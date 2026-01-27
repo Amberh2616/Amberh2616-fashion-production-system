@@ -1,12 +1,94 @@
 """
-Styles Models - v2.2.1
+Styles Models - v2.3.0
 Style-centric design: Style → StyleRevision → BOMItem/Measurement/ConstructionStep
+Added: Brand model with BOM format configuration
 """
 
 from django.db import models
 import uuid
 
 from apps.core.managers import TenantManager
+
+
+# BOM Format Choices
+BOM_FORMAT_CHOICES = [
+    ('auto', 'Auto Detect'),
+    ('vertical_table', 'Vertical Table (columns: Material, Supplier, Price...)'),
+    ('horizontal_table', 'Horizontal Table (rows: materials, columns: colors)'),
+    ('free_text', 'Free Text (FABRIC INFO sections)'),
+    ('mixed', 'Mixed Format'),
+]
+
+
+class Brand(models.Model):
+    """
+    Brand/Customer master data with BOM format configuration
+    品牌主檔 - 包含 BOM 提取格式配置
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        'core.Organization',
+        on_delete=models.CASCADE,
+        related_name='brands'
+    )
+
+    # Basic info
+    code = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="Brand code, e.g., LLL, NIKE, ADIDAS"
+    )
+    name = models.CharField(
+        max_length=200,
+        help_text="Full brand name, e.g., lululemon athletica"
+    )
+
+    # BOM Format Configuration
+    bom_format = models.CharField(
+        max_length=50,
+        choices=BOM_FORMAT_CHOICES,
+        default='auto',
+        help_text="Default BOM format for this brand's tech packs"
+    )
+    bom_extraction_rules = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Custom extraction rules: column mappings, section keywords, etc."
+    )
+    """
+    Example bom_extraction_rules:
+    {
+        "fabric_section_keywords": ["FABRIC INFO", "BODY:", "SHELL:"],
+        "trim_section_keywords": ["TRIM", "LABEL", "ZIPPER"],
+        "column_mapping": {
+            "material_name": ["Material", "Description", "Fabric"],
+            "supplier": ["Supplier", "Vendor", "Mill"],
+            "consumption": ["Usage", "Consumption", "Qty"]
+        },
+        "skip_keywords": ["TOTAL", "SUBTOTAL", "N/A"],
+        "color_row_position": "top"  # or "left" for horizontal tables
+    }
+    """
+
+    # Status
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'brands'
+        verbose_name = 'Brand'
+        verbose_name_plural = 'Brands'
+        unique_together = [['organization', 'code']]
+        ordering = ['name']
+
+    objects = TenantManager()
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
 
 
 class Style(models.Model):
@@ -32,7 +114,17 @@ class Style(models.Model):
         help_text="e.g., Nulu Cami Tank"
     )
     season = models.CharField(max_length=50, blank=True)
-    customer = models.CharField(max_length=100, blank=True)
+    customer = models.CharField(max_length=100, blank=True)  # Legacy field, kept for compatibility
+
+    # Brand relationship (for BOM format configuration)
+    brand = models.ForeignKey(
+        'Brand',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='styles',
+        help_text="Brand determines BOM extraction format"
+    )
 
     # Current version tracking
     current_revision = models.ForeignKey(

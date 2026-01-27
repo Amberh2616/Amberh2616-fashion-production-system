@@ -1,9 +1,31 @@
 """
-Styles Serializers - v2.2.1
+Styles Serializers - v2.3.0
+Added: Brand serializer with BOM format configuration
 """
 
 from rest_framework import serializers
-from .models import Style, StyleRevision, BOMItem, Measurement, ConstructionStep
+from .models import Style, StyleRevision, BOMItem, Measurement, ConstructionStep, Brand
+
+
+# ========== Brand Serializer ==========
+
+class BrandSerializer(serializers.ModelSerializer):
+    """Brand with BOM format configuration"""
+    styles_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Brand
+        fields = [
+            'id', 'code', 'name',
+            'bom_format', 'bom_extraction_rules',
+            'is_active', 'notes',
+            'styles_count',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'styles_count']
+
+    def get_styles_count(self, obj):
+        return obj.styles.count()
 
 
 # ========== Verified Data Serializers (DB Objects) ==========
@@ -143,12 +165,14 @@ class StyleSerializer(serializers.ModelSerializer):
     current_revision_status = serializers.CharField(
         source='current_revision.status', read_only=True, allow_null=True
     )
+    brand_code = serializers.CharField(source='brand.code', read_only=True, allow_null=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True, allow_null=True)
 
     class Meta:
         model = Style
         fields = [
             'id', 'organization', 'style_number', 'style_name',
-            'season', 'customer',
+            'season', 'customer', 'brand', 'brand_code', 'brand_name',
             'current_revision', 'current_revision_label', 'current_revision_status',
             'created_at', 'updated_at', 'created_by',
             'revisions',

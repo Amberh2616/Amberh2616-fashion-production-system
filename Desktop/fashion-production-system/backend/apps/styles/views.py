@@ -1,5 +1,6 @@
 """
-Styles Views - v2.2.1
+Styles Views - v2.3.0
+Added: BrandViewSet for managing brands with BOM format configuration
 """
 
 from rest_framework import status, viewsets
@@ -12,7 +13,7 @@ from django.conf import settings
 
 from django.db import models
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
-from .models import Style, StyleRevision, BOMItem, Measurement
+from .models import Style, StyleRevision, BOMItem, Measurement, Brand
 from .serializers import (
     StyleSerializer,
     StyleListSerializer,
@@ -20,8 +21,44 @@ from .serializers import (
     BOMItemSerializer,
     MeasurementSerializer,
     IntakeBulkCreateRequestSerializer,
+    BrandSerializer,
 )
 from .services import bulk_create_styles_and_revisions, build_styles_queryset_with_risk
+
+
+class BrandViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Brand CRUD operations
+    Brands contain BOM format configuration for consistent extraction
+    """
+    serializer_class = BrandSerializer
+    permission_classes = []  # TODO: Enable authentication in production
+
+    def _get_organization(self, request):
+        """Get organization from request user (SaaS-Ready)."""
+        from apps.core.models import Organization
+        # Check if user is authenticated and has organization
+        if hasattr(request, 'user') and hasattr(request.user, 'organization'):
+            org = request.user.organization
+            if org is not None:
+                return org
+        # Fallback for DEBUG mode or anonymous users
+        if settings.DEBUG:
+            return Organization.objects.first()
+        return None
+
+    def get_queryset(self):
+        """Filter brands by organization"""
+        org = self._get_organization(self.request)
+        queryset = Brand.objects.all()
+        if org is not None:
+            queryset = queryset.filter(organization=org)
+        return queryset.order_by('name')
+
+    def perform_create(self, serializer):
+        """Set organization when creating"""
+        org = self._get_organization(self.request)
+        serializer.save(organization=org)
 
 
 class BOMItemViewSet(viewsets.ModelViewSet):

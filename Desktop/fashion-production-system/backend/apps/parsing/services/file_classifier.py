@@ -77,7 +77,8 @@ def classify_pdf(pdf_path: str) -> Dict:
         page_classifications = []
 
         # Strategy: Scan in batches of 5 pages
-        for batch_start in range(0, min(total_pages, 10), 5):  # Only scan first 10 pages max
+        # Phase 1: Scan first 10 pages to detect if mixed
+        for batch_start in range(0, min(total_pages, 10), 5):
             batch_end = min(batch_start + 5, total_pages, 10)
             batch_pages = list(range(batch_start, batch_end))
 
@@ -85,9 +86,24 @@ def classify_pdf(pdf_path: str) -> Dict:
             batch_result = classify_page_batch(pdf_path, batch_pages, client)
             page_classifications.extend(batch_result)
 
-            # For remaining pages, assume same type as majority
-            if total_pages > 10:
-                # Extrapolate the most common type
+        # Check if this is a mixed document
+        types_found = set(p['type'] for p in page_classifications if p['type'] not in ['cover', 'other'])
+        is_mixed = len(types_found) >= 2
+
+        # Phase 2: Handle remaining pages
+        if total_pages > 10:
+            if is_mixed:
+                # FIX: For mixed files, scan ALL remaining pages to avoid losing content
+                logger.info(f"Mixed document detected - scanning all {total_pages - 10} remaining pages")
+                for batch_start in range(10, total_pages, 5):
+                    batch_end = min(batch_start + 5, total_pages)
+                    batch_pages = list(range(batch_start, batch_end))
+
+                    logger.info(f"Classifying pages {batch_start+1} to {batch_end}")
+                    batch_result = classify_page_batch(pdf_path, batch_pages, client)
+                    page_classifications.extend(batch_result)
+            else:
+                # For single-type documents, extrapolate remaining pages
                 types = [p['type'] for p in page_classifications if p['type'] not in ['cover', 'other']]
                 if types:
                     most_common_type = max(set(types), key=types.count)

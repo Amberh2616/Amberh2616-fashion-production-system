@@ -23,6 +23,7 @@ import {
   Activity,
   Calculator,
   Ruler,
+  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -41,6 +42,7 @@ const navigation = [
   { name: "Purchase Orders", href: "/dashboard/purchase-orders", icon: Truck },
   { name: "Suppliers", href: "/dashboard/suppliers", icon: Building2 },
   { name: "Materials", href: "/dashboard/materials", icon: Boxes },
+  { name: "Brands", href: "/dashboard/brands", icon: Tag },
 ];
 
 const bottomNavigation = [
