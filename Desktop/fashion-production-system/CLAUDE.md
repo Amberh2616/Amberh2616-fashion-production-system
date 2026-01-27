@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-26
-**Version:** 4.40.0
-**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0126 完成 ✅ | API URL 統一 + 健康檢查
+**Last Updated:** 2026-01-28
+**Version:** 4.41.0
+**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0128 完成 ✅ | Mixed 文件提取修復
 
 ---
 
@@ -263,6 +263,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | **GLO-1** | 成衣詞彙庫整合翻譯（1252 條術語）| ✅ 完成 (2026-01-22) |
 | **FIX-0124** | 詞彙庫修正 + Tech Pack 提取修復 | ✅ 完成 (2026-01-24) |
 | **FIX-0126** | API URL 統一 + 健康檢查 | ✅ 完成 (2026-01-26) |
+| **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
+| **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
@@ -825,3 +827,70 @@ Response:
 - ✅ 更新技術架構圖
 - ✅ 更新啟動指令
 - ✅ 添加健康檢查端點說明
+
+### FIX-0128 Mixed 文件提取修復 ✅ 完成 (2026-01-28)
+
+**問題描述：**
+- Mixed 文件中，bom_table 頁面的文字注釋（如 BULK COMMENTS）沒有被提取
+- 原因：提取邏輯只對 `tech_pack` 分類的頁面提取 Tech Pack 區塊
+- P1808 第 4 頁被分類為 `bom_table`，導致頁面上的英文評語完全漏翻
+
+**修復內容：**
+- ✅ Mixed 文件中，bom_table 頁面也加入 Tech Pack 提取列表
+- ✅ 確保 BOM 頁面上的文字注釋也能被提取和翻譯
+
+**修改文件：**
+- `backend/apps/parsing/services/extraction_service.py`
+
+**修復邏輯：**
+```python
+if is_mixed:
+    # 原有：other 頁面加入提取
+    if other_pages:
+        tech_pack_pages = sorted(set(tech_pack_pages + other_pages))
+        bom_pages = sorted(set(bom_pages + other_pages))
+
+    # 新增：bom_table 頁面也提取 Tech Pack
+    if bom_pages:
+        tech_pack_pages = sorted(set(tech_pack_pages + bom_pages))
+```
+
+**測試結果（P1808）：**
+| 項目 | 修復前 | 修復後 |
+|------|--------|--------|
+| 第 4 頁區塊數 | 0 | 39 |
+| BULK COMMENTS | 未提取 | ✅ 已提取並翻譯 |
+| 總區塊數 | - | 258 |
+
+---
+
+### TODO-EXT 提取預覽/檢查功能（待做）
+
+**背景：**
+展示新客戶資料時，若提取有問題會很尷尬。需要上傳後先確認分類結果再提取。
+
+**待實現功能：**
+
+| 編號 | 功能 | 說明 |
+|------|------|------|
+| **TODO-1** | 提取預覽 | 上傳後顯示每頁分類結果 + 預計提取內容摘要 |
+| **TODO-2** | 潛在問題警告 | 檢測 bom_table 頁有大量文字時，提示「建議也提取 Tech Pack」 |
+| **TODO-3** | 提取前確認對話框 | 展示前可先確認分類是否正確，必要時可手動調整 |
+
+**預期流程：**
+```
+上傳 PDF
+    ↓
+AI 分類（自動）
+    ↓
+【新增】顯示分類預覽
+    ├── 每頁類型：tech_pack / bom_table / other
+    ├── 潛在問題警告
+    └── 可手動調整分類
+    ↓
+用戶確認後提取
+    ↓
+正式提取 + 翻譯
+```
+
+**優先級：** P2（展示前建議完成）
