@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 文件翻譯管理頁面
+ * Documents 頁面
  * 使用 AI 分類結果分 Tab 查看 Tech Pack / BOM / Spec
  */
 
@@ -269,9 +269,9 @@ export default function DocumentsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">文件翻譯管理</h1>
+          <h1 className="text-2xl font-bold">Documents</h1>
           <p className="text-sm text-gray-500 mt-1">
-            依 AI 分類結果查看 Tech Pack、BOM 文件
+            View Tech Pack, BOM files by AI classification
           </p>
         </div>
         <Link

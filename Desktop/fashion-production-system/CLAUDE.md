@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
 **Last Updated:** 2026-01-28
-**Version:** 4.41.0
-**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0128 完成 ✅ | Mixed 文件提取修復
+**Version:** 4.42.0
+**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0128 + UI-0128 完成 ✅ | Documents 頁面優化
 
 ---
 
@@ -237,6 +237,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | P28 | 小助理 Assistant（指令式對話）| 2026-01-20 |
 | P29 | Documents 款式整合（Styles Tab）| 2026-01-20 |
 | DA-2 | Celery 異步處理（分類+提取 async mode）| 2026-01-21 |
+| UI-0128 | Documents 頁面優化（標題+跳轉邏輯）| 2026-01-28 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -265,6 +266,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-0126** | API URL 統一 + 健康檢查 | ✅ 完成 (2026-01-26) |
 | **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
 | **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
+| **TODO-PERF** | 提取速度優化（延遲翻譯 + 並行處理）| 待做 |
+| **TODO-i18n** | 多語言翻譯支援（中/越/柬/印尼）| 待做 |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
@@ -894,3 +897,73 @@ AI 分類（自動）
 ```
 
 **優先級：** P2（展示前建議完成）
+
+---
+
+### TODO-PERF 提取速度優化（待做）
+
+**問題：**
+- 29 頁 Mixed 文件提取需要 ~15 分鐘
+- 瓶頸：串行處理 + 每個區塊單獨翻譯
+
+**優化方案：**
+
+| 方案 | 預估提速 | 複雜度 | 說明 |
+|------|---------|--------|------|
+| **A. 並行頁面處理** | 3-5x | 中 | 多頁同時調用 Vision API（需處理 rate limit）|
+| **B. 批量翻譯** | 2-3x | 低 | 收集區塊後一次性翻譯 |
+| **C. 延遲翻譯** | 5-10x | 低 | 先提取不翻譯，翻譯改為按需/後台 |
+| **D. 智能跳過** | 1.5x | 低 | 跳過重複/空白頁 |
+
+**推薦實現順序：**
+1. **方案 C**（延遲翻譯）- 最快見效，改動最小
+2. **方案 A**（並行處理）- 進一步提速
+
+**方案 C 設計：**
+```
+提取流程（快速）：
+  PDF → 提取原文區塊 → 存入資料庫 → 完成（~2-3 分鐘）
+
+翻譯流程（按需/後台）：
+  用戶進入翻譯頁 → 觸發翻譯
+  或 Celery 後台慢慢翻譯
+```
+
+**預期效果：**
+- 29 頁 Mixed 文件：~15 分鐘 → ~2-3 分鐘
+
+**優先級：** P2
+
+---
+
+### TODO-i18n 多語言翻譯支援（待做）
+
+**需求：**
+不同地區工廠需要不同目標語言的翻譯。
+
+**支援語言：**
+
+| 語言 | GPT-4 品質 | 字體支援 | 適用地區 |
+|------|-----------|---------|---------|
+| 中文 | ⭐⭐⭐⭐⭐ | ✅ 微軟雅黑 | 中國、台灣 |
+| 越南文 | ⭐⭐⭐⭐ | ✅ 拉丁字母 | 越南 |
+| 柬埔寨文 | ⭐⭐⭐ | ⚠️ 需 Khmer 字體 | 柬埔寨 |
+| 印尼文 | ⭐⭐⭐⭐ | ✅ 拉丁字母 | 印尼 |
+
+**實現方案：**
+
+1. **翻譯服務**：`translate.py` 添加 `target_language` 參數
+2. **系統設定**：工廠級別語言設定
+3. **字體支援**：PDF 輸出需支援各語言字體
+4. **詞彙庫**：各語言專業術語詞彙庫（可選）
+
+**設計：**
+```python
+# 翻譯 API
+machine_translate(text, target_language='zh')  # 中文
+machine_translate(text, target_language='vi')  # 越南文
+machine_translate(text, target_language='km')  # 柬埔寨文
+machine_translate(text, target_language='id')  # 印尼文
+```
+
+**優先級：** P3

@@ -126,28 +126,8 @@ export default function ReviewPage() {
           setIsCompleted(true)
           toast.success('AI 提取完成!')
 
-          // Navigate based on result
-          const styleRevId = data.result.style_revision_id
-          const techPackRevId = data.result.tech_pack_revision_id
-
-          if (styleRevId || techPackRevId) {
-            const fileType = status?.classification_result?.file_type || 'tech_pack'
-            const hasBOM = status?.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
-            const hasSpec = status?.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
-
-            let targetUrl: string
-            if ((fileType === 'bom' || hasBOM) && styleRevId) {
-              targetUrl = `/dashboard/revisions/${styleRevId}/bom`
-            } else if ((fileType === 'measurement' || hasSpec) && styleRevId) {
-              targetUrl = `/dashboard/revisions/${styleRevId}/spec`
-            } else if (techPackRevId) {
-              targetUrl = `/dashboard/revisions/${techPackRevId}/review`
-            } else {
-              targetUrl = `/dashboard/styles`
-            }
-
-            router.push(targetUrl)
-          }
+          // Navigate to Documents page after extraction
+          router.push('/dashboard/tech-packs')
         } else if (data.result.error) {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
           if (timeIntervalRef.current) clearInterval(timeIntervalRef.current)
@@ -285,20 +265,10 @@ export default function ReviewPage() {
         const hasBOM = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'bom_table')
         const hasSpec = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'measurement_table')
 
-        // Redirect based on file type (BOM/Spec use style_revision_id, Tech Pack uses tech_pack_revision_id)
-        let targetUrl: string
-        if ((fileType === 'bom' || hasBOM) && styleRevId) {
-          targetUrl = `/dashboard/revisions/${styleRevId}/bom`
-        } else if ((fileType === 'measurement' || hasSpec) && styleRevId) {
-          targetUrl = `/dashboard/revisions/${styleRevId}/spec`
-        } else if (techPackRevId) {
-          targetUrl = `/dashboard/revisions/${techPackRevId}/review`
-        } else {
-          // Fallback
-          targetUrl = `/dashboard/styles`
-        }
-
+        // Redirect to Documents page after extraction
+        const targetUrl = '/dashboard/tech-packs'
         console.log('Redirecting to:', targetUrl)
+        toast.success('Extraction completed!')
         router.push(targetUrl)
         return
       }
@@ -319,20 +289,9 @@ export default function ReviewPage() {
           const pollStyleRevId = statusData.style_revision_id
           const pollTechPackRevId = statusData.tech_pack_revision_id
 
-          if (pollStyleRevId || pollTechPackRevId) {
-            const fileType = statusData.classification_result?.file_type || 'tech_pack'
-            const hasBOM = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
-            const hasSpec = statusData.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
-
-            // 立即跳轉，不彈窗
-            if ((fileType === 'bom' || hasBOM) && pollStyleRevId) {
-              router.push(`/dashboard/revisions/${pollStyleRevId}/bom`)
-            } else if ((fileType === 'measurement' || hasSpec) && pollStyleRevId) {
-              router.push(`/dashboard/revisions/${pollStyleRevId}/spec`)
-            } else if (pollTechPackRevId) {
-              router.push(`/dashboard/revisions/${pollTechPackRevId}/review`)
-            }
-          }
+          // Redirect to Documents page after extraction
+          toast.success('Extraction completed!')
+          router.push('/dashboard/tech-packs')
         } else if (statusData.status === 'failed') {
           clearInterval(pollInterval)
           setIsExtracting(false)
