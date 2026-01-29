@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-28
-**Version:** 4.42.0
-**Status:** P0-P29 + DA-2 + P23 + GLO-1 + FIX-0128 + UI-0128 完成 ✅ | Documents 頁面優化
+**Last Updated:** 2026-01-29
+**Version:** 4.43.0
+**Status:** P0-P29 + SaaS-AUTH 完成 ✅ | 前端登入 + JWT 認證 + Token 自動刷新
 
 ---
 
@@ -240,6 +240,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | P29 | Documents 款式整合（Styles Tab）| 2026-01-20 |
 | DA-2 | Celery 異步處理（分類+提取 async mode）| 2026-01-21 |
 | UI-0128 | Documents 頁面優化（標題+跳轉邏輯）| 2026-01-28 |
+| SaaS-AUTH | 前端登入 + JWT 認證 + Token 自動刷新 | 2026-01-29 |
+| DOCS | SDD + TDD 技術文檔 | 2026-01-29 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -267,14 +269,17 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-0124** | 詞彙庫修正 + Tech Pack 提取修復 | ✅ 完成 (2026-01-24) |
 | **FIX-0126** | API URL 統一 + 健康檢查 | ✅ 完成 (2026-01-26) |
 | **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
+| **SaaS-AUTH** | 前端登入 + JWT 認證 + Token 自動刷新 | ✅ 完成 (2026-01-29) |
 | **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
 | **TODO-PERF** | 提取速度優化（延遲翻譯 + 並行處理）| 待做 |
 | **TODO-i18n** | 多語言翻譯支援（中/越/柬/印尼）| 待做 |
 | **TODO-COST** | 完整成本分析（報價 vs 實際成本：物料+人工+損耗）| 待做 |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
-| **SaaS-MVP** | 數據隔離 ✅ 已完成 / 前端登入 ❌ 待做 (4-6h) | 部分完成 |
-| SaaS-RBAC | 權限控制 + 用戶管理 (10-14h) | 計劃中 |
+| **SaaS-MVP** | 數據隔離 ✅ / 前端登入 ✅ | ✅ 完成 |
+| **SaaS-AUTH-2** | 記住我 / 忘記密碼 / 註冊頁 | 待做 (1-2h) |
+| **SaaS-RBAC** | 權限控制 + 用戶管理 | 待做 (10-14h) |
+| **SaaS-BILLING** | 計費系統整合 (Stripe) | 待做 (8-12h) |
 | Phase B | Supplier Portal | 計劃中 |
 
 ### 已修復問題快覽（詳見 docs/SYSTEM-ACCEPTANCE-REPORT.md）
@@ -867,6 +872,52 @@ if is_mixed:
 | 第 4 頁區塊數 | 0 | 39 |
 | BULK COMMENTS | 未提取 | ✅ 已提取並翻譯 |
 | 總區塊數 | - | 258 |
+
+---
+
+### SaaS-AUTH 前端登入 + JWT 認證 ✅ 完成 (2026-01-29)
+
+**已實現功能：**
+
+| 功能 | 說明 |
+|------|------|
+| 登入頁面 | `/login` - 帳號密碼登入 UI |
+| JWT Token | 後端 `/api/v2/auth/token/` 端點 |
+| Token 刷新 | 後端 `/api/v2/auth/token/refresh/` 端點 |
+| 認證狀態 | Zustand + localStorage persist |
+| 路由保護 | AuthGuard 組件包裹 dashboard |
+| 自動刷新 | API 401 時自動刷新 token 並重試 |
+| 登出功能 | TopNav 下拉選單登出按鈕 |
+
+**檔案位置：**
+
+| 類型 | 檔案 |
+|------|------|
+| 後端 | `backend/config/urls.py` (JWT URLs) |
+| 登入頁 | `frontend/app/login/page.tsx` |
+| Auth API | `frontend/lib/api/auth.ts` |
+| Auth Store | `frontend/lib/stores/authStore.ts` |
+| 路由保護 | `frontend/components/providers/AuthGuard.tsx` |
+| API Client | `frontend/lib/api/client.ts` (auto refresh) |
+| TopNav | `frontend/components/layout/TopNav.tsx` (logout) |
+
+**Token 時效：**
+- Access Token: 1 小時
+- Refresh Token: 7 天
+
+**使用方式：**
+```bash
+# 創建用戶
+cd backend && python manage.py createsuperuser
+
+# 訪問
+http://localhost:3000/login
+```
+
+**待做（SaaS-AUTH-2）：**
+- [ ] 記住我 (Remember me)
+- [ ] 忘記密碼
+- [ ] 註冊頁
 
 ---
 
