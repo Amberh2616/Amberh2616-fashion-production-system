@@ -3,6 +3,8 @@
  * Base URL and common fetch wrapper
  */
 
+import { getAccessToken } from '@/lib/stores/authStore';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v2';
 
 export interface ApiError {
@@ -20,10 +22,18 @@ export async function apiClient<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
+  // Get auth token
+  const token = getAccessToken();
+  const authHeaders: Record<string, string> = {};
+  if (token) {
+    authHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
+        ...authHeaders,
         ...options?.headers,
       },
     });

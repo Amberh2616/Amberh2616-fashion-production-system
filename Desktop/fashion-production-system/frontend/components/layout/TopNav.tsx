@@ -1,10 +1,26 @@
 "use client";
 
-import { Search, Bell, User } from "lucide-react";
+import { Search, Bell, User, LogOut } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/lib/stores/authStore";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function TopNav() {
   const [searchQuery, setSearchQuery] = useState("");
+  const router = useRouter();
+  const { logout } = useAuthStore();
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
 
   return (
     <div className="h-16 border-b bg-white px-6 flex items-center justify-between sticky top-0 z-10">
@@ -31,15 +47,30 @@ export function TopNav() {
         </button>
 
         {/* User Menu */}
-        <button className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg transition-colors">
-          <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center">
-            <User className="w-4 h-4 text-white" />
-          </div>
-          <div className="text-left hidden md:block">
-            <p className="text-sm font-medium text-slate-700">Amber</p>
-            <p className="text-xs text-slate-500">Admin</p>
-          </div>
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-white" />
+              </div>
+              <div className="text-left hidden md:block">
+                <p className="text-sm font-medium text-slate-700">User</p>
+                <p className="text-xs text-slate-500">Admin</p>
+              </div>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem disabled>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

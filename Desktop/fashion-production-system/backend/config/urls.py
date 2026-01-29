@@ -7,6 +7,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework import routers
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
 # TODO: Add drf_spectacular to requirements, then uncomment
 # from drf_spectacular.views import (
 #     SpectacularAPIView,
@@ -47,6 +51,10 @@ urlpatterns = [
 
     # DRF auth
     path("api-auth/", include("rest_framework.urls")),
+
+    # JWT Authentication
+    path("api/v2/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/v2/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 ]
 
 # Serve media files in development
