@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Factory } from 'lucide-react';
@@ -15,12 +17,13 @@ export default function LoginPage() {
   const { login, isLoading, error, clearError } = useAuthStore();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
 
-    const success = await login(username, password);
+    const success = await login(username, password, rememberMe);
     if (success) {
       router.push('/dashboard');
     }
@@ -76,6 +79,26 @@ export default function LoginPage() {
               />
             </div>
 
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  disabled={isLoading}
+                />
+                <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
+                  Remember me
+                </Label>
+              </div>
+              <Link
+                href="/forgot-password"
+                className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
@@ -89,8 +112,17 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center text-sm text-slate-500">
+            <p>
+              Don&apos;t have an account?{' '}
+              <Link href="/register" className="text-blue-600 hover:text-blue-800 hover:underline">
+                Sign up
+              </Link>
+            </p>
+          </div>
+
+          <div className="mt-4 text-center text-xs text-slate-400">
             <p>AI-Augmented PLM + ERP Lite</p>
-            <p className="mt-1">for Garment Factories</p>
+            <p className="mt-0.5">for Garment Factories</p>
           </div>
         </CardContent>
       </Card>

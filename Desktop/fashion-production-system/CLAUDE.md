@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-29
-**Version:** 4.43.0
-**Status:** P0-P29 + SaaS-AUTH 完成 ✅ | 前端登入 + JWT 認證 + Token 自動刷新
+**Last Updated:** 2026-01-31
+**Version:** 4.46.0
+**Status:** P0-P29 + TODO-PERF 完成 ✅ | 延遲翻譯優化（提取速度 5-10x 提升）
 
 ---
 
@@ -271,14 +271,14 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
 | **SaaS-AUTH** | 前端登入 + JWT 認證 + Token 自動刷新 | ✅ 完成 (2026-01-29) |
 | **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
-| **TODO-PERF** | 提取速度優化（延遲翻譯 + 並行處理）| 待做 |
+| **TODO-PERF** | 提取速度優化（延遲翻譯 + 智能跳過）| ✅ 完成 (2026-01-31) |
 | **TODO-i18n** | 多語言翻譯支援（中/越/柬/印尼）| 待做 |
 | **TODO-COST** | 完整成本分析（報價 vs 實際成本：物料+人工+損耗）| 待做 |
 | **P22** | 庫存管理 (Inventory) | 規劃中 |
 | P12 | 自訂 Excel/PDF 模板 | 計劃中 |
 | **SaaS-MVP** | 數據隔離 ✅ / 前端登入 ✅ | ✅ 完成 |
-| **SaaS-AUTH-2** | 記住我 / 忘記密碼 / 註冊頁 | 待做 (1-2h) |
-| **SaaS-RBAC** | 權限控制 + 用戶管理 | 待做 (10-14h) |
+| **SaaS-AUTH-2** | 記住我 / 忘記密碼 / 註冊頁 | ✅ 完成 (2026-01-31) |
+| **SaaS-RBAC** | 權限控制 + 用戶管理 | ✅ 完成 (2026-01-31) |
 | **SaaS-BILLING** | 計費系統整合 (Stripe) | 待做 (8-12h) |
 | Phase B | Supplier Portal | 計劃中 |
 
@@ -914,10 +914,120 @@ cd backend && python manage.py createsuperuser
 http://localhost:3000/login
 ```
 
-**待做（SaaS-AUTH-2）：**
-- [ ] 記住我 (Remember me)
-- [ ] 忘記密碼
-- [ ] 註冊頁
+---
+
+### SaaS-AUTH-2 記住我 / 註冊 / 忘記密碼 ✅ 完成 (2026-01-31)
+
+**已實現功能：**
+
+| 功能 | 說明 |
+|------|------|
+| 記住我 | Checkbox 控制 localStorage/sessionStorage 切換 |
+| 註冊頁 | `/register` - 用戶自助註冊 |
+| 忘記密碼 | `/forgot-password` - 發送重置郵件 |
+| 重置密碼 | `/reset-password` - Token 驗證重置 |
+
+**檔案位置：**
+
+| 類型 | 檔案 |
+|------|------|
+| 後端 Serializers | `backend/apps/core/serializers.py` |
+| 後端 Views | `backend/apps/core/views.py` |
+| 後端 URLs | `backend/apps/core/auth_urls.py` |
+| Auth Store | `frontend/lib/stores/authStore.ts` (rememberMe) |
+| 登入頁 | `frontend/app/login/page.tsx` |
+| 註冊頁 | `frontend/app/register/page.tsx` |
+| 忘記密碼頁 | `frontend/app/forgot-password/page.tsx` |
+| 重置密碼頁 | `frontend/app/reset-password/page.tsx` |
+| Auth API | `frontend/lib/api/auth.ts` |
+
+**API 端點：**
+
+| 端點 | 方法 | 說明 |
+|------|------|------|
+| `/api/v2/auth/register/` | POST | 用戶註冊 |
+| `/api/v2/auth/user/` | GET | 取得當前用戶 |
+| `/api/v2/auth/password-reset/` | POST | 請求密碼重置 |
+| `/api/v2/auth/password-reset/confirm/` | POST | 確認密碼重置 |
+
+**Email 設定（生產環境需配置）：**
+```python
+# config/settings/production.py
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "your-email@gmail.com"
+EMAIL_HOST_PASSWORD = "app-password"
+FRONTEND_URL = "https://your-domain.com"
+```
+
+---
+
+### SaaS-RBAC 權限控制 + 用戶管理 ✅ 完成 (2026-01-31)
+
+**角色權限矩陣：**
+
+| 功能 | Admin | Merchandiser | Factory | Viewer |
+|------|-------|--------------|---------|--------|
+| 用戶管理 | ✅ | - | - | - |
+| 創建/編輯款式 | ✅ | ✅ | - | - |
+| 查看報價 | ✅ | ✅ | - | - |
+| 更新生產狀態 | ✅ | ✅ | ✅ | - |
+| 查看資料 | ✅ | ✅ | ✅ | ✅ |
+
+**後端檔案：**
+
+| 檔案 | 說明 |
+|------|------|
+| `backend/apps/core/permissions.py` | 權限定義 + DRF Permission Classes |
+| `backend/apps/core/views.py` | UserViewSet + OrganizationViewSet |
+| `backend/apps/core/serializers.py` | User CRUD Serializers |
+| `backend/apps/core/auth_urls.py` | 用戶管理 API 路由 |
+
+**前端檔案：**
+
+| 檔案 | 說明 |
+|------|------|
+| `frontend/lib/api/users.ts` | 用戶管理 API |
+| `frontend/lib/permissions.ts` | 權限常量定義 |
+| `frontend/lib/hooks/usePermissions.ts` | 權限 Hooks |
+| `frontend/components/providers/PermissionGate.tsx` | 權限控制組件 |
+| `frontend/app/dashboard/settings/users/page.tsx` | 用戶管理頁面 |
+
+**API 端點：**
+
+| 端點 | 方法 | 說明 |
+|------|------|------|
+| `/api/v2/auth/users/` | GET | 列出用戶 |
+| `/api/v2/auth/users/` | POST | 創建用戶 |
+| `/api/v2/auth/users/{id}/` | PATCH | 更新用戶 |
+| `/api/v2/auth/users/invite/` | POST | 邀請用戶 |
+| `/api/v2/auth/users/{id}/activate/` | POST | 啟用用戶 |
+| `/api/v2/auth/users/{id}/deactivate/` | POST | 停用用戶 |
+| `/api/v2/auth/users/roles/` | GET | 取得角色列表 |
+| `/api/v2/auth/users/stats/` | GET | 用戶統計 |
+| `/api/v2/auth/users/me/` | GET | 當前用戶 |
+
+**前端使用範例：**
+
+```tsx
+// 權限控制組件
+<PermissionGate permission="users.view">
+  <UserManagementButton />
+</PermissionGate>
+
+<PermissionGate adminOnly>
+  <AdminPanel />
+</PermissionGate>
+
+<PermissionGate editOnly fallback={<span>View only</span>}>
+  <EditButton />
+</PermissionGate>
+
+// Hooks
+const { canEdit, isAdmin, hasPermission } = usePermissions();
+if (canEdit()) { /* show edit button */ }
+```
 
 ---
 
@@ -954,39 +1064,65 @@ AI 分類（自動）
 
 ---
 
-### TODO-PERF 提取速度優化（待做）
+### TODO-PERF 提取速度優化 ✅ 完成 (2026-01-31)
 
-**問題：**
+**問題（已解決）：**
 - 29 頁 Mixed 文件提取需要 ~15 分鐘
 - 瓶頸：串行處理 + 每個區塊單獨翻譯
 
-**優化方案：**
+**實現方案：C（延遲翻譯）+ D（智能跳過）+ B（批量翻譯）**
 
-| 方案 | 預估提速 | 複雜度 | 說明 |
-|------|---------|--------|------|
-| **A. 並行頁面處理** | 3-5x | 中 | 多頁同時調用 Vision API（需處理 rate limit）|
-| **B. 批量翻譯** | 2-3x | 低 | 收集區塊後一次性翻譯 |
-| **C. 延遲翻譯** | 5-10x | 低 | 先提取不翻譯，翻譯改為按需/後台 |
-| **D. 智能跳過** | 1.5x | 低 | 跳過重複/空白頁 |
-
-**推薦實現順序：**
-1. **方案 C**（延遲翻譯）- 最快見效，改動最小
-2. **方案 A**（並行處理）- 進一步提速
-
-**方案 C 設計：**
+**架構設計：**
 ```
-提取流程（快速）：
-  PDF → 提取原文區塊 → 存入資料庫 → 完成（~2-3 分鐘）
+提取流程（快速，~2-3 分鐘）：
+  PDF → 提取原文區塊 → 存入資料庫（translation_status=pending）→ 完成
 
 翻譯流程（按需/後台）：
-  用戶進入翻譯頁 → 觸發翻譯
-  或 Celery 後台慢慢翻譯
+  用戶進入翻譯頁 → 點擊「Translate All」→ 批量翻譯
+  或 Celery 後台異步翻譯
 ```
 
-**預期效果：**
-- 29 頁 Mixed 文件：~15 分鐘 → ~2-3 分鐘
+**後端實現：**
 
-**優先級：** P2
+| 檔案 | 說明 |
+|------|------|
+| `models_blocks.py` | DraftBlock 新增 translation_status/error/retry_count 欄位 |
+| `extraction_service.py` | 提取時跳過翻譯 + 智能跳過判斷 |
+| `translation_service.py` | 翻譯服務（單塊/單頁/整份/重試）|
+| `tasks/_main.py` | Celery 異步翻譯任務 |
+| `views.py` | 翻譯 API 端點 |
+
+**前端實現：**
+
+| 檔案 | 說明 |
+|------|------|
+| `lib/api/translation.ts` | 翻譯 API 函數 |
+| `components/translation/TranslationProgress.tsx` | 翻譯進度卡片 + 按鈕 |
+
+**API 端點：**
+
+| 端點 | 方法 | 說明 |
+|------|------|------|
+| `/revisions/{id}/translation-progress/` | GET | 獲取翻譯進度 |
+| `/revisions/{id}/translate-batch/` | POST | 翻譯整份文件 |
+| `/revisions/{id}/translate-page/{page}/` | POST | 翻譯單頁 |
+| `/revisions/{id}/retry-failed/` | POST | 重試失敗翻譯 |
+
+**翻譯狀態：**
+- `pending`: 待翻譯
+- `translating`: 翻譯中
+- `done`: 已完成
+- `failed`: 翻譯失敗
+- `skipped`: 跳過（純數字/標記/短文字）
+
+**智能跳過規則：**
+- 純數字（如 "123", "45.6"）
+- 短文字（≤2 字元）
+- 常見標記（如 "-", "N/A", "TBD", "/"）
+
+**效能提升：**
+- 29 頁 Mixed 文件：~15 分鐘 → ~2-3 分鐘（提取）
+- 翻譯改為按需觸發，可批量處理
 
 ---
 

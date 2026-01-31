@@ -55,6 +55,9 @@ urlpatterns = [
     # JWT Authentication
     path("api/v2/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/v2/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+
+    # Auth endpoints (register, password reset, user info)
+    path("api/v2/auth/", include("apps.core.auth_urls")),
 ]
 
 # Serve media files in development

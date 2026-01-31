@@ -11,6 +11,7 @@ import {
   Bot,
   Settings,
   User,
+  Users,
   ChevronLeft,
   ChevronRight,
   Upload,
@@ -47,6 +48,7 @@ const navigation = [
 
 const bottomNavigation = [
   { name: "AI Review", href: "/dashboard/ai-review", icon: Bot, badge: 3 },
+  { name: "Users", href: "/dashboard/settings/users", icon: Users },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

@@ -247,7 +247,7 @@ def _extract_tech_pack_blocks(file_path: str, tech_pack_pages: list, tech_pack_r
                         if is_text_layer and len(text) <= 3:
                             continue
 
-                        # Create DraftBlock
+                        # Create DraftBlock with translation
                         DraftBlock.objects.create(
                             page=page_obj,
                             source_text=text,
@@ -258,6 +258,7 @@ def _extract_tech_pack_blocks(file_path: str, tech_pack_pages: list, tech_pack_r
                             bbox_height=bbox_height,
                             block_type=block.get('type', 'callout'),
                             status='auto',
+                            translation_status='done' if translation else 'pending',
                         )
                         total_blocks += 1
 
@@ -269,3 +270,37 @@ def _extract_tech_pack_blocks(file_path: str, tech_pack_pages: list, tech_pack_r
         pdf_doc.close()
 
     return total_blocks
+
+
+def _should_skip_translation(text: str) -> bool:
+    """
+    判斷是否應跳過翻譯（方案 D：智能跳過）
+
+    跳過情況：
+    - 純數字（如尺寸數值）
+    - 極短文字（< 2 字元）
+    - 常見不需翻譯的標記（如 "N/A", "TBD"）
+    """
+    if not text:
+        return True
+
+    text = text.strip()
+
+    # 極短文字
+    if len(text) < 2:
+        return True
+
+    # 純數字（含小數點、斜線）
+    import re
+    if re.match(r'^[\d\.\-\/\s\"\'\,]+$', text):
+        return True
+
+    # 常見不需翻譯的標記
+    skip_patterns = [
+        'N/A', 'TBD', 'TBC', 'NA', '-', '--', '—',
+        'YES', 'NO', 'OK', 'X', '✓', '✗',
+    ]
+    if text.upper() in skip_patterns:
+        return True
+
+    return False

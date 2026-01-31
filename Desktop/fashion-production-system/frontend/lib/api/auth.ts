@@ -77,3 +77,86 @@ export async function getCurrentUser(accessToken: string): Promise<User> {
 
   return response.json();
 }
+
+/**
+ * Register a new user
+ */
+export interface RegisterData {
+  username: string;
+  email: string;
+  password: string;
+  password_confirm: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+export async function register(data: RegisterData): Promise<{ message: string; user: User }> {
+  const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    // Format validation errors
+    if (typeof error === 'object' && !error.detail) {
+      const messages = Object.entries(error)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+        .join('; ');
+      throw new Error(messages || 'Registration failed');
+    }
+    throw new Error(error.detail || 'Registration failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Request password reset
+ */
+export async function requestPasswordReset(email: string): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE_URL}/auth/password-reset/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || 'Failed to send reset email');
+  }
+
+  return response.json();
+}
+
+/**
+ * Confirm password reset
+ */
+export interface PasswordResetConfirmData {
+  uid: string;
+  token: string;
+  password: string;
+  password_confirm: string;
+}
+
+export async function confirmPasswordReset(data: PasswordResetConfirmData): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE_URL}/auth/password-reset/confirm/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.detail || 'Failed to reset password');
+  }
+
+  return response.json();
+}

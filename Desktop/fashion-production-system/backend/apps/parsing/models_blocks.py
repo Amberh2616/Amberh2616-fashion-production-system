@@ -52,6 +52,39 @@ class Revision(models.Model):
     def __str__(self):
         return self.filename
 
+    @property
+    def translation_stats(self):
+        """整份文件的翻譯進度統計"""
+        from django.db.models import Count, Q
+
+        # 一次查詢所有 blocks 的狀態
+        stats = DraftBlock.objects.filter(
+            page__revision=self
+        ).aggregate(
+            total=Count('id'),
+            done=Count('id', filter=Q(translation_status='done')),
+            pending=Count('id', filter=Q(translation_status='pending')),
+            failed=Count('id', filter=Q(translation_status='failed')),
+            skipped=Count('id', filter=Q(translation_status='skipped')),
+            translating=Count('id', filter=Q(translation_status='translating')),
+        )
+
+        total = stats['total'] or 0
+        done = stats['done'] or 0
+        skipped = stats['skipped'] or 0
+        completed = done + skipped
+        progress = round(completed / total * 100) if total > 0 else 0
+
+        return {
+            'total': total,
+            'done': done,
+            'pending': stats['pending'] or 0,
+            'failed': stats['failed'] or 0,
+            'skipped': skipped,
+            'translating': stats['translating'] or 0,
+            'progress': progress,
+        }
+
 
 class RevisionPage(models.Model):
     """
@@ -73,7 +106,33 @@ class RevisionPage(models.Model):
         verbose_name_plural = 'Revision Pages'
 
     def __str__(self):
-        return f"{self.revision.revision_label} - Page {self.page_number}"
+        return f"Page {self.page_number}"
+
+    @property
+    def translation_stats(self):
+        """翻譯進度統計"""
+        blocks = self.blocks.all()
+        total = blocks.count()
+        if total == 0:
+            return {'total': 0, 'done': 0, 'pending': 0, 'failed': 0, 'progress': 100}
+
+        done = blocks.filter(translation_status='done').count()
+        pending = blocks.filter(translation_status='pending').count()
+        failed = blocks.filter(translation_status='failed').count()
+        skipped = blocks.filter(translation_status='skipped').count()
+
+        # 進度計算：done + skipped 視為完成
+        completed = done + skipped
+        progress = round(completed / total * 100) if total > 0 else 0
+
+        return {
+            'total': total,
+            'done': done,
+            'pending': pending,
+            'failed': failed,
+            'skipped': skipped,
+            'progress': progress,
+        }
 
 
 class DraftBlock(models.Model):
@@ -101,6 +160,15 @@ class DraftBlock(models.Model):
         ("auto", "Auto Translated"),         # AI 自動翻譯
         ("edited", "Edited"),                # 人工修改過
         ("approved", "Approved"),            # 已確認
+    ]
+
+    # 翻譯狀態（延遲翻譯優化）
+    TRANSLATION_STATUS_CHOICES = [
+        ("pending", "Pending"),              # 等待翻譯
+        ("translating", "Translating"),      # 翻譯中
+        ("done", "Done"),                    # 翻譯完成
+        ("failed", "Failed"),                # 翻譯失敗
+        ("skipped", "Skipped"),              # 跳過（空白/重複）
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -134,6 +202,23 @@ class DraftBlock(models.Model):
 
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="auto"
+    )
+
+    # ⭐ 翻譯狀態（延遲翻譯優化）
+    translation_status = models.CharField(
+        max_length=20,
+        choices=TRANSLATION_STATUS_CHOICES,
+        default="pending",
+        help_text="翻譯處理狀態"
+    )
+    translation_error = models.TextField(
+        blank=True,
+        null=True,
+        help_text="翻譯失敗時的錯誤訊息"
+    )
+    translation_retry_count = models.PositiveIntegerField(
+        default=0,
+        help_text="翻譯重試次數"
     )
 
     # ⭐ 翻譯疊加位置（用戶可拖動調整）

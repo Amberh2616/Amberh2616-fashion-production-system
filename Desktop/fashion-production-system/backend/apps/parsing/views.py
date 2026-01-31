@@ -159,24 +159,131 @@ class RevisionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["post"], url_path="translate-batch")
     def translate_batch(self, request, pk=None):
         """
-        Batch translate all DraftBlocks for a revision
+        Batch translate all DraftBlocks for a revision (延遲翻譯優化)
 
         POST /api/v2/revisions/{id}/translate-batch/
-        Body: { "force": false }
+        Body: {
+            "mode": "missing_only" | "all",
+            "async": true | false
+        }
+
+        Returns:
+            Sync: { "total": int, "success": int, "failed": int, "pages": int }
+            Async: { "task_id": str, "status": "pending" }
+        """
+        from .services.translation_service import translate_document, get_translation_progress
+        from .tasks._main import translate_document_task
+
+        mode = request.data.get('mode', 'missing_only')
+        use_async = request.data.get('async', False)
+
+        revision = self.get_object()
+
+        if use_async:
+            # 異步翻譯
+            task = translate_document_task.delay(str(revision.id), mode=mode)
+            return Response({
+                'task_id': task.id,
+                'status': 'pending',
+            }, status=status.HTTP_202_ACCEPTED)
+        else:
+            # 同步翻譯
+            result = translate_document(revision, mode=mode)
+            return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="translation-progress")
+    def translation_progress(self, request, pk=None):
+        """
+        Get translation progress for a revision
+
+        GET /api/v2/revisions/{id}/translation-progress/
 
         Returns:
             {
-                "translated": 10,
-                "skipped": 5,
-                "errors": [],
-                "total": 15
+                "total": int,
+                "done": int,
+                "pending": int,
+                "failed": int,
+                "skipped": int,
+                "progress": int (0-100),
+                "pages": [{ "page_number": int, "progress": int, ... }, ...]
             }
         """
-        from .services.techpack_translator import translate_draft_blocks
+        from .services.translation_service import get_translation_progress
+
+        revision = self.get_object()
+        progress = get_translation_progress(revision)
+        return Response(progress, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="translate-page/(?P<page_num>[0-9]+)")
+    def translate_page(self, request, pk=None, page_num=None):
+        """
+        Translate a single page (延遲翻譯優化)
+
+        POST /api/v2/revisions/{id}/translate-page/{page_num}/
+        Body: {
+            "force": false,
+            "async": false
+        }
+
+        Returns:
+            Sync: { "total": int, "success": int, "failed": int }
+            Async: { "task_id": str, "status": "pending" }
+        """
+        from .services.translation_service import translate_page as do_translate_page
+        from .tasks._main import translate_page_task
+
+        revision = self.get_object()
+        page_num = int(page_num)
+
+        # Find page
+        try:
+            page = revision.pages.get(page_number=page_num)
+        except RevisionPage.DoesNotExist:
+            return Response(
+                {"detail": f"Page {page_num} not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         force = request.data.get('force', False)
-        result = translate_draft_blocks(revision_id=str(pk), force=force)
-        return Response(result, status=status.HTTP_200_OK)
+        use_async = request.data.get('async', False)
+
+        if use_async:
+            task = translate_page_task.delay(page.id, force=force)
+            return Response({
+                'task_id': task.id,
+                'status': 'pending',
+            }, status=status.HTTP_202_ACCEPTED)
+        else:
+            result = do_translate_page(page, force=force)
+            return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="retry-failed")
+    def retry_failed(self, request, pk=None):
+        """
+        Retry failed translations
+
+        POST /api/v2/revisions/{id}/retry-failed/
+        Body: { "async": false }
+
+        Returns:
+            { "total": int, "success": int, "failed": int }
+        """
+        from .services.translation_service import retry_failed_blocks
+        from .tasks._main import retry_failed_translations_task
+
+        revision = self.get_object()
+        use_async = request.data.get('async', False)
+
+        if use_async:
+            task = retry_failed_translations_task.delay(str(revision.id))
+            return Response({
+                'task_id': task.id,
+                'status': 'pending',
+            }, status=status.HTTP_202_ACCEPTED)
+        else:
+            result = retry_failed_blocks(revision)
+            return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="export-bilingual-pdf")
     def export_bilingual_pdf(self, request, pk=None):

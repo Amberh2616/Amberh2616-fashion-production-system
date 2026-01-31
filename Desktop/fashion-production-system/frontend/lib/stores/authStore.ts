@@ -2,8 +2,34 @@
  * Authentication Store (Zustand)
  */
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { login as apiLogin, refreshToken as apiRefreshToken, TokenPair } from '@/lib/api/auth';
+
+// Custom storage that checks rememberMe flag
+const createAuthStorage = (): StateStorage => ({
+  getItem: (name: string): string | null => {
+    if (typeof window === 'undefined') return null;
+    // Try localStorage first (remember me), then sessionStorage
+    return localStorage.getItem(name) || sessionStorage.getItem(name);
+  },
+  setItem: (name: string, value: string): void => {
+    if (typeof window === 'undefined') return;
+    // Check if rememberMe is enabled from the stored state
+    const state = JSON.parse(value);
+    if (state?.state?.rememberMe) {
+      localStorage.setItem(name, value);
+      sessionStorage.removeItem(name);
+    } else {
+      sessionStorage.setItem(name, value);
+      localStorage.removeItem(name);
+    }
+  },
+  removeItem: (name: string): void => {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(name);
+    sessionStorage.removeItem(name);
+  },
+});
 
 interface AuthState {
   accessToken: string | null;
@@ -11,12 +37,14 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  rememberMe: boolean;
 
   // Actions
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   logout: () => void;
   refreshAccessToken: () => Promise<boolean>;
   clearError: () => void;
+  setRememberMe: (value: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -27,9 +55,10 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      rememberMe: false,
 
-      login: async (username: string, password: string) => {
-        set({ isLoading: true, error: null });
+      login: async (username: string, password: string, rememberMe = false) => {
+        set({ isLoading: true, error: null, rememberMe });
         try {
           const tokens: TokenPair = await apiLogin({ username, password });
           set({
@@ -38,6 +67,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            rememberMe,
           });
           return true;
         } catch (err) {
@@ -56,6 +86,7 @@ export const useAuthStore = create<AuthState>()(
           refreshToken: null,
           isAuthenticated: false,
           error: null,
+          rememberMe: false,
         });
       },
 
@@ -82,13 +113,16 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearError: () => set({ error: null }),
+      setRememberMe: (value: boolean) => set({ rememberMe: value }),
     }),
     {
       name: 'auth-storage',
+      storage: createJSONStorage(() => createAuthStorage()),
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
+        rememberMe: state.rememberMe,
       }),
     }
   )
