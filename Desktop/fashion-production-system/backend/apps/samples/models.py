@@ -57,30 +57,37 @@ class SampleRequestType:
 
 class SampleRequestStatus:
     """
-    簡化版狀態（Phase 3 重構）
-    Request 只做「容器」，不承擔 quote/approve 這些流程
+    支援舊有 submit/quote/approve 流程，同時兼容 Phase 3 簡化狀態。
     """
+    # Legacy / workflow states
+    DRAFT = 'draft'
+    QUOTE_REQUESTED = 'quote_requested'
+    QUOTED = 'quoted'
+    APPROVED = 'approved'
+    IN_EXECUTION = 'in_execution'
+    COMPLETED = 'completed'
+    REJECTED = 'rejected'
+
+    # Simplified Kanban states
     OPEN = 'open'
     ON_HOLD = 'on_hold'
     CLOSED = 'closed'
     CANCELLED = 'cancelled'
 
     CHOICES = [
+        # Legacy
+        (DRAFT, 'Draft'),
+        (QUOTE_REQUESTED, 'Quote Requested'),
+        (QUOTED, 'Quoted'),
+        (APPROVED, 'Approved'),
+        (IN_EXECUTION, 'In Execution'),
+        (COMPLETED, 'Completed'),
+        (REJECTED, 'Rejected'),
+        # Simplified
         (OPEN, 'Open'),
         (ON_HOLD, 'On Hold'),
         (CLOSED, 'Closed'),
         (CANCELLED, 'Cancelled'),
-    ]
-
-    # Legacy choices (for migration compatibility)
-    LEGACY_CHOICES = [
-        ('draft', 'Draft'),
-        ('quote_requested', 'Quote Requested'),
-        ('quoted', 'Quoted'),
-        ('approved', 'Approved'),
-        ('in_execution', 'In Execution'),
-        ('completed', 'Completed'),
-        ('rejected', 'Rejected'),
     ]
 
 
@@ -327,7 +334,7 @@ class SampleRequest(models.Model):
     status = models.CharField(
         max_length=24,
         choices=SampleRequestStatus.CHOICES,
-        default=SampleRequestStatus.OPEN,
+        default=SampleRequestStatus.DRAFT,
         db_index=True
     )
 

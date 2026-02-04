@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,8 +27,13 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SampleRun, SampleMWO } from '@/types/samples';
-import { FileText, Plus, Eye, Send, Loader2, Package, Wrench } from 'lucide-react';
+import { FileText, Plus, Eye, Send, Loader2, Package, Wrench, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import {
+  transitionSampleRun,
+  exportMWOCompletePDF,
+  downloadBlob,
+} from '@/lib/api/samples';
 
 interface MWOTabProps {
   run: SampleRun;
@@ -39,6 +45,8 @@ export function MWOTab({ run, mwos, isLoading }: MWOTabProps) {
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
   const [selectedMWO, setSelectedMWO] = useState<SampleMWO | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [action, setAction] = useState<'generate' | 'issue' | 'download' | null>(null);
+  const queryClient = useQueryClient();
 
   // Get status badge variant
   const getStatusVariant = (status: string) => {
@@ -50,15 +58,43 @@ export function MWOTab({ run, mwos, isLoading }: MWOTabProps) {
 
   // Handle generate MWO
   const handleGenerateMWO = async () => {
-    // TODO: Call API to generate MWO
-    console.log('Generate MWO for run:', run.id);
-    setIsGenerateDialogOpen(false);
+    try {
+      setAction('generate');
+      await transitionSampleRun(run.id, 'generate_mwo');
+      await queryClient.invalidateQueries({ queryKey: ['sample-mwos', { sample_run_id: run.id }] });
+      await queryClient.invalidateQueries({ queryKey: ['sample-run', run.id] });
+    } catch (err: any) {
+      alert(err?.message || '生成 MWO 失敗，請確認已完成 BOM/Spec 資料');
+    } finally {
+      setIsGenerateDialogOpen(false);
+      setAction(null);
+    }
   };
 
   // Handle issue MWO
-  const handleIssueMWO = async (mwoId: string) => {
-    // TODO: Call API to issue MWO
-    console.log('Issue MWO:', mwoId);
+  const handleIssueMWO = async () => {
+    try {
+      setAction('issue');
+      await transitionSampleRun(run.id, 'issue_mwo');
+      await queryClient.invalidateQueries({ queryKey: ['sample-mwos', { sample_run_id: run.id }] });
+      await queryClient.invalidateQueries({ queryKey: ['sample-run', run.id] });
+    } catch (err: any) {
+      alert(err?.message || '發出 MWO 失敗，請確認狀態為 Draft');
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const handleDownloadComplete = async () => {
+    try {
+      setAction('download');
+      const blob = await exportMWOCompletePDF(run.id, true);
+      downloadBlob(blob, `MWO_${run.style?.style_number || 'style'}_Run${run.run_no}.pdf`);
+    } catch (err: any) {
+      alert(err?.message || '下載 MWO 失敗');
+    } finally {
+      setAction(null);
+    }
   };
 
   // Handle view MWO details
@@ -74,9 +110,13 @@ export function MWOTab({ run, mwos, isLoading }: MWOTabProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Manufacturing Work Orders</CardTitle>
-            <Button onClick={() => setIsGenerateDialogOpen(true)} size="sm">
+            <Button
+              onClick={() => setIsGenerateDialogOpen(true)}
+              size="sm"
+              disabled={action === 'generate'}
+            >
               <Plus className="mr-2 h-4 w-4" />
-              Generate MWO
+              {action === 'generate' ? 'Generating...' : 'Generate MWO'}
             </Button>
           </div>
         </CardHeader>
@@ -130,12 +170,22 @@ export function MWOTab({ run, mwos, isLoading }: MWOTabProps) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleIssueMWO(mwo.id)}
+                            onClick={handleIssueMWO}
+                            disabled={action === 'issue'}
                           >
                             <Send className="mr-2 h-4 w-4" />
-                            Issue
+                            {action === 'issue' ? 'Issuing...' : 'Issue'}
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleDownloadComplete}
+                          disabled={action === 'download'}
+                          title="Download complete MWO (Tech Pack + BOM + Spec)"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -170,7 +220,9 @@ export function MWOTab({ run, mwos, isLoading }: MWOTabProps) {
             <Button variant="outline" onClick={() => setIsGenerateDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleGenerateMWO}>Generate MWO</Button>
+            <Button onClick={handleGenerateMWO} disabled={action === 'generate'}>
+              {action === 'generate' ? 'Generating...' : 'Generate MWO'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-01-31
-**Version:** 4.46.0
-**Status:** P0-P29 + TODO-PERF 完成 ✅ | 延遲翻譯優化（提取速度 5-10x 提升）
+**Last Updated:** 2026-02-03
+**Version:** 4.48.0
+**Status:** P0-P29 + TODO-PERF + FIX-0202 完成 ✅ + FIX-0203-CLA + STYLE-CENTER (Stage 1-2)
 
 ---
 
@@ -33,6 +33,23 @@
 
 > **核心原則：SampleRun 是唯一的「執行真相來源」**
 > MWO / Estimate / T2 PO 都是 Run 的輸出文件。
+
+---
+
+## 2026-02-03 快速紀錄（CLA + STYLE-CENTER）
+
+- 放寬 MWO 整合：未驗證但已翻譯的 BOM/工序可進入 Run/MWO 快照，避免 MWO 空白。
+- MWO UI 串接完成：前端 MWO 分頁可直接 Generate / Issue / Download 完整 PDF。
+- SampleRequest 狀態補齊 legacy 常數（draft/quote_requested/...）並預設 draft，修復 submit/quote/approve 相關 API。
+- 重寫 transition_sample_request 最小狀態機，恢復 allowed_actions/submit/quote/approve/complete 流程。
+- 測試：`pytest apps/samples/tests/test_api_sample_request.py` 全通過（9/9）。
+- **STYLE-CENTER Stage 1-2 完成：**
+  - 後端：Style readiness API (`GET /api/v2/styles/{id}/readiness/`)
+  - 後端：BOM/Spec 批量驗證 API (`POST .../bom/batch-verify/`, `.../measurements/batch-verify/`)
+  - 後端：StyleListSerializer 加入 `readiness` 欄位（tech_pack/bom/spec/mwo 就緒狀態）
+  - 前端：強化版款式列表頁 (`/dashboard/styles`) 含 Tech Pack / BOM / Spec / MWO 就緒欄位
+  - 前端：Sidebar 新增「Styles」頂層導航
+  - 前端：API 函數 + React Query hooks (`style-detail.ts`, `useStyleDetail.ts`)
 
 ---
 
@@ -270,6 +287,8 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-0126** | API URL 統一 + 健康檢查 | ✅ 完成 (2026-01-26) |
 | **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
 | **SaaS-AUTH** | 前端登入 + JWT 認證 + Token 自動刷新 | ✅ 完成 (2026-01-29) |
+| **FIX-0202** | 組織數據綁定 + BOM/Spec 頁面 API + Sample Request 款號顯示 | ✅ 完成 (2026-02-02) |
+| **STYLE-CENTER** | 以款式為中心 UI 重構（列表+詳情+就緒度）| 🚧 進行中 (Stage 1-2/5 完成) |
 | **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
 | **TODO-PERF** | 提取速度優化（延遲翻譯 + 智能跳過）| ✅ 完成 (2026-01-31) |
 | **TODO-i18n** | 多語言翻譯支援（中/越/柬/印尼）| 待做 |
@@ -872,6 +891,104 @@ if is_mixed:
 | 第 4 頁區塊數 | 0 | 39 |
 | BULK COMMENTS | 未提取 | ✅ 已提取並翻譯 |
 | 總區塊數 | - | 258 |
+
+---
+
+### FIX-0202 組織數據綁定 + API 修復 ✅ 完成 (2026-02-02)
+
+**問題描述：**
+- BOM/Spec 頁面顯示空白（無款式資料）
+- Sample Request 列表款號顯示 N/A
+- Sample Request 詳情頁款號/款名顯示 N/A
+
+**修復內容：**
+
+1. **組織數據綁定修復：**
+   - 發現數據的 `organization_id` 為 NULL 或指向不同組織
+   - 統一所有 Style/StyleRevision/BOMItem/Measurement/SampleRequest/SampleRun 到同一組織
+   - 修改文件：手動執行 Django shell 更新
+
+2. **BOM/Spec 頁面 API 修復：**
+   - 原問題：直接用 `fetch` 請求，未帶認證 token
+   - 解法：改用 `API_BASE` 常量，DEBUG 模式下不需認證
+   - 修改文件：
+     - `frontend/app/dashboard/bom/page.tsx`
+     - `frontend/app/dashboard/spec/page.tsx`
+
+3. **Sample Request Serializer 修復：**
+   - 添加 `style_number`、`style_name`、`revision_label` 字段
+   - 修復 `SampleRequestSerializer`（詳情 API）
+   - 修復 `SampleRequestListSerializer`（列表 API）
+   - 修正屬性錯誤：`version` → `revision_label`
+   - 修改文件：`backend/apps/samples/serializers.py`
+
+4. **前端列表欄位修改：**
+   - 將 "Brand" 欄位改為 "Style"
+   - 顯示 `style_number` 而非 `brand_name`
+   - 修改文件：`frontend/app/dashboard/samples/page.tsx`
+
+5. **數據整合：**
+   - 將 `LM7B24S_BOM` 的 BOM/Spec 資料複製到 `LM7B24S`
+   - 解決 Tech Pack 和 BOM 文件分開上傳導致的款式分離問題
+
+**修復結果：**
+- BOM 頁面：顯示 12 個款式 ✅
+- Spec 頁面：顯示款式列表 ✅
+- Sample Request 列表：顯示款號 ✅
+- Sample Request 詳情：顯示款號/款名/版本 ✅
+
+---
+
+### STYLE-CENTER 以款式為中心 UI 重構 🚧 進行中 (2026-02-03)
+
+**問題背景：**
+- 流程分散在 6+ 個頁面（Documents/BOM/Spec/Samples/Kanban）
+- 使用者無法一眼看出某個款式的準備狀態
+- BOM/Spec 不完整時確認樣衣，導致 MWO 資料缺失
+
+**解決方案：** 款式詳情中心頁 + 就緒度欄位
+
+**已完成 (Stage 1-2)：**
+
+1. **後端 Readiness API：**
+   - ✅ `GET /api/v2/styles/{id}/readiness/` — 聚合款式就緒狀態
+   - ✅ `POST /api/v2/style-revisions/{id}/bom/batch-verify/` — BOM 批量驗證
+   - ✅ `POST /api/v2/style-revisions/{id}/measurements/batch-verify/` — Spec 批量驗證
+   - ✅ `StyleListSerializer` 新增 `readiness` 欄位（列表頁用）
+   - 檔案：`backend/apps/styles/views.py`, `serializers.py`, `urls.py`
+
+2. **前端款式列表頁（強化版）：**
+   - ✅ `/dashboard/styles` — 含 Tech Pack / BOM / Spec / MWO 就緒欄位
+   - ✅ 篩選器：全部 / Ready / Incomplete
+   - ✅ Sidebar 新增「Styles」頂層導航項目
+   - 檔案：`frontend/app/dashboard/styles/page.tsx`, `Sidebar.tsx`
+
+3. **API + Hooks：**
+   - ✅ `frontend/lib/api/style-detail.ts` — readiness / batch-verify API
+   - ✅ `frontend/lib/hooks/useStyleDetail.ts` — React Query hooks
+
+**待完成 (Stage 3-5)：**
+
+| Stage | 內容 | 狀態 |
+|-------|------|------|
+| 3 | 款式詳情頁骨架 (`/dashboard/styles/[id]`) + ReadinessBar + ReadinessChecklist | 待做 |
+| 4 | 5 個分頁組件（文件/翻譯/BOM/Spec/樣衣MWO）| 待做 |
+| 5 | 上傳流程串接 + 警告橫幅 + 導航連結 | 待做 |
+
+**Readiness API 回傳格式：**
+```json
+{
+  "style_id": "...",
+  "style_number": "LW1FLPS",
+  "documents": [...],
+  "translation": {"total": 158, "done": 154, "progress": 97},
+  "bom": {"total": 12, "verified": 10, "translated": 11},
+  "spec": {"total": 24, "verified": 24, "translated": 22},
+  "sample_request": {"id": "...", "status": "draft"},
+  "sample_run": {"id": "...", "status": "draft", "mwo_status": null},
+  "overall_readiness": 78
+}
+```
 
 ---
 

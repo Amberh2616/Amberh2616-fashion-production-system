@@ -1,6 +1,6 @@
 """
-Styles Views - v2.3.0
-Added: BrandViewSet for managing brands with BOM format configuration
+Styles Views - v2.4.0
+Added: Style readiness API, BOM/Spec batch-verify
 """
 
 from rest_framework import status, viewsets
@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from django.conf import settings
+from django.utils import timezone
 
 from django.db import models
 from apps.core.api_utils import api_success, api_error, paginated_response, ErrorCodes
@@ -353,6 +354,34 @@ class BOMItemViewSet(viewsets.ModelViewSet):
             'results': results
         })
 
+    @action(detail=False, methods=['post'], url_path='batch-verify')
+    def batch_verify(self, request, revision_pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/bom/batch-verify/
+        Batch verify BOM items.
+        Body: {} (verify all) or {"ids": ["uuid1", "uuid2"]} (selective)
+        """
+        ids = request.data.get('ids')
+
+        queryset = BOMItem.objects.filter(revision_id=revision_pk, is_verified=False)
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        already_verified = BOMItem.objects.filter(
+            revision_id=revision_pk, is_verified=True
+        ).count()
+
+        updated = queryset.update(
+            is_verified=True,
+            verified_at=timezone.now(),
+            verified_by=request.user if request.user.is_authenticated else None,
+        )
+
+        return Response({
+            'verified_count': updated,
+            'already_verified': already_verified,
+        })
+
     @action(detail=False, methods=['post'], url_path='batch-lock')
     def batch_lock(self, request, revision_pk=None):
         """
@@ -482,6 +511,34 @@ class MeasurementViewSet(viewsets.ModelViewSet):
         result = translate_measurements(revision_id=revision_pk, force=force)
         return Response(result)
 
+    @action(detail=False, methods=['post'], url_path='batch-verify')
+    def batch_verify(self, request, revision_pk=None):
+        """
+        POST /api/v2/style-revisions/{revision_pk}/measurements/batch-verify/
+        Batch verify measurements.
+        Body: {} (verify all) or {"ids": ["uuid1", "uuid2"]} (selective)
+        """
+        ids = request.data.get('ids')
+
+        queryset = Measurement.objects.filter(revision_id=revision_pk, is_verified=False)
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        already_verified = Measurement.objects.filter(
+            revision_id=revision_pk, is_verified=True
+        ).count()
+
+        updated = queryset.update(
+            is_verified=True,
+            verified_at=timezone.now(),
+            verified_by=request.user if request.user.is_authenticated else None,
+        )
+
+        return Response({
+            'verified_count': updated,
+            'already_verified': already_verified,
+        })
+
 
 class StyleViewSet(viewsets.ViewSet):
     """
@@ -563,6 +620,24 @@ class StyleViewSet(viewsets.ViewSet):
         serializer = StyleSerializer(style)
 
         return api_success(data=serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='readiness')
+    def readiness(self, request, pk=None):
+        """
+        GET /api/v2/styles/{id}/readiness/
+        Returns aggregated readiness status for this style.
+        """
+        org = self._get_organization(request)
+        if org is None:
+            return api_error(
+                code=ErrorCodes.UNAUTHORIZED,
+                message="Organization not found",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        style = get_object_or_404(Style, pk=pk, organization=org)
+        data = _compute_style_readiness(style)
+        return api_success(data=data)
 
     @action(detail=False, methods=['post'], url_path='bulk-create')
     def bulk_create(self, request):
@@ -921,6 +996,144 @@ class StyleRevisionViewSet(viewsets.ViewSet):
                 'created': created_counts
             }
         )
+
+
+def _compute_style_readiness(style):
+    """
+    Compute aggregated readiness data for a Style.
+    Used by both the detail readiness endpoint and the list serializer.
+    """
+    from apps.parsing.models import UploadedDocument
+    from apps.parsing.models_blocks import Revision as TechPackRevision, DraftBlock
+    from apps.samples.models import SampleRequest, SampleRun, SampleMWO
+
+    revision = style.current_revision
+    revision_id = str(revision.id) if revision else None
+
+    # --- Documents ---
+    docs_qs = UploadedDocument.objects.filter(
+        style_revision__style=style
+    ).values('id', 'filename', 'status', 'classification_result', 'tech_pack_revision_id')
+    documents = []
+    for doc in docs_qs:
+        cr = doc.get('classification_result') or {}
+        documents.append({
+            'id': str(doc['id']),
+            'filename': doc['filename'],
+            'file_type': cr.get('file_type', 'unknown'),
+            'status': doc['status'],
+        })
+
+    # --- Translation progress ---
+    # Find tech_pack_revision(s) linked to this style's uploaded documents
+    tp_rev_ids = UploadedDocument.objects.filter(
+        style_revision__style=style,
+        tech_pack_revision__isnull=False,
+    ).values_list('tech_pack_revision_id', flat=True)
+
+    translation = {'total': 0, 'done': 0, 'pending': 0, 'failed': 0, 'skipped': 0, 'progress': 0}
+    tech_pack_revision_id = None
+    if tp_rev_ids:
+        tech_pack_revision_id = str(tp_rev_ids[0])
+        # Aggregate across all related tech pack revisions
+        from django.db.models import Count, Q
+        stats = DraftBlock.objects.filter(
+            page__revision_id__in=list(tp_rev_ids)
+        ).aggregate(
+            total=Count('id'),
+            done=Count('id', filter=Q(translation_status='done')),
+            pending=Count('id', filter=Q(translation_status='pending')),
+            failed=Count('id', filter=Q(translation_status='failed')),
+            skipped=Count('id', filter=Q(translation_status='skipped')),
+        )
+        total = stats['total'] or 0
+        done = stats['done'] or 0
+        skipped = stats['skipped'] or 0
+        completed = done + skipped
+        translation = {
+            'total': total,
+            'done': done,
+            'pending': stats['pending'] or 0,
+            'failed': stats['failed'] or 0,
+            'skipped': skipped,
+            'progress': round(completed / total * 100) if total > 0 else 0,
+        }
+
+    # --- BOM ---
+    bom_total = 0
+    bom_verified = 0
+    bom_translated = 0
+    if revision:
+        bom_items = revision.bom_items.all()
+        bom_total = bom_items.count()
+        bom_verified = bom_items.filter(is_verified=True).count()
+        bom_translated = bom_items.filter(translation_status='confirmed').count()
+
+    # --- Spec ---
+    spec_total = 0
+    spec_verified = 0
+    spec_translated = 0
+    if revision:
+        measurements = revision.measurements.all()
+        spec_total = measurements.count()
+        spec_verified = measurements.filter(is_verified=True).count()
+        spec_translated = measurements.filter(translation_status='confirmed').count()
+
+    # --- Sample Request & Run ---
+    sample_request_data = None
+    sample_run_data = None
+    if revision:
+        sr = SampleRequest.objects.filter(revision=revision).order_by('-created_at').first()
+        if sr:
+            sample_request_data = {
+                'id': str(sr.id),
+                'status': sr.status,
+                'request_type': sr.request_type,
+            }
+            run = SampleRun.objects.filter(sample_request=sr).order_by('-run_no').first()
+            if run:
+                mwo = SampleMWO.objects.filter(sample_run=run, is_latest=True).first()
+                sample_run_data = {
+                    'id': str(run.id),
+                    'run_no': run.run_no,
+                    'status': run.status,
+                    'mwo_status': mwo.status if mwo else None,
+                    'mwo_id': str(mwo.id) if mwo else None,
+                }
+
+    # --- Overall readiness ---
+    score_parts = []
+    if documents:
+        score_parts.append(1.0)  # has documents
+    else:
+        score_parts.append(0.0)
+    if translation['total'] > 0:
+        score_parts.append(translation['progress'] / 100.0)
+    if bom_total > 0:
+        score_parts.append(bom_verified / bom_total)
+    if spec_total > 0:
+        score_parts.append(spec_verified / spec_total)
+
+    overall = round(sum(score_parts) / max(len(score_parts), 1) * 100)
+
+    return {
+        'style_id': str(style.id),
+        'style_number': style.style_number,
+        'style_name': style.style_name,
+        'brand_name': style.brand.name if style.brand else style.customer,
+        'season': style.season,
+        'revision_id': revision_id,
+        'revision_label': revision.revision_label if revision else None,
+        'revision_status': revision.status if revision else None,
+        'tech_pack_revision_id': tech_pack_revision_id,
+        'documents': documents,
+        'translation': translation,
+        'bom': {'total': bom_total, 'verified': bom_verified, 'translated': bom_translated},
+        'spec': {'total': spec_total, 'verified': spec_verified, 'translated': spec_translated},
+        'sample_request': sample_request_data,
+        'sample_run': sample_run_data,
+        'overall_readiness': overall,
+    }
 
 
 class PortfolioViewSet(viewsets.ViewSet):

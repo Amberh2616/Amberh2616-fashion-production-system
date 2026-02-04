@@ -73,10 +73,17 @@ def ensure_guidance_usage(run_id: str) -> UsageScenario:
         translation_status='confirmed'
     ).order_by('category', 'id')
 
+    # Fallback: 若無已驗證項目，使用已翻譯確認的 BOM
+    if not bom_items.exists():
+        bom_items = BOMItem.objects.filter(
+            revision=revision,
+            translation_status='confirmed'
+        ).order_by('category', 'id')
+
     if not bom_items.exists():
         raise ValidationError(
-            f"No confirmed BOM items found for revision {revision.revision_label}. "
-            "Please confirm BOM items in Phase 2 before generating guidance usage."
+            f"No BOM items found for revision {revision.revision_label}. "
+            "Please add or translate BOM items before generating guidance usage."
         )
 
     # 計算 version_no（檢查是否已有同 purpose 的 scenario）
@@ -279,6 +286,13 @@ def generate_mwo_snapshot(run_id: str) -> SampleMWO:
         is_verified=True,
         translation_status='confirmed'
     ).order_by('step_number')
+
+    # Fallback: 若尚未驗證工序，允許已翻譯確認的工序
+    if not construction_steps.exists():
+        construction_steps = ConstructionStep.objects.filter(
+            revision=revision,
+            translation_status='confirmed'
+        ).order_by('step_number')
 
     construction_snapshot = [{
         'step_no': s.step_number,

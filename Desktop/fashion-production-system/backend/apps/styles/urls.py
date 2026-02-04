@@ -1,6 +1,6 @@
 """
-Styles app URLs - v2.3.0
-Added: Brand routes for BOM format configuration
+Styles app URLs - v2.4.0
+Added: batch-verify for BOM and Measurements
 """
 
 from django.urls import path, include
@@ -49,6 +49,9 @@ bom_batch_confirm = views.BOMItemViewSet.as_view({
 bom_batch_lock = views.BOMItemViewSet.as_view({
     'post': 'batch_lock'
 })
+bom_batch_verify = views.BOMItemViewSet.as_view({
+    'post': 'batch_verify'
+})
 
 # Manually create nested Measurement URLs
 measurement_list = views.MeasurementViewSet.as_view({
@@ -67,6 +70,9 @@ measurement_translate = views.MeasurementViewSet.as_view({
 measurement_translate_batch = views.MeasurementViewSet.as_view({
     'post': 'translate_batch'
 })
+measurement_batch_verify = views.MeasurementViewSet.as_view({
+    'post': 'batch_verify'
+})
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -82,9 +88,11 @@ urlpatterns = [
     path('style-revisions/<uuid:revision_pk>/bom/<uuid:pk>/lock-consumption/', bom_lock_consumption, name='revision-bom-lock-consumption'),
     path('style-revisions/<uuid:revision_pk>/bom/batch-confirm/', bom_batch_confirm, name='revision-bom-batch-confirm'),
     path('style-revisions/<uuid:revision_pk>/bom/batch-lock/', bom_batch_lock, name='revision-bom-batch-lock'),
+    path('style-revisions/<uuid:revision_pk>/bom/batch-verify/', bom_batch_verify, name='revision-bom-batch-verify'),
     # Nested Measurement routes under revisions
     path('style-revisions/<uuid:revision_pk>/measurements/', measurement_list, name='revision-measurement-list'),
     path('style-revisions/<uuid:revision_pk>/measurements/<uuid:pk>/', measurement_detail, name='revision-measurement-detail'),
     path('style-revisions/<uuid:revision_pk>/measurements/<uuid:pk>/translate/', measurement_translate, name='revision-measurement-translate'),
     path('style-revisions/<uuid:revision_pk>/measurements/translate-batch/', measurement_translate_batch, name='revision-measurement-translate-batch'),
+    path('style-revisions/<uuid:revision_pk>/measurements/batch-verify/', measurement_batch_verify, name='revision-measurement-batch-verify'),
 ]

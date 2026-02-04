@@ -181,23 +181,27 @@ class StyleSerializer(serializers.ModelSerializer):
 
 
 class StyleListSerializer(serializers.ModelSerializer):
-    """Lightweight style list serializer"""
+    """Lightweight style list serializer with readiness summary"""
     current_revision_label = serializers.CharField(
         source='current_revision.revision_label', read_only=True, allow_null=True
     )
     current_revision_status = serializers.CharField(
         source='current_revision.status', read_only=True, allow_null=True
     )
+    brand_name = serializers.CharField(
+        source='brand.name', read_only=True, allow_null=True
+    )
     revision_count = serializers.SerializerMethodField()
-    # TODO: Add risk calculation
     risk = serializers.SerializerMethodField()
+    readiness = serializers.SerializerMethodField()
 
     class Meta:
         model = Style
         fields = [
             'id', 'style_number', 'style_name', 'season', 'customer',
+            'brand_name',
             'current_revision_label', 'current_revision_status',
-            'revision_count', 'risk', 'created_at',
+            'revision_count', 'risk', 'readiness', 'created_at',
         ]
 
     def get_revision_count(self, obj):
@@ -207,6 +211,73 @@ class StyleListSerializer(serializers.ModelSerializer):
         """Calculate risk badges"""
         from .services import compute_risk_badges
         return compute_risk_badges(obj)
+
+    def get_readiness(self, obj):
+        """Lightweight readiness summary for list view"""
+        from apps.parsing.models import UploadedDocument
+        from apps.parsing.models_blocks import DraftBlock
+        from apps.samples.models import SampleRequest, SampleRun, SampleMWO
+
+        revision = obj.current_revision
+
+        # Tech Pack
+        has_tech_pack = UploadedDocument.objects.filter(
+            style_revision__style=obj,
+            tech_pack_revision__isnull=False,
+        ).exists()
+
+        # Translation progress
+        tech_pack_progress = 0
+        if has_tech_pack:
+            tp_rev_ids = UploadedDocument.objects.filter(
+                style_revision__style=obj,
+                tech_pack_revision__isnull=False,
+            ).values_list('tech_pack_revision_id', flat=True)
+            from django.db.models import Count, Q
+            stats = DraftBlock.objects.filter(
+                page__revision_id__in=list(tp_rev_ids)
+            ).aggregate(
+                total=Count('id'),
+                done=Count('id', filter=Q(translation_status='done')),
+                skipped=Count('id', filter=Q(translation_status='skipped')),
+            )
+            total = stats['total'] or 0
+            completed = (stats['done'] or 0) + (stats['skipped'] or 0)
+            tech_pack_progress = round(completed / total * 100) if total > 0 else 0
+
+        # BOM / Spec
+        bom_total = 0
+        bom_verified = 0
+        spec_total = 0
+        spec_verified = 0
+        if revision:
+            bom_total = revision.bom_items.count()
+            bom_verified = revision.bom_items.filter(is_verified=True).count()
+            spec_total = revision.measurements.count()
+            spec_verified = revision.measurements.filter(is_verified=True).count()
+
+        # Sample / MWO
+        has_sample_request = False
+        mwo_status = None
+        if revision:
+            sr = SampleRequest.objects.filter(revision=revision).first()
+            if sr:
+                has_sample_request = True
+                run = SampleRun.objects.filter(sample_request=sr).order_by('-run_no').first()
+                if run:
+                    mwo = SampleMWO.objects.filter(sample_run=run, is_latest=True).first()
+                    mwo_status = mwo.status if mwo else None
+
+        return {
+            'has_tech_pack': has_tech_pack,
+            'tech_pack_progress': tech_pack_progress,
+            'bom_total': bom_total,
+            'bom_verified': bom_verified,
+            'spec_total': spec_total,
+            'spec_verified': spec_verified,
+            'has_sample_request': has_sample_request,
+            'mwo_status': mwo_status,
+        }
 
 
 # ========== Intake Serializers ==========

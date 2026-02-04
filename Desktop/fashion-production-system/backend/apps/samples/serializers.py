@@ -130,6 +130,7 @@ class SampleRequestListSerializer(serializers.ModelSerializer):
     """
     request_type_display = serializers.CharField(source='get_request_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    style_number = serializers.SerializerMethodField()
 
     class Meta:
         model = SampleRequest
@@ -137,6 +138,7 @@ class SampleRequestListSerializer(serializers.ModelSerializer):
             "id",
             "revision",
             "brand_name",
+            "style_number",
             "request_type",
             "request_type_display",
             "quantity_requested",
@@ -149,6 +151,11 @@ class SampleRequestListSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ("id", "created_at", "updated_at", "status_updated_at")
+
+    def get_style_number(self, obj):
+        if obj.revision and obj.revision.style:
+            return obj.revision.style.style_number
+        return None
 
 
 class SampleRequestSerializer(SafeModelSerializer):
@@ -167,10 +174,30 @@ class SampleRequestSerializer(SafeModelSerializer):
     approval_status_display = serializers.CharField(source='get_approval_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
 
+    # Style info from revision
+    style_number = serializers.SerializerMethodField()
+    style_name = serializers.SerializerMethodField()
+    revision_label = serializers.SerializerMethodField()
+
     class Meta:
         model = SampleRequest
         fields = "__all__"
         read_only_fields = ("id", "created_at", "updated_at", "status_updated_at")
+
+    def get_style_number(self, obj):
+        if obj.revision and obj.revision.style:
+            return obj.revision.style.style_number
+        return None
+
+    def get_style_name(self, obj):
+        if obj.revision and obj.revision.style:
+            return obj.revision.style.style_name
+        return None
+
+    def get_revision_label(self, obj):
+        if obj.revision:
+            return obj.revision.revision_label
+        return None
 
     def validate(self, attrs):
         # Call parent validation (SafeModelSerializer)

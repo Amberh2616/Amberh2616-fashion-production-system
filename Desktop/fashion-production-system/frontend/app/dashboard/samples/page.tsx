@@ -90,20 +90,20 @@ export default function SampleRequestListPage() {
   // Table columns
   const columns: ColumnDef<SampleRequest>[] = [
     {
-      accessorKey: 'brand_name',
+      accessorKey: 'style_number',
       header: ({ column }) => {
         return (
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
-            Brand
+            Style
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         );
       },
       cell: ({ row }) => (
-        <div className="font-medium">{row.original.brand_name || 'N/A'}</div>
+        <div className="font-medium">{row.original.style_number || row.original.brand_name || 'N/A'}</div>
       ),
     },
     {

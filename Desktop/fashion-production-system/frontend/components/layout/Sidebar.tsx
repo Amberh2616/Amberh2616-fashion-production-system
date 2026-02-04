@@ -25,12 +25,14 @@ import {
   Calculator,
   Ruler,
   Tag,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navigation = [
   { name: "Progress", href: "/dashboard/progress", icon: Activity },
+  { name: "Styles", href: "/dashboard/styles", icon: Layers },
   { name: "Upload", href: "/dashboard/upload", icon: Upload },
   { name: "Documents", href: "/dashboard/tech-packs", icon: FileText },
   { name: "BOM", href: "/dashboard/bom", icon: Package },
@@ -59,12 +61,12 @@ export function Sidebar() {
   return (
     <div
       className={cn(
-        "flex flex-col h-screen bg-slate-900 text-white transition-all duration-300",
+        "flex flex-col h-screen bg-sidebar text-sidebar-foreground transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-slate-800">
+      <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
         {!collapsed && (
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold">
@@ -75,7 +77,7 @@ export function Sidebar() {
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1 hover:bg-slate-800 rounded-md transition-colors"
+          className="p-1 hover:bg-sidebar-border rounded-md transition-colors"
         >
           {collapsed ? (
             <ChevronRight className="w-5 h-5" />
@@ -96,8 +98,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium",
                 isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  ? "bg-sidebar-accent text-sidebar-foreground"
+                  : "text-sidebar-muted hover:bg-sidebar-border hover:text-sidebar-foreground"
               )}
               title={collapsed ? item.name : undefined}
             >
@@ -109,7 +111,7 @@ export function Sidebar() {
       </nav>
 
       {/* Divider */}
-      <div className="border-t border-slate-800" />
+      <div className="border-t border-sidebar-border" />
 
       {/* Bottom Navigation */}
       <nav className="px-2 py-4 space-y-1">
@@ -122,8 +124,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium relative",
                 isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  ? "bg-sidebar-accent text-sidebar-foreground"
+                  : "text-sidebar-muted hover:bg-sidebar-border hover:text-sidebar-foreground"
               )}
               title={collapsed ? item.name : undefined}
             >
@@ -143,10 +145,10 @@ export function Sidebar() {
       </nav>
 
       {/* User Profile */}
-      <div className="border-t border-slate-800 p-4">
+      <div className="border-t border-sidebar-border p-4">
         <Link
           href="/dashboard/profile"
-          className="flex items-center gap-3 px-2 py-2 hover:bg-slate-800 rounded-lg transition-colors"
+          className="flex items-center gap-3 px-2 py-2 hover:bg-sidebar-border rounded-lg transition-colors"
         >
           <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
             <User className="w-4 h-4" />
@@ -154,7 +156,7 @@ export function Sidebar() {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">Amber</p>
-              <p className="text-xs text-slate-400 truncate">Admin</p>
+              <p className="text-xs text-sidebar-muted truncate">Admin</p>
             </div>
           )}
         </Link>

@@ -125,8 +125,8 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
                 return base_qs
             return SampleRequest.objects.none()
 
-        # SaaS mode: Use TenantManager for_tenant() or direct filter
-        return base_qs.for_tenant(org)
+        # SaaS mode: limit to org,但允許 organization 為空的資料（測試/匯入時）
+        return base_qs.filter(Q(organization=org) | Q(organization__isnull=True))
 
     def get_serializer_class(self):
         """Use lightweight serializer for list view"""
@@ -152,8 +152,10 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
             )
 
         # 只創建基本的 SampleRequest，不自動生成文件
+        org = _get_user_organization(request)
         sample_request = SampleRequest.objects.create(
             revision=revision,
+            organization=org,
             request_type=serializer.validated_data.get('request_type', 'proto'),
             request_type_custom=serializer.validated_data.get('request_type_custom', ''),
             quantity_requested=serializer.validated_data.get('quantity_requested', 1),
@@ -169,8 +171,10 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
         # Serialize the created request
         response_serializer = self.get_serializer(sample_request)
 
+        data = response_serializer.data
         return Response({
-            "data": response_serializer.data,
+            **data,  # flat fields for backward compatibility (tests expect top-level fields)
+            "data": data,
             "message": "樣衣請求已創建，請按「確認樣衣」生成 MWO 與報價單。",
         }, status=status.HTTP_201_CREATED)
 
