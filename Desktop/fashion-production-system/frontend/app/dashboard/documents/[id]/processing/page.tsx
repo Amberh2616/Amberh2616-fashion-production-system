@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { CheckCircle2, Loader2, AlertCircle, Clock, XCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { API_BASE_URL } from '@/lib/api/client'
@@ -66,7 +66,9 @@ function formatElapsedTime(seconds: number): string {
 export default function ProcessingPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const documentId = params.id as string
+  const styleId = searchParams.get('style_id')
 
   const [status, setStatus] = useState<ProcessingStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -234,7 +236,8 @@ export default function ProcessingPage() {
         toast.success('AI 分類完成！', {
           description: `共 ${data.classification_result?.total_pages || 0} 頁`
         })
-        router.push(`/dashboard/documents/${documentId}/review`)
+        const styleParam = styleId ? `?style_id=${styleId}` : ''
+        router.push(`/dashboard/documents/${documentId}/review${styleParam}`)
       }
 
       // Handle failed status

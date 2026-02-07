@@ -13,6 +13,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useDraft, useUpdateDraftBlock } from '@/lib/hooks/useDraft';
 import { useDebouncedPositionSave, useToggleBlockVisibility } from '@/lib/hooks/useDraftBlockPosition';
 import type { DraftBlock as DraftBlockType } from '@/lib/types/revision';
@@ -20,10 +21,45 @@ import { approveRevision } from '@/lib/api/approve';
 import { CoveragePanel } from '@/components/review/CoveragePanel';
 import { TechPackCanvas } from '@/components/review/TechPackCanvas';
 import { EditPopup } from '@/components/review/EditPopup';
+import { LayoutDashboard } from 'lucide-react';
 
 import { API_BASE_URL } from '@/lib/api/client';
 
 const API_BASE = API_BASE_URL;
+
+// Resolve styleId from TechPackRevision via uploaded documents
+async function resolveStyleIdFromRevision(techPackRevisionId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/uploaded-documents/?tech_pack_revision=${techPackRevisionId}`);
+    if (!res.ok) {
+      // Fallback: try fetching all docs and filtering client-side
+      const allRes = await fetch(`${API_BASE}/uploaded-documents/`);
+      if (!allRes.ok) return null;
+      const allData = await allRes.json();
+      const docs = allData.results || allData;
+      const doc = docs.find((d: any) => d.tech_pack_revision_id === techPackRevisionId || d.tech_pack_revision === techPackRevisionId);
+      if (!doc?.style_revision) return null;
+      const styleRevId = typeof doc.style_revision === 'string' ? doc.style_revision : doc.style_revision_id;
+      if (!styleRevId) return null;
+      const revRes = await fetch(`${API_BASE}/style-revisions/${styleRevId}/`);
+      if (!revRes.ok) return null;
+      const revData = await revRes.json();
+      return revData.data?.style || revData.style || null;
+    }
+    const data = await res.json();
+    const docs = data.results || data;
+    if (!docs.length) return null;
+    const doc = docs[0];
+    const styleRevId = doc.style_revision_id || doc.style_revision;
+    if (!styleRevId) return null;
+    const revRes = await fetch(`${API_BASE}/style-revisions/${styleRevId}/`);
+    if (!revRes.ok) return null;
+    const revData = await revRes.json();
+    return revData.data?.style || revData.style || null;
+  } catch {
+    return null;
+  }
+}
 
 export default function DraftReviewPage() {
   const params = useParams();
@@ -33,6 +69,14 @@ export default function DraftReviewPage() {
   const updateBlock = useUpdateDraftBlock(revisionId);
   const { savePositionNow } = useDebouncedPositionSave(revisionId);
   const toggleVisibility = useToggleBlockVisibility(revisionId);
+
+  // Resolve styleId for Style Center link
+  const { data: styleId } = useQuery({
+    queryKey: ['style-from-revision', revisionId],
+    queryFn: () => resolveStyleIdFromRevision(revisionId),
+    enabled: !!revisionId,
+    staleTime: Infinity,
+  });
 
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
@@ -373,6 +417,17 @@ export default function DraftReviewPage() {
             >
               Documents
             </Link>
+
+            {/* Style Center Link */}
+            {styleId && (
+              <Link
+                href={`/dashboard/styles/${styleId}`}
+                className="px-2 py-1 text-xs rounded font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-1"
+              >
+                <LayoutDashboard className="h-3 w-3" />
+                Style Center
+              </Link>
+            )}
 
             {/* Expand Sidebar Button - only when collapsed */}
             {sidebarCollapsed && (

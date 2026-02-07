@@ -17,7 +17,7 @@ import { getRevision } from '@/lib/api/styles';
 import { CostingVersionsTimeline } from '@/components/costing/CostingVersionsTimeline';
 import { CreateCostSheetDialog } from '@/components/costing/CostingDialogs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, Package, Ruler, DollarSign } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Ruler, DollarSign, LayoutDashboard } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CostingPhase23Page() {
@@ -96,6 +96,17 @@ export default function CostingPhase23Page() {
                 Spec 尺寸
               </Button>
             </Link>
+            {styleId && (
+              <>
+                <div className="h-4 w-px bg-border" />
+                <Link href={`/dashboard/styles/${styleId}`}>
+                  <Button variant="ghost" size="sm" className="gap-1 text-blue-600 hover:text-blue-700">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Style Center
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <DollarSign className="h-6 w-6 text-green-600" />

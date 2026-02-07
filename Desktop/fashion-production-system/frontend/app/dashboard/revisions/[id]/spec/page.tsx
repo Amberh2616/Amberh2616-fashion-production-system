@@ -29,9 +29,10 @@ import {
 } from "@/components/ui/dialog";
 import { MeasurementEditDrawer } from "@/components/measurement/MeasurementEditDrawer";
 import type { MeasurementItem, CreateMeasurementPayload } from "@/lib/types/measurement";
-import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft, Trash2, Plus, Package, DollarSign } from "lucide-react";
+import { ArrowUpDown, Pencil, Sparkles, Ruler, ArrowLeft, Trash2, Plus, Package, DollarSign, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { API_BASE_URL } from "@/lib/api/client";
+import { ReadinessWarningBanner } from "@/components/styles/ReadinessWarningBanner";
 
 const API_BASE = API_BASE_URL;
 
@@ -314,6 +315,17 @@ export default function SpecPage() {
                 報價
               </Button>
             </Link>
+            {styleData?.id && (
+              <>
+                <div className="h-4 w-px bg-border" />
+                <Link href={`/dashboard/styles/${styleData.id}`}>
+                  <Button variant="ghost" size="sm" className="gap-1 text-blue-600 hover:text-blue-700">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Style Center
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Ruler className="h-6 w-6 text-purple-600" />
@@ -430,6 +442,9 @@ export default function SpecPage() {
           </Badge>
         </div>
       </div>
+
+      {/* Readiness Warning Banner */}
+      <ReadinessWarningBanner styleId={styleData?.id} />
 
       {/* Search */}
       <div className="flex items-center gap-4">

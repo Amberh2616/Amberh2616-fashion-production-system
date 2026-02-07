@@ -726,10 +726,13 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
         # Check for async mode
         use_async = request.query_params.get('async', 'false').lower() == 'true'
 
+        # Check for style_id binding (from Style Center upload flow)
+        target_style_id = request.query_params.get('style_id', None)
+
         if use_async:
             # DA-2: Async mode - dispatch Celery task
             try:
-                task = extract_document_task.delay(str(doc.id))
+                task = extract_document_task.delay(str(doc.id), target_style_id=target_style_id)
                 doc.extract_task_id = task.id
                 doc.status = 'extracting'
                 doc.save(update_fields=['extract_task_id', 'status', 'updated_at'])
@@ -760,7 +763,7 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
 
             # Use extraction service
             from .services.extraction_service import perform_extraction
-            result = perform_extraction(doc)
+            result = perform_extraction(doc, target_style_id=target_style_id)
 
             logger.info(f"Extraction completed for {doc.id}: {result['extraction_stats']}")
 

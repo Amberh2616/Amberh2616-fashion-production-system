@@ -17,7 +17,7 @@ import type {
 // Re-export types used by hooks
 export type { StyleRevision };
 
-const BASE_PATH = '/v2/styles';
+const BASE_PATH = '/styles';
 
 /**
  * List styles with pagination and filters
@@ -47,9 +47,15 @@ export async function listStyles(
   }
 
   const query = searchParams.toString();
-  const endpoint = query ? `${BASE_PATH}?${query}` : BASE_PATH;
+  const endpoint = query ? `${BASE_PATH}/?${query}` : `${BASE_PATH}/`;
 
-  return apiClient<PaginatedResponse<StyleListItem>>(endpoint);
+  const data = await apiClient<StyleListItem[] | PaginatedResponse<StyleListItem>>(endpoint);
+
+  // Backend returns array (apiClient unwraps `data`), wrap into PaginatedResponse
+  if (Array.isArray(data)) {
+    return { results: data, count: data.length, next: null, previous: null };
+  }
+  return data;
 }
 
 /**
@@ -129,7 +135,7 @@ export async function approveRevision(
   revisionId: string,
   notes?: string
 ): Promise<StyleRevision> {
-  return apiClient<StyleRevision>(`/v2/revisions/${revisionId}/approve`, {
+  return apiClient<StyleRevision>(`/revisions/${revisionId}/approve`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -151,7 +157,7 @@ export async function parseRevision(
   revisionId: string,
   targets?: string[]
 ): Promise<ParseRevisionResponse> {
-  return apiClient<ParseRevisionResponse>(`/v2/revisions/${revisionId}/parse`, {
+  return apiClient<ParseRevisionResponse>(`/revisions/${revisionId}/parse`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -183,7 +189,7 @@ export interface DraftData {
 export async function getRevisionDraft(
   revisionId: string
 ): Promise<DraftData> {
-  return apiClient<DraftData>(`/v2/revisions/${revisionId}/draft`);
+  return apiClient<DraftData>(`/revisions/${revisionId}/draft`);
 }
 
 /**
@@ -198,7 +204,7 @@ export async function updateRevisionVerified(
     packaging?: any;
   }
 ): Promise<StyleRevision> {
-  return apiClient<StyleRevision>(`/v2/revisions/${revisionId}/verified`, {
+  return apiClient<StyleRevision>(`/revisions/${revisionId}/verified`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -224,7 +230,7 @@ export interface BatchParseResponse {
 export async function batchParse(
   data: BatchParseRequest
 ): Promise<BatchParseResponse> {
-  return apiClient<BatchParseResponse>('/v2/batch-runs', {
+  return apiClient<BatchParseResponse>('/batch-runs', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

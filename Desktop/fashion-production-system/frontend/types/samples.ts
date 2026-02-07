@@ -81,6 +81,11 @@ export interface SampleRequest {
   updated_at: string;
   status_updated_at: string;
 
+  // Added by FIX-0202 serializer
+  style_number?: string;
+  style_name?: string;
+  revision_label?: string;
+
   // Related data (optional, from nested serializers)
   runs?: SampleRun[];
   estimates?: SampleCostEstimate[];
@@ -105,6 +110,13 @@ export interface SampleRun {
   created_at: string;
   updated_at: string;
   status_updated_at: string;
+
+  // Nested style info (from serializer)
+  style?: {
+    id: string;
+    style_number: string;
+    style_name?: string;
+  };
 
   // Related data
   t2pos?: T2POForSample[];
