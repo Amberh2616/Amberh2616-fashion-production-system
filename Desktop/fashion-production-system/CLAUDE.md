@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-02-03
-**Version:** 4.48.0
-**Status:** P0-P29 + TODO-PERF + FIX-0202 完成 ✅ + FIX-0203-CLA + STYLE-CENTER (Stage 1-2)
+**Last Updated:** 2026-02-07
+**Version:** 4.49.0
+**Status:** P0-P29 + TODO-PERF + FIX-0202 完成 ✅ + FIX-0203-CLA + STYLE-CENTER (Stage 1-3 完成)
 
 ---
 
@@ -35,6 +35,18 @@
 > MWO / Estimate / T2 PO 都是 Run 的輸出文件。
 
 ---
+
+## 2026-02-07 快速紀錄（STYLE-CENTER Stage 3 完成）
+
+- **Stage 3 code review 修正全數完成（Phase A+B+C）：**
+  - Phase A 防呆：style_id UUID 格式驗證 (400) / service 層 catch 擴展 / 跨 org 400 拒絕 / review→processing 保留 style_id
+  - Phase B 體驗：DocumentsTab Upload 帶 style_id / Kanban ?style= 篩選 / BOM+Spec+Costing+Translation 掛 StyleBreadcrumb + ReadinessWarningBanner
+  - Phase C 清理：移除未用 import / 刪除孤兒 ReadinessChecklist.tsx / 修復 styleId→id TS 錯誤
+- **API 測試新增（9/9 通過）：** `backend/apps/parsing/tests.py`
+  - invalid UUID → 400 / 不存在 style_id → fallback / 跨 org → 400 / 同 org → 正常
+- **跨 org 規則：** style_id 不存在/無效 → warning + fallback 檔名；跨 org → raise ValueError → 400（fail fast）；org 任一 NULL → 放行
+- 測試：`pytest apps/parsing/tests.py` 全通過（9/9），`pytest apps/samples/tests/` 全通過（9/9）
+- 既有 costing tests 4 個失敗（BOMNotReadyError / UNIQUE constraint — 非本次引入）
 
 ## 2026-02-03 快速紀錄（CLA + STYLE-CENTER）
 
@@ -288,7 +300,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
 | **SaaS-AUTH** | 前端登入 + JWT 認證 + Token 自動刷新 | ✅ 完成 (2026-01-29) |
 | **FIX-0202** | 組織數據綁定 + BOM/Spec 頁面 API + Sample Request 款號顯示 | ✅ 完成 (2026-02-02) |
-| **STYLE-CENTER** | 以款式為中心 UI 重構（列表+詳情+就緒度）| 🚧 進行中 (Stage 1-2/5 完成) |
+| **STYLE-CENTER** | 以款式為中心 UI 重構（列表+詳情+就緒度）| 🚧 進行中 (Stage 1-3/5 完成) |
 | **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
 | **TODO-PERF** | 提取速度優化（延遲翻譯 + 智能跳過）| ✅ 完成 (2026-01-31) |
 | **TODO-i18n** | 多語言翻譯支援（中/越/柬/印尼）| 待做 |
@@ -939,7 +951,7 @@ if is_mixed:
 
 ---
 
-### STYLE-CENTER 以款式為中心 UI 重構 🚧 進行中 (2026-02-03)
+### STYLE-CENTER 以款式為中心 UI 重構 🚧 進行中 (2026-02-07)
 
 **問題背景：**
 - 流程分散在 6+ 個頁面（Documents/BOM/Spec/Samples/Kanban）
@@ -967,11 +979,28 @@ if is_mixed:
    - ✅ `frontend/lib/api/style-detail.ts` — readiness / batch-verify API
    - ✅ `frontend/lib/hooks/useStyleDetail.ts` — React Query hooks
 
-**待完成 (Stage 3-5)：**
+**已完成 (Stage 3)：**
+
+4. **款式詳情頁骨架 + Stepper UI：**
+   - ✅ `/dashboard/styles/[id]` — Stepper 五步驟（Documents → Translation → BOM → Spec → Sample & MWO）
+   - ✅ ReadinessBar 整體進度
+   - ✅ Upload 流程 style_id 綁定（全鏈路保留）
+   - 檔案：`frontend/app/dashboard/styles/[id]/page.tsx`
+
+5. **Code Review 修正（Phase A+B+C）：**
+   - ✅ Phase A 防呆：UUID 格式驗證 / catch 擴展 / 跨 org 400 拒絕 / review→processing 保留 style_id
+   - ✅ Phase B 體驗：DocumentsTab Upload 帶 style_id / Kanban ?style= / BOM+Spec+Costing+Translation 掛 Breadcrumb+Banner
+   - ✅ Phase C 清理：移除未用 import / 刪除孤兒 ReadinessChecklist.tsx
+   - 跨 org 規則：不存在→fallback / 跨 org→400 / org NULL→放行
+
+6. **API 測試（9/9 通過）：**
+   - ✅ `backend/apps/parsing/tests.py` — invalid UUID / 不存在 / 跨 org / 同 org
+   - 檔案：`backend/apps/parsing/tests.py`
+
+**待完成 (Stage 4-5)：**
 
 | Stage | 內容 | 狀態 |
 |-------|------|------|
-| 3 | 款式詳情頁骨架 (`/dashboard/styles/[id]`) + ReadinessBar + ReadinessChecklist | 待做 |
 | 4 | 5 個分頁組件（文件/翻譯/BOM/Spec/樣衣MWO）| 待做 |
 | 5 | 上傳流程串接 + 警告橫幅 + 導航連結 | 待做 |
 
