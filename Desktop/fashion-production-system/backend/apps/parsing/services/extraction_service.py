@@ -13,6 +13,7 @@ import logging
 import pdfplumber
 import fitz  # PyMuPDF
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.parsing.models import UploadedDocument
@@ -56,12 +57,17 @@ def perform_extraction(doc: UploadedDocument, target_style_id: str = None) -> di
         # Use existing Style if target_style_id is provided
         try:
             style = Style.objects.get(id=target_style_id)
-            # Verify organization consistency
-            if doc.organization and style.organization and doc.organization != style.organization:
-                logger.warning(f"Organization mismatch: doc={doc.organization} vs style={style.organization}, using style org")
-        except Style.DoesNotExist:
-            logger.warning(f"target_style_id {target_style_id} not found, falling back to filename")
+        except (Style.DoesNotExist, ValueError, ValidationError):
+            # Not found or invalid UUID → fallback to filename
+            logger.warning(f"target_style_id {target_style_id} invalid or not found, falling back to filename")
             target_style_id = None
+        else:
+            # Found — enforce org boundary (both non-NULL and different → reject)
+            if doc.organization and style.organization and doc.organization != style.organization:
+                raise ValueError(
+                    f"Cross-organization binding rejected: "
+                    f"document org={doc.organization} vs style org={style.organization}"
+                )
 
     if not target_style_id:
         # Extract style number from filename (e.g., "LW1FLWS TECH PACK.pdf" → "LW1FLWS")

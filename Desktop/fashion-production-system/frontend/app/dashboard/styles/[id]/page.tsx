@@ -317,7 +317,7 @@ export default function StyleDetailPage({
             </Link>
           }
         >
-          <DocumentsTab documents={r.documents} />
+          <DocumentsTab documents={r.documents} styleId={styleId} />
         </StepCard>
 
         {/* Step 2: Translation */}

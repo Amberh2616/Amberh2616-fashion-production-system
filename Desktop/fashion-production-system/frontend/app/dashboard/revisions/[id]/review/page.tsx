@@ -24,6 +24,8 @@ import { EditPopup } from '@/components/review/EditPopup';
 import { LayoutDashboard } from 'lucide-react';
 
 import { API_BASE_URL } from '@/lib/api/client';
+import { ReadinessWarningBanner } from '@/components/styles/ReadinessWarningBanner';
+import { StyleBreadcrumb } from '@/components/styles/StyleBreadcrumb';
 
 const API_BASE = API_BASE_URL;
 
@@ -75,6 +77,19 @@ export default function DraftReviewPage() {
     queryKey: ['style-from-revision', revisionId],
     queryFn: () => resolveStyleIdFromRevision(revisionId),
     enabled: !!revisionId,
+    staleTime: Infinity,
+  });
+
+  // Fetch style number for breadcrumb
+  const { data: styleData } = useQuery({
+    queryKey: ['style-info-review', styleId],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/styles/${styleId}/`);
+      if (!res.ok) return null;
+      const d = await res.json();
+      return d.data || d;
+    },
+    enabled: !!styleId,
     staleTime: Infinity,
   });
 
@@ -325,7 +340,17 @@ export default function DraftReviewPage() {
   const coveragePercent = totalBlocks > 0 ? Math.round((translatedBlocks / totalBlocks) * 100) : 0;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+      {/* Breadcrumb + Banner */}
+      {styleData?.id && (
+        <div className="px-4 py-1.5 bg-white border-b border-gray-200 flex items-center gap-4">
+          <StyleBreadcrumb styleId={styleData.id} styleNumber={styleData.style_number} currentPage="Translation" />
+        </div>
+      )}
+      <ReadinessWarningBanner styleId={styleId || undefined} />
+
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
       {/* Left: PDF Viewer */}
       <div
         className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
@@ -749,6 +774,7 @@ export default function DraftReviewPage() {
           setEditingBlock(null);
         }}
       />
+    </div>
     </div>
   );
 }

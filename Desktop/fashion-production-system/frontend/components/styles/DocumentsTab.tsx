@@ -8,6 +8,7 @@ import type { StyleDocument } from "@/lib/api/style-detail";
 
 interface DocumentsTabProps {
   documents: StyleDocument[];
+  styleId?: string;
 }
 
 const fileTypeBadge: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -16,13 +17,16 @@ const fileTypeBadge: Record<string, { label: string; variant: "default" | "secon
   mixed: { label: "Mixed", variant: "outline" },
 };
 
-export function DocumentsTab({ documents }: DocumentsTabProps) {
+export function DocumentsTab({ documents, styleId }: DocumentsTabProps) {
+  const uploadHref = styleId
+    ? `/dashboard/upload?style_id=${styleId}`
+    : "/dashboard/upload";
   if (!documents || documents.length === 0) {
     return (
       <div className="text-center py-12">
         <FileText className="w-10 h-10 text-slate-300 mx-auto mb-3" />
         <p className="text-sm text-slate-500 mb-4">No documents yet</p>
-        <Link href="/dashboard/upload">
+        <Link href={uploadHref}>
           <Button size="sm" className="gap-1">
             <Upload className="w-4 h-4" />
             Upload Tech Pack
@@ -75,7 +79,7 @@ export function DocumentsTab({ documents }: DocumentsTabProps) {
       </div>
 
       <div className="pt-2">
-        <Link href="/dashboard/upload">
+        <Link href={uploadHref}>
           <Button variant="outline" size="sm" className="gap-1">
             <Upload className="w-4 h-4" />
             Upload More

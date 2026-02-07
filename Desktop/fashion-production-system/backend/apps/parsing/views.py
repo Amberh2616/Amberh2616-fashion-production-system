@@ -728,6 +728,15 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
 
         # Check for style_id binding (from Style Center upload flow)
         target_style_id = request.query_params.get('style_id', None)
+        if target_style_id:
+            import uuid as _uuid
+            try:
+                _uuid.UUID(target_style_id)
+            except (ValueError, AttributeError):
+                return Response(
+                    {'error': f'Invalid style_id format: {target_style_id}. Must be a valid UUID.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         if use_async:
             # DA-2: Async mode - dispatch Celery task
@@ -778,6 +787,16 @@ class UploadedDocumentViewSet(viewsets.ModelViewSet):
             response_data['tech_pack_revision_id'] = result['tech_pack_revision_id']
 
             return Response(response_data)
+
+        except ValueError as e:
+            # Known validation errors (cross-org, missing classification, etc.)
+            logger.warning(f"Extraction rejected for {doc.id}: {str(e)}")
+            doc.status = 'classified'  # Revert to classified, not failed
+            doc.save(update_fields=['status', 'updated_at'])
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         except Exception as e:
             logger.error(f"Extraction failed for {doc.id}: {str(e)}", exc_info=True)

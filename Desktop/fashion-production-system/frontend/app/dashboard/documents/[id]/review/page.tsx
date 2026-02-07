@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
-import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen, Clock, LayoutDashboard } from 'lucide-react'
+import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { API_BASE_URL } from '@/lib/api/client'
@@ -213,7 +213,8 @@ export default function ReviewPage() {
 
       // Redirect based on status
       if (data.status === 'uploaded' || data.status === 'classifying') {
-        router.push(`/dashboard/documents/${documentId}/processing`)
+        const param = styleId ? `?style_id=${styleId}` : ''
+        router.push(`/dashboard/documents/${documentId}/processing${param}`)
       } else if (data.status === 'extracted' || data.status === 'completed') {
         // Mark as completed
         setIsCompleted(true)

@@ -40,6 +40,7 @@ import {
 import Link from "next/link";
 import { API_BASE_URL } from "@/lib/api/client";
 import { ReadinessWarningBanner } from "@/components/styles/ReadinessWarningBanner";
+import { StyleBreadcrumb } from "@/components/styles/StyleBreadcrumb";
 
 const API_BASE = API_BASE_URL;
 
@@ -425,7 +426,10 @@ export default function BOMPage() {
         </div>
       </div>
 
-      {/* Readiness Warning Banner */}
+      {/* Breadcrumb + Readiness Warning Banner */}
+      {styleData?.id && (
+        <StyleBreadcrumb styleId={styleData.id} styleNumber={styleData.style_number} currentPage="BOM" />
+      )}
       <ReadinessWarningBanner styleId={styleData?.id} />
 
       {/* Search */}

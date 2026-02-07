@@ -19,6 +19,9 @@ import { CreateCostSheetDialog } from '@/components/costing/CostingDialogs';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, Package, Ruler, DollarSign, LayoutDashboard } from 'lucide-react';
 import Link from 'next/link';
+import { API_BASE_URL } from '@/lib/api/client';
+import { ReadinessWarningBanner } from '@/components/styles/ReadinessWarningBanner';
+import { StyleBreadcrumb } from '@/components/styles/StyleBreadcrumb';
 
 export default function CostingPhase23Page() {
   const params = useParams();
@@ -32,6 +35,18 @@ export default function CostingPhase23Page() {
   });
 
   const styleId = revision?.style;  // style is UUID string
+
+  // Fetch style info for breadcrumb
+  const { data: styleData } = useQuery({
+    queryKey: ['style-info-costing', styleId],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/styles/${styleId}/`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.data || data;
+    },
+    enabled: !!styleId,
+  });
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
@@ -119,6 +134,12 @@ export default function CostingPhase23Page() {
           </div>
         </div>
       </div>
+
+      {/* Breadcrumb + Readiness Warning Banner */}
+      {styleData?.id && (
+        <StyleBreadcrumb styleId={styleData.id} styleNumber={styleData.style_number} currentPage="Costing" />
+      )}
+      <ReadinessWarningBanner styleId={styleId} />
 
       {/* Version Timeline (handles Sample/Bulk tabs internally) */}
       <CostingVersionsTimeline

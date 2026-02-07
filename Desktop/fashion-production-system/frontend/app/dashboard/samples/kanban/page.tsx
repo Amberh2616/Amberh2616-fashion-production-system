@@ -11,6 +11,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -131,10 +132,12 @@ const VISIBLE_LANES = [
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const styleFilter = searchParams.get('style') || '';
 
   // Filter state
   const [activePreset, setActivePreset] = useState<ViewPreset>('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(styleFilter);
   const [priority, setPriority] = useState('');
   const [runType, setRunType] = useState('');
   const [expandedLanes, setExpandedLanes] = useState<Set<string>>(new Set(VISIBLE_LANES));
