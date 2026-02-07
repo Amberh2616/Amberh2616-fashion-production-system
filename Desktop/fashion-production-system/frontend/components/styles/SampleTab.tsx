@@ -1,19 +1,32 @@
 "use client";
 
-import Link from "next/link";
-import { Scissors, Download, ExternalLink } from "lucide-react";
+import {
+  Scissors,
+  Download,
+  Loader2,
+  CheckCircle,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRunsSummary } from "@/lib/hooks/useSamples";
+import {
+  useCreateSampleWithMWO,
+  useCreateNextRound,
+  useIssueMWO,
+} from "@/lib/hooks/useStyleDetail";
+import { CreateSampleForm } from "@/components/styles/CreateSampleForm";
 import { API_BASE_URL } from "@/lib/api/client";
+import { toast } from "sonner";
 import type { StyleReadiness } from "@/lib/api/style-detail";
 
 interface SampleTabProps {
-  sampleRequest: StyleReadiness["sample_request"];
-  sampleRun: StyleReadiness["sample_run"];
+  readiness: StyleReadiness;
 }
 
-const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+const statusVariant: Record<
+  string,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
   draft: "outline",
   submitted: "secondary",
   quoted: "secondary",
@@ -25,6 +38,7 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
   materials: "secondary",
   po_issued: "secondary",
   in_production: "secondary",
+  mwo_issued: "default",
 };
 
 function formatStatus(status: string): string {
@@ -33,55 +47,96 @@ function formatStatus(status: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function SampleTab({ sampleRequest, sampleRun }: SampleTabProps) {
-  const { data: runsSummary, isLoading } = useRunsSummary(
-    sampleRequest?.id ?? null
-  );
+export function SampleTab({ readiness: r }: SampleTabProps) {
+  const hasSampleRequest = Boolean(r.sample_request);
 
-  if (!sampleRequest) {
-    return (
-      <div className="text-center py-12">
-        <Scissors className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-        <p className="text-sm text-slate-500">
-          No sample request created yet.
-        </p>
-        <Link href="/dashboard/samples" className="inline-block mt-4">
-          <Button variant="outline" size="sm">
-            Go to Samples
-          </Button>
-        </Link>
-      </div>
-    );
-  }
+  const createSampleMutation = useCreateSampleWithMWO();
+  const createNextRound = useCreateNextRound(
+    r.sample_request?.id ?? undefined
+  );
+  const issueMWO = useIssueMWO();
+
+  const { data: runsSummary } = useRunsSummary(
+    r.sample_request?.id ?? null
+  );
 
   const runs = runsSummary?.runs ?? [];
 
+  // --- Event handlers ---
+  const handleCreateSample = async (data: {
+    type: string;
+    quantity: number;
+    priority: string;
+  }) => {
+    if (!r.revision_id) {
+      toast.error("No revision available");
+      return;
+    }
+    createSampleMutation.mutate(
+      {
+        revisionId: r.revision_id,
+        type: data.type,
+        quantity: data.quantity,
+        priority: data.priority,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Sample created, MWO generated!");
+        },
+        onError: (err) => {
+          toast.error(
+            `Failed: ${err instanceof Error ? err.message : "Unknown error"}`
+          );
+        },
+      }
+    );
+  };
+
+  const handleCreateNextRound = () => {
+    createNextRound.mutate(undefined, {
+      onSuccess: (data) => {
+        toast.success(`Run #${data.sample_run.run_no} created with MWO`);
+      },
+      onError: () => toast.error("Failed to create next round"),
+    });
+  };
+
+  const handleIssueMWO = (runId: string) => {
+    issueMWO.mutate(runId, {
+      onSuccess: () => toast.success("MWO issued"),
+      onError: () => toast.error("Failed to issue MWO"),
+    });
+  };
+
+  // --- Situation A: No sample request yet ---
+  if (!hasSampleRequest && r.revision_id) {
+    return (
+      <CreateSampleForm
+        revisionId={r.revision_id}
+        bomVerified={r.bom.verified}
+        bomTotal={r.bom.total}
+        specVerified={r.spec.verified}
+        specTotal={r.spec.total}
+        onSubmit={handleCreateSample}
+        isSubmitting={createSampleMutation.isPending}
+      />
+    );
+  }
+
+  if (!hasSampleRequest && !r.revision_id) {
+    return (
+      <p className="text-sm text-slate-500 py-4">
+        Upload and extract a Tech Pack first to create a sample request.
+      </p>
+    );
+  }
+
+  // --- Situation B & C: Has runs ---
   return (
     <div className="space-y-4">
-      {/* Sample Request Info */}
-      <div className="flex items-center gap-3 bg-slate-50 rounded-md px-4 py-3">
-        <div className="flex-1">
-          <span className="text-sm font-medium text-slate-700">
-            Sample Request
-          </span>
-          <span className="text-xs text-slate-500 ml-2">
-            {sampleRequest.request_type?.replace(/_/g, " ") ?? ""}
-          </span>
-        </div>
-        <Badge variant={statusVariant[sampleRequest.status] ?? "outline"}>
-          {formatStatus(sampleRequest.status)}
-        </Badge>
-      </div>
-
-      {/* Runs Table */}
-      {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-blue-600 border-r-transparent" />
-        </div>
-      ) : runs.length === 0 ? (
-        <p className="text-sm text-slate-500 text-center py-6">
-          No sample runs yet.
-        </p>
+      {/* Runs table */}
+      {runs.length === 0 ? (
+        <p className="text-sm text-slate-500">No sample runs yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -91,69 +146,99 @@ export function SampleTab({ sampleRequest, sampleRun }: SampleTabProps) {
                 <th className="pb-2 font-medium">Type</th>
                 <th className="pb-2 font-medium">Status</th>
                 <th className="pb-2 font-medium text-right">Qty</th>
-                <th className="pb-2 font-medium">Due Date</th>
-                <th className="pb-2 font-medium w-20">MWO</th>
+                <th className="pb-2 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {runs.map((run) => {
-                const isCurrent = sampleRun?.id === run.id;
-                const hasMWO =
-                  isCurrent &&
-                  sampleRun?.mwo_id &&
-                  sampleRun?.mwo_status === "issued";
-                const mwoDownloadUrl = hasMWO
-                  ? `${API_BASE_URL}/sample-runs/${run.id}/export-mwo-complete-pdf/`
+                const isCurrentRun = r.sample_run?.id === run.id;
+                const mwoStatus = isCurrentRun
+                  ? r.sample_run?.mwo_status
                   : null;
+                const mwoId = isCurrentRun
+                  ? r.sample_run?.mwo_id
+                  : null;
+                const canIssueMWO =
+                  mwoStatus === "draft" && mwoId;
+                const canDownloadMWO =
+                  mwoStatus === "issued" && mwoId;
 
                 return (
                   <tr
                     key={run.id}
                     className={`hover:bg-slate-50 ${
-                      isCurrent ? "bg-blue-50/50" : ""
+                      isCurrentRun ? "bg-blue-50/50" : ""
                     }`}
                   >
-                    <td className="py-2 pr-3 font-medium">
+                    <td className="py-2.5 pr-3 font-medium">
                       #{run.run_no}
                     </td>
-                    <td className="py-2 pr-3 text-slate-600">
+                    <td className="py-2.5 pr-3 text-slate-600">
                       {run.run_type_label || run.run_type}
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2.5 pr-3">
                       <Badge
-                        variant={statusVariant[run.status] ?? "outline"}
+                        variant={
+                          statusVariant[run.status] ?? "outline"
+                        }
                         className="text-xs"
                       >
-                        {run.status_label || formatStatus(run.status)}
+                        {run.status_label ||
+                          formatStatus(run.status)}
                       </Badge>
-                    </td>
-                    <td className="py-2 pr-3 text-right">{run.quantity}</td>
-                    <td className="py-2 pr-3 text-slate-500 text-xs">
-                      {run.target_due_date ?? "-"}
-                    </td>
-                    <td className="py-2">
-                      {mwoDownloadUrl ? (
-                        <a
-                          href={mwoDownloadUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {mwoStatus && (
+                        <Badge
+                          variant={
+                            mwoStatus === "issued"
+                              ? "default"
+                              : "outline"
+                          }
+                          className="text-xs ml-1"
                         >
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 text-xs"
-                          >
-                            <Download className="w-3 h-3" />
-                            PDF
-                          </Button>
-                        </a>
-                      ) : isCurrent && sampleRun?.mwo_status ? (
-                        <span className="text-xs text-slate-400 capitalize">
-                          {sampleRun.mwo_status}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-300">-</span>
+                          MWO {mwoStatus}
+                        </Badge>
                       )}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right">
+                      {run.quantity}
+                    </td>
+                    <td className="py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        {canIssueMWO && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1"
+                            onClick={() =>
+                              handleIssueMWO(run.id)
+                            }
+                            disabled={issueMWO.isPending}
+                          >
+                            {issueMWO.isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <CheckCircle className="w-3 h-3" />
+                            )}
+                            Issue MWO
+                          </Button>
+                        )}
+                        {canDownloadMWO && (
+                          <a
+                            href={`${API_BASE_URL}/sample-runs/${run.id}/export-mwo-complete-pdf/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                            >
+                              <Download className="w-3 h-3" />
+                              MWO PDF
+                            </Button>
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -163,15 +248,23 @@ export function SampleTab({ sampleRequest, sampleRun }: SampleTabProps) {
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1">
-        <Link href="/dashboard/samples/kanban">
-          <Button variant="outline" size="sm" className="gap-1">
-            View Kanban
-            <ExternalLink className="w-3 h-3" />
-          </Button>
-        </Link>
-      </div>
+      {/* Create Next Round */}
+      {runsSummary?.can_create_next_run && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1"
+          onClick={handleCreateNextRound}
+          disabled={createNextRound.isPending}
+        >
+          {createNextRound.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Scissors className="w-4 h-4" />
+          )}
+          Create Next Round
+        </Button>
+      )}
     </div>
   );
 }
