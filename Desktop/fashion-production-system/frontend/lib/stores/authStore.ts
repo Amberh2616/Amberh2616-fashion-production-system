@@ -1,36 +1,54 @@
 /**
- * Authentication Store (Zustand)
+ * Authentication Store (Zustand v5)
  */
 import { create } from 'zustand';
-import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 import { login as apiLogin, refreshToken as apiRefreshToken, TokenPair } from '@/lib/api/auth';
 
-// Custom storage that checks rememberMe flag
-const createAuthStorage = (): StateStorage => ({
-  getItem: (name: string): string | null => {
+// ---------- Persisted slice type ----------
+interface AuthPersisted {
+  accessToken: string | null;
+  refreshToken: string | null;
+  isAuthenticated: boolean;
+  rememberMe: boolean;
+}
+
+// ---------- Custom PersistStorage (Zustand v5 compatible) ----------
+// In v5, storage.setItem receives an OBJECT (StorageValue<S>), NOT a string.
+// We handle JSON serialisation ourselves and route to
+// localStorage (rememberMe) or sessionStorage (default).
+const authPersistStorage: PersistStorage<AuthPersisted> = {
+  getItem: (name: string): StorageValue<AuthPersisted> | null => {
     if (typeof window === 'undefined') return null;
-    // Try localStorage first (remember me), then sessionStorage
-    return localStorage.getItem(name) || sessionStorage.getItem(name);
+    const raw = localStorage.getItem(name) || sessionStorage.getItem(name);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as StorageValue<AuthPersisted>;
+    } catch {
+      return null;
+    }
   },
-  setItem: (name: string, value: string): void => {
+
+  setItem: (name: string, value: StorageValue<AuthPersisted>): void => {
     if (typeof window === 'undefined') return;
-    // Check if rememberMe is enabled from the stored state
-    const state = JSON.parse(value);
-    if (state?.state?.rememberMe) {
-      localStorage.setItem(name, value);
+    const str = JSON.stringify(value);
+    if (value.state?.rememberMe) {
+      localStorage.setItem(name, str);
       sessionStorage.removeItem(name);
     } else {
-      sessionStorage.setItem(name, value);
+      sessionStorage.setItem(name, str);
       localStorage.removeItem(name);
     }
   },
+
   removeItem: (name: string): void => {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(name);
     sessionStorage.removeItem(name);
   },
-});
+};
 
+// ---------- Full store type ----------
 interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
@@ -117,7 +135,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => createAuthStorage()),
+      storage: authPersistStorage,
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
