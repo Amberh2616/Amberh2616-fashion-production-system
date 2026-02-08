@@ -64,6 +64,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { getStyleReadiness } from '@/lib/api/style-detail';
+import { ReadinessWarningBanner } from '@/components/styles/ReadinessWarningBanner';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -273,6 +274,13 @@ export default function KanbanPage() {
     return STATUS_TO_ACTION[selectedRunsStatus] || null;
   }, [selectedRunsStatus]);
 
+  // Resolve style ID from filtered runs (for ReadinessWarningBanner)
+  const filteredStyleId = useMemo(() => {
+    if (!styleFilter || !runsData?.runs) return undefined;
+    const firstRun = runsData.runs.find((r) => r.style?.id);
+    return firstRun?.style?.id;
+  }, [styleFilter, runsData]);
+
   // Group runs by status
   const runsByStatus = useMemo(() => {
     if (!runsData?.runs) return {};
@@ -341,6 +349,11 @@ export default function KanbanPage() {
             ×
           </button>
         </div>
+      )}
+
+      {/* Style Readiness Banner (when filtered by style) */}
+      {styleFilter && filteredStyleId && (
+        <ReadinessWarningBanner styleId={filteredStyleId} />
       )}
 
       {/* Header */}

@@ -430,10 +430,10 @@ export default function ReviewPage() {
             </div>
           </div>
           <button
-            onClick={() => router.push('/dashboard/upload')}
+            onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
           >
-            Back to Upload
+            {styleId ? 'Back to Style Center' : 'Back to Upload'}
           </button>
         </div>
       </div>
@@ -654,10 +654,10 @@ export default function ReviewPage() {
             : 'Confirm & Extract Data'}
         </button>
         <button
-          onClick={() => router.push('/dashboard/upload')}
+          onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
           className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
         >
-          {isCompleted ? 'Back to Upload' : 'Cancel'}
+          {isCompleted ? (styleId ? 'Back to Style' : 'Back to Upload') : 'Cancel'}
         </button>
         <Link
           href="/dashboard/tech-packs"

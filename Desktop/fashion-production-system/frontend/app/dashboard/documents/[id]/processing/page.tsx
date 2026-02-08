@@ -148,7 +148,7 @@ export default function ProcessingPage() {
   const handleCancel = () => {
     setIsCancelled(true)
     abortControllerRef.current?.abort()
-    router.push('/dashboard/upload')
+    router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')
   }
 
   const triggerClassification = async () => {
@@ -284,10 +284,10 @@ export default function ProcessingPage() {
               重試
             </button>
             <button
-              onClick={() => router.push('/dashboard/upload')}
+              onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
             >
-              返回上傳
+              {styleId ? '返回款式' : '返回上傳'}
             </button>
           </div>
         </div>

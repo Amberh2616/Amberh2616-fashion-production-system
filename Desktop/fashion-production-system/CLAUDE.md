@@ -1,8 +1,8 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-02-07
-**Version:** 4.49.0
-**Status:** P0-P29 + TODO-PERF + FIX-0202 完成 ✅ + FIX-0203-CLA + STYLE-CENTER (Stage 1-3 完成)
+**Last Updated:** 2026-02-08
+**Version:** 4.50.0
+**Status:** P0-P29 + TODO-PERF + FIX-0202 完成 ✅ + FIX-0203-CLA + STYLE-CENTER (Stage 1-5 完成 ✅)
 
 ---
 
@@ -35,6 +35,15 @@
 > MWO / Estimate / T2 PO 都是 Run 的輸出文件。
 
 ---
+
+## 2026-02-08 快速紀錄（STYLE-CENTER Stage 4-5 完成）
+
+- **Stage 4 完成：** 5 個分頁組件提取為獨立模組（DocumentsTab/TranslationTab/BOMTab/SpecTab/SampleTab）
+- **Stage 5 完成：** 上傳流程串接 + 警告橫幅 + 導航連結
+  - Processing/Review 頁面：取消/錯誤按鈕回到 Style Center（有 style_id 時）
+  - Kanban 頁面：`?style=` 篩選時顯示 ReadinessWarningBanner
+  - 所有子頁面已有 StyleBreadcrumb + ReadinessWarningBanner（Stage 3 Phase B）
+- **STYLE-CENTER 全部 5 個 Stage 完成 ✅**
 
 ## 2026-02-07 快速紀錄（STYLE-CENTER Stage 3 完成）
 
@@ -271,6 +280,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | UI-0128 | Documents 頁面優化（標題+跳轉邏輯）| 2026-01-28 |
 | SaaS-AUTH | 前端登入 + JWT 認證 + Token 自動刷新 | 2026-01-29 |
 | DOCS | SDD + TDD 技術文檔 | 2026-01-29 |
+| STYLE-CENTER | 款式中心 UI 重構（5 Stages）| 2026-02-03 → 02-08 |
 
 **詳細進度記錄請參見：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
@@ -300,7 +310,7 @@ draft → confirmed → materials_ordered → in_production → completed
 | **FIX-0128** | Mixed 文件提取修復（BOM 頁也提取 Tech Pack）| ✅ 完成 (2026-01-28) |
 | **SaaS-AUTH** | 前端登入 + JWT 認證 + Token 自動刷新 | ✅ 完成 (2026-01-29) |
 | **FIX-0202** | 組織數據綁定 + BOM/Spec 頁面 API + Sample Request 款號顯示 | ✅ 完成 (2026-02-02) |
-| **STYLE-CENTER** | 以款式為中心 UI 重構（列表+詳情+就緒度）| 🚧 進行中 (Stage 1-3/5 完成) |
+| **STYLE-CENTER** | 以款式為中心 UI 重構（列表+詳情+就緒度）| ✅ 完成 (Stage 1-5, 2026-02-08) |
 | **TODO-EXT** | 提取預覽/檢查功能 | 待做 |
 | **TODO-PERF** | 提取速度優化（延遲翻譯 + 智能跳過）| ✅ 完成 (2026-01-31) |
 | **TODO-i18n** | 多語言翻譯支援（中/越/柬/印尼）| 待做 |
@@ -951,7 +961,7 @@ if is_mixed:
 
 ---
 
-### STYLE-CENTER 以款式為中心 UI 重構 🚧 進行中 (2026-02-07)
+### STYLE-CENTER 以款式為中心 UI 重構 ✅ 完成 (2026-02-08)
 
 **問題背景：**
 - 流程分散在 6+ 個頁面（Documents/BOM/Spec/Samples/Kanban）
@@ -997,12 +1007,26 @@ if is_mixed:
    - ✅ `backend/apps/parsing/tests.py` — invalid UUID / 不存在 / 跨 org / 同 org
    - 檔案：`backend/apps/parsing/tests.py`
 
-**待完成 (Stage 4-5)：**
+**已完成 (Stage 4)：**
 
-| Stage | 內容 | 狀態 |
-|-------|------|------|
-| 4 | 5 個分頁組件（文件/翻譯/BOM/Spec/樣衣MWO）| 待做 |
-| 5 | 上傳流程串接 + 警告橫幅 + 導航連結 | 待做 |
+7. **5 個分頁組件提取為獨立模組：**
+   - ✅ `DocumentsTab.tsx` — 文件列表 + Upload More
+   - ✅ `TranslationTab.tsx` — 翻譯進度 + Translate All/Retry
+   - ✅ `BOMTab.tsx` — BOM 統計 + 表格 + 驗證
+   - ✅ `SpecTab.tsx` — Spec 統計 + 表格 + 驗證
+   - ✅ `SampleTab.tsx` — 樣衣建立/Run 列表/MWO 操作
+   - ✅ `DownloadsSection.tsx` — MWO PDF 下載
+   - ✅ `CreateSampleForm.tsx` — 樣衣建立表單
+
+**已完成 (Stage 5)：**
+
+8. **上傳流程串接 + 警告橫幅 + 導航連結：**
+   - ✅ Processing 頁面：取消/錯誤回到 Style Center（有 style_id 時）
+   - ✅ Review 頁面：取消/錯誤/完成回到 Style Center（有 style_id 時）
+   - ✅ Kanban 頁面：`?style=` 篩選時顯示 ReadinessWarningBanner
+   - ✅ BOM/Spec/Costing/Translation 頁面：StyleBreadcrumb + ReadinessWarningBanner（Stage 3 完成）
+   - ✅ Sidebar「Styles」頂層導航（Stage 2 完成）
+   - ✅ Documents 頁面款式 Tab 連結到 Style Center（Stage 3 完成）
 
 **Readiness API 回傳格式：**
 ```json
