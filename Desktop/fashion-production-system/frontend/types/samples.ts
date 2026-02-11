@@ -110,6 +110,7 @@ export interface SampleRun {
   created_at: string;
   updated_at: string;
   status_updated_at: string;
+  status_timestamps?: Record<string, string>; // TRACK-PROGRESS: {"draft": "ISO", "materials_planning": "ISO", ...}
 
   // Nested style info (from serializer)
   style?: {
@@ -122,6 +123,18 @@ export interface SampleRun {
   t2pos?: T2POForSample[];
   mwos?: SampleMWO[];
   actuals?: SampleActuals;
+}
+
+// TRACK-PROGRESS: 操作歷史記錄
+export interface SampleRunTransitionLog {
+  id: string;
+  from_status: string;
+  to_status: string;
+  action: string;
+  actor: string | null;
+  actor_name: string | null;
+  note: string;
+  created_at: string;
 }
 
 export interface SampleActuals {

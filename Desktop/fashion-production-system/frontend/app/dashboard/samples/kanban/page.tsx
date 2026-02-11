@@ -881,6 +881,20 @@ function KanbanCard({
         </div>
       )}
 
+      {/* Days in Status Warning (TRACK-PROGRESS) */}
+      {run.days_in_status != null && run.days_in_status > 3 && (
+        <div
+          className={cn(
+            'text-xs mt-1 px-1.5 py-0.5 rounded inline-block',
+            run.days_in_status >= 7
+              ? 'bg-amber-100 text-amber-800 font-semibold'
+              : 'text-gray-400'
+          )}
+        >
+          {run.days_in_status}d in status
+        </div>
+      )}
+
       {/* Next Step Hint */}
       {nextAction && (
         <div className="flex items-center justify-between text-xs text-slate-500 mt-1">

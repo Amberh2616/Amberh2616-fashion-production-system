@@ -19,6 +19,7 @@ from .models import (
     SampleRunStatus,
     RunTechPackPage,
     RunTechPackBlock,
+    SampleRunTransitionLog,
 )
 
 
@@ -249,6 +250,7 @@ class SampleRunListSerializer(serializers.ModelSerializer):
             "target_due_date",
             "status",
             "status_display",
+            "status_timestamps",
             "created_at",
             "updated_at",
         ]
@@ -349,6 +351,24 @@ class RunTechPackPageSerializer(serializers.ModelSerializer):
             "source_page_id",
         ]
         read_only_fields = ["id", "source_page_id"]
+
+
+class SampleRunTransitionLogSerializer(serializers.ModelSerializer):
+    """TRACK-PROGRESS: 操作歷史序列化"""
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SampleRunTransitionLog
+        fields = [
+            "id", "from_status", "to_status", "action",
+            "actor", "actor_name", "note", "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        if obj.actor:
+            return obj.actor.get_full_name() or obj.actor.username
+        return None
 
 
 class RunTechPackSnapshotSerializer(serializers.Serializer):

@@ -19,6 +19,7 @@ import type {
   UpdateSampleRunPayload,
   TransitionSampleRunPayload,
   CreateSampleAttachmentPayload,
+  SampleRunTransitionLog,
 } from '@/types/samples';
 
 // ========================================
@@ -626,6 +627,8 @@ export interface KanbanRunItem {
   target_due_date: string | null;
   is_overdue: boolean | null;
   days_until_due: number | null;
+  days_in_status: number | null; // TRACK-PROGRESS
+  status_timestamps: Record<string, string> | null; // TRACK-PROGRESS
   sample_request: {
     id: string;
     request_type: string;
@@ -1304,6 +1307,17 @@ export async function rollbackSampleRun(
       reason: reason || '',
     }),
   });
+}
+
+
+// ==================== TRACK-PROGRESS: Transition Logs API ====================
+
+/**
+ * Fetch transition logs for a SampleRun
+ * GET /sample-runs/{id}/transition-logs/
+ */
+export async function fetchTransitionLogs(runId: string): Promise<SampleRunTransitionLog[]> {
+  return apiClient<SampleRunTransitionLog[]>(`/sample-runs/${runId}/transition-logs/`);
 }
 
 
