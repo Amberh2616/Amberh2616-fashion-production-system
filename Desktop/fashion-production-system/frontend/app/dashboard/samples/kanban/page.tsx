@@ -10,7 +10,7 @@
  * - Visual priority and overdue indicators
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -139,6 +139,12 @@ export default function KanbanPage() {
   // Filter state
   const [activePreset, setActivePreset] = useState<ViewPreset>('all');
   const [search, setSearch] = useState(styleFilter);
+  const [debouncedSearch, setDebouncedSearch] = useState(styleFilter);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [priority, setPriority] = useState('');
   const [runType, setRunType] = useState('');
   const [expandedLanes, setExpandedLanes] = useState<Set<string>>(new Set(VISIBLE_LANES));
@@ -178,12 +184,12 @@ export default function KanbanPage() {
     const presetFilters = VIEW_PRESETS.find((p) => p.key === activePreset)?.filters || {};
     return {
       ...presetFilters,
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       priority: priority || presetFilters.priority,
       run_type: runType || undefined,
       limit: 100,
     };
-  }, [activePreset, search, priority, runType]);
+  }, [activePreset, debouncedSearch, priority, runType]);
 
   // Fetch counts
   const { data: countsData, isLoading: countsLoading } = useQuery({

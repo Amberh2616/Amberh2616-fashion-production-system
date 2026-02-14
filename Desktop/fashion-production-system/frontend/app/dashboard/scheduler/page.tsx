@@ -13,7 +13,7 @@
  * - P4: Click to edit dates (drag-like UX)
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -150,7 +150,16 @@ export default function SchedulerPage() {
   const [viewType, setViewType] = useState<'style' | 'run'>('style');
   const [granularity, setGranularity] = useState<TimeGranularity>('day');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [pageSize, setPageSize] = useState(25);
   const [expandedStyles, setExpandedStyles] = useState<Set<string>>(new Set());
 
@@ -222,10 +231,10 @@ export default function SchedulerPage() {
     view: viewType,
     start_date: dateRange.start.toISOString().split('T')[0],
     end_date: dateRange.end.toISOString().split('T')[0],
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     page,
     page_size: pageSize,
-  }), [viewType, dateRange, search, page, pageSize]);
+  }), [viewType, dateRange, debouncedSearch, page, pageSize]);
 
   // Fetch data
   const { data, isLoading, error } = useQuery({
@@ -407,10 +416,7 @@ export default function SchedulerPage() {
               type="text"
               placeholder="Search style number..."
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1); // Reset to first page on search
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
