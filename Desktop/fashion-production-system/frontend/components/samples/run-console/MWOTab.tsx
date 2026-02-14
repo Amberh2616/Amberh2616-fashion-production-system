@@ -298,7 +298,7 @@ export function MWOTab({ run, mwos, isLoading }: MWOTabProps) {
                               <TableCell>
                                 {item.consumption} {item.uom}
                               </TableCell>
-                              <TableCell>${item.unit_price?.toFixed(2) || '0.00'}</TableCell>
+                              <TableCell>${item.unit_price != null ? Number(item.unit_price).toFixed(2) : '0.00'}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
