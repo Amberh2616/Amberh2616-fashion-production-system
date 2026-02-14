@@ -34,8 +34,10 @@ export async function fetchSampleRequests(params?: {
   revision_id?: string;
   status?: string;
   brand_name?: string;
+  search?: string;
 }): Promise<SampleRequest[]> {
   const searchParams = new URLSearchParams();
+  searchParams.set('page_size', '500');
 
   if (params?.revision_id) {
     searchParams.set('revision_id', params.revision_id);
@@ -46,9 +48,11 @@ export async function fetchSampleRequests(params?: {
   if (params?.brand_name) {
     searchParams.set('brand_name', params.brand_name);
   }
+  if (params?.search) {
+    searchParams.set('search', params.search);
+  }
 
-  const queryString = searchParams.toString();
-  const url = `/sample-requests/${queryString ? `?${queryString}` : ''}`;
+  const url = `/sample-requests/?${searchParams.toString()}`;
 
   // Backend returns paginated response
   const response = await apiClient<{ results: SampleRequest[] }>(url);

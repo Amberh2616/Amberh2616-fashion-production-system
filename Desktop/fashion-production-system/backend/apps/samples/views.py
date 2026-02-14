@@ -4,7 +4,7 @@ Day 3 MVP API + SampleRun (Phase 3 Refactor)
 P0-2: Kanban View API
 """
 
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets, filters
 from rest_framework.decorators import action, api_view, permission_classes as perm_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -99,6 +99,14 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
     """
     serializer_class = SampleRequestSerializer
     permission_classes = [AllowAny]  # TODO: Change to IsAuthenticated in production
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'revision__style__style_number',
+        'revision__style__style_name',
+        'brand_name',
+    ]
+    ordering_fields = ['created_at', 'status']
+    ordering = ['-created_at']
 
     def get_queryset(self):
         """

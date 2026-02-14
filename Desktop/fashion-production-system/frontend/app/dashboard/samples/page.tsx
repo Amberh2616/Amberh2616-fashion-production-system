@@ -76,14 +76,15 @@ function useStyleRevisions() {
 export default function SampleRequestListPage() {
   const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<SampleRequestStatus | 'all'>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  // Fetch sample requests
-  const { data: requests = [], isLoading, error } = useSampleRequests(
-    statusFilter !== 'all' ? { status: statusFilter } : undefined
-  );
+  // Fetch sample requests (server-side search + status filter)
+  const { data: requests = [], isLoading, error } = useSampleRequests({
+    ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+    ...(search ? { search } : {}),
+  });
 
   const createMutation = useCreateSampleRequest();
 
@@ -199,10 +200,8 @@ export default function SampleRequestListPage() {
     columns,
     state: {
       sorting,
-      globalFilter,
     },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -283,9 +282,9 @@ export default function SampleRequestListPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by brand..."
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Search by style or brand..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>
