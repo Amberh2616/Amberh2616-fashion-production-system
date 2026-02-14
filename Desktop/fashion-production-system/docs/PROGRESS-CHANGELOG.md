@@ -1,6 +1,6 @@
 # Fashion Production System - Progress Changelog
 
-**Last Updated:** 2026-01-26
+**Last Updated:** 2026-02-14
 
 此文檔記錄所有功能開發的詳細進度和技術實現細節。
 
@@ -54,6 +54,67 @@
 | **P21** | Tech Pack 翻譯框（拖曳+編輯+隱藏+收合面板）| 2026-01-17 |
 | **FIX-0117** | 完整工作流程跳轉路徑修復 | 2026-01-17 |
 | **FIX-0126** | API URL 統一 + 健康檢查 | 2026-01-26 |
+| **FIX-0214** | Decimal toFixed bug + 全站搜尋修復 + Debounce | 2026-02-14 |
+
+---
+
+## FIX-0214：全站 Bug 修復 (2026-02-14)
+
+### 1. Decimal toFixed() TypeError 修復
+
+**問題：** DRF `DecimalField` 回傳字串，直接呼叫 `.toFixed()` 拋出 TypeError
+
+**修復位置：**
+- `MaterialsTab.tsx`：`t2po.total_amount`、`selectedT2PO.total_amount`、`line.unit_price`、`line.line_total`
+- `MWOTab.tsx`：`item.unit_price`
+
+**修法：** 統一加 `Number(...)` 轉型，MWOTab 改用 null check 取代 optional chaining
+
+---
+
+### 2. 全站搜尋框修復
+
+**問題：** 七個頁面搜尋框無效，原因：
+1. 裸 `fetch()` 沒帶 JWT Auth Header → 部分 API 403/無資料
+2. 只抓第一頁（預設 50 筆），超出範圍的款式搜不到
+3. 搜尋為純前端 filter，非 server-side search
+
+**修復頁面與方式：**
+
+| 頁面 | 修復內容 |
+|------|----------|
+| BOM | 改用 `apiClient` + `?search=` + `page_size=200` |
+| Spec | 改用 `apiClient` + `?search=` + `page_size=200` |
+| Costing | 改用 `apiClient` + `?search=` + `page_size=200` |
+| Samples | 後端加 `SearchFilter`（style_number/style_name/brand_name），前端改 server-side search，`page_size=500` |
+| Styles | 已正確使用 `apiClient`，`page_size` 從 50 → 100 |
+| Kanban | 已正確，補 debounce |
+| Scheduler | 已正確，補 debounce |
+
+**後端變更：** `SampleRequestViewSet` 加入：
+```python
+filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+search_fields = ['revision__style__style_number', 'revision__style__style_name', 'brand_name']
+```
+
+---
+
+### 3. 搜尋 Debounce + Loading 修復
+
+**問題：**
+- 每個鍵都打一次 API
+- 每次新搜尋 `isLoading=true` → 整頁消失變「載入中...」
+
+**修復：**
+- 所有頁面加入 **300ms debounce**（useEffect + setTimeout）
+- `isLoading` 條件改為 `isLoading && !data`（首次才全頁 loading）
+- Styles page 搜尋同時 reset `page=1`
+
+**Commits：**
+- `f39b329` fix(KANBAN): MaterialsTab / MWOTab Decimal toFixed
+- `7581b1a` fix(SEARCH): 修復 BOM/Spec/Costing/Samples 搜尋框無效
+- `d95b7e8` fix(SEARCH): 加入 300ms debounce + 修復整頁 loading
+- `c672521` fix(SEARCH): Kanban / Scheduler 加入 300ms debounce
 
 ---
 
