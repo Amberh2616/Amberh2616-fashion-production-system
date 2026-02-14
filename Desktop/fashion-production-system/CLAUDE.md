@@ -357,6 +357,15 @@ const { canEdit, isAdmin, hasPermission } = usePermissions();
 
 ---
 
+## 🔧 明日待修清單 (2026-02-15)
+
+| # | 問題 | 狀況 |
+|---|------|------|
+| 1 | **搜尋框無法打字** — 加完 debounce 後前端整個無法互動，重啟後未確認根本原因 | 待確認 |
+| 2 | **Costing 搜尋無動作** — 打 `Lw7b` 沒反應，可能與整頁 loading 或 apiClient 回傳格式有關 | 待確認 |
+
+---
+
 ## 測試資料
 
 | 文件 | 路徑 |
