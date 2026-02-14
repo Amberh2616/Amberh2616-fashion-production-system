@@ -73,11 +73,17 @@ async function fetchMeasurementCount(revisionId: string): Promise<number> {
 
 export default function SpecOverviewPage() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [styleRevisions, setStyleRevisions] = useState<Record<string, { id: string; label: string; measurementCount: number }>>({});
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data: stylesData, isLoading, error } = useQuery({
-    queryKey: ["styles-list", search],
-    queryFn: () => fetchStylesList(search),
+    queryKey: ["styles-list", debouncedSearch],
+    queryFn: () => fetchStylesList(debouncedSearch),
   });
 
   const styles = stylesData || [];
@@ -111,7 +117,7 @@ export default function SpecOverviewPage() {
   // Count styles with spec data
   const stylesWithSpec = Object.values(styleRevisions).filter(r => r.measurementCount > 0).length;
 
-  if (isLoading) {
+  if (isLoading && !stylesData) {
     return (
       <div className="p-6">
         <div className="text-muted-foreground">載入中...</div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,12 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = 
 
 export default function CostingOverviewPage() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Fetch all cost sheet versions
   const { data: costSheetVersions, isLoading: loadingVersions, error: errorVersions } = useQuery({
@@ -81,8 +87,8 @@ export default function CostingOverviewPage() {
 
   // Fetch styles
   const { data: styles, isLoading: loadingStyles, error: errorStyles } = useQuery({
-    queryKey: ["styles-for-costing", search],
-    queryFn: () => fetchStyles(search),
+    queryKey: ["styles-for-costing", debouncedSearch],
+    queryFn: () => fetchStyles(debouncedSearch),
   });
 
   const isLoading = loadingVersions || loadingStyles;
@@ -128,7 +134,7 @@ export default function CostingOverviewPage() {
     return versions.sort((a, b) => b.version_no - a.version_no)[0];
   };
 
-  if (isLoading) {
+  if (isLoading && !styles) {
     return (
       <div className="p-6">
         <div className="text-muted-foreground">載入中...</div>

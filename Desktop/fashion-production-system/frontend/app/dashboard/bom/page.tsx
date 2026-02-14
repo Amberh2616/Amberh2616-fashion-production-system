@@ -61,11 +61,17 @@ async function fetchStyleDetail(styleId: string): Promise<StyleDetail | null> {
 
 export default function BOMOverviewPage() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [styleRevisions, setStyleRevisions] = useState<Record<string, string>>({});
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data: stylesData, isLoading, error } = useQuery({
-    queryKey: ["styles-list", search],
-    queryFn: () => fetchStylesList(search),
+    queryKey: ["styles-list", debouncedSearch],
+    queryFn: () => fetchStylesList(debouncedSearch),
   });
 
   const styles = stylesData || [];
@@ -94,7 +100,7 @@ export default function BOMOverviewPage() {
 
   const filteredStyles = styles;
 
-  if (isLoading) {
+  if (isLoading && !stylesData) {
     return (
       <div className="p-6">
         <div className="text-muted-foreground">載入中...</div>
