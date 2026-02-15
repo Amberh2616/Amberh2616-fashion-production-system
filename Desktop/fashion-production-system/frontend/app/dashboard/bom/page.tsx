@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -74,7 +74,7 @@ export default function BOMOverviewPage() {
     queryFn: () => fetchStylesList(debouncedSearch),
   });
 
-  const styles = stylesData || [];
+  const styles = useMemo(() => stylesData || [], [stylesData]);
 
   // Fetch revision IDs for each style
   useEffect(() => {
@@ -86,10 +86,8 @@ export default function BOMOverviewPage() {
           // Get the latest revision (first in array)
           const latestRevision = detail.revisions[0];
           newRevisions[style.id] = latestRevision.id;
-          console.log(`Style ${style.style_number}: revision ${latestRevision.id} (${latestRevision.revision_label})`);
         }
       }
-      console.log("All style revisions:", newRevisions);
       setStyleRevisions(newRevisions);
     };
 
