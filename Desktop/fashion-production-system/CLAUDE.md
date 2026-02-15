@@ -1,7 +1,7 @@
 # Fashion Production System - Claude Project Memory
 
-**Last Updated:** 2026-02-14
-**Status:** P0-P29 + SaaS + STYLE-CENTER (Stage 1-5) + TRACK-PROGRESS + FIX-0214 全部完成
+**Last Updated:** 2026-02-15
+**Status:** P0-P29 + SaaS + STYLE-CENTER (Stage 1-5) + TRACK-PROGRESS + FIX-0214 + FIX-0215 全部完成
 
 ---
 
@@ -352,17 +352,11 @@ const { canEdit, isAdmin, hasPermission } = usePermissions();
 | STYLE-CENTER | 款式中心 UI 重構（5 Stages）| 02-03~08 |
 | TRACK-PROGRESS | 進度追蹤優化（時間戳 + 操作歷史）| 02-09~11 |
 | FIX-0214 | Decimal toFixed bug + 全站搜尋修復 + 300ms Debounce | 02-14 |
+| FIX-0215 | useMemo 修復全站無限 re-render + TopNav 移除無用搜尋框 | 02-15 |
 
 **完整細節：** [docs/PROGRESS-CHANGELOG.md](docs/PROGRESS-CHANGELOG.md)
 
 ---
-
-## 🔧 明日待修清單 (2026-02-15)
-
-| # | 問題 | 狀況 |
-|---|------|------|
-| 1 | **搜尋框無法打字** — 加完 debounce 後前端整個無法互動，重啟後未確認根本原因 | 待確認 |
-| 2 | **Costing 搜尋無動作** — 打 `Lw7b` 沒反應，可能與整頁 loading 或 apiClient 回傳格式有關 | 待確認 |
 
 ---
 
