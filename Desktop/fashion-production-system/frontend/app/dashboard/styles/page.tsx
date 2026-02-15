@@ -5,7 +5,7 @@
  * Shows readiness status for each style (Tech Pack, BOM/Spec, Sample/MWO)
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   useReactTable,
@@ -110,7 +110,7 @@ export default function StylesPage() {
   const results = (data?.results || []) as unknown as StyleListItemWithReadiness[];
 
   // Client-side filter for readiness
-  const filtered = results.filter((s) => {
+  const filtered = useMemo(() => results.filter((s) => {
     if (filter === "all") return true;
     const r = s.readiness;
     if (!r) return filter === "incomplete";
@@ -121,9 +121,9 @@ export default function StylesPage() {
       r.spec_total > 0 &&
       r.spec_verified === r.spec_total;
     return filter === "ready" ? isReady : !isReady;
-  });
+  }), [results, filter]);
 
-  const columns: ColumnDef<StyleListItemWithReadiness>[] = [
+  const columns = useMemo<ColumnDef<StyleListItemWithReadiness>[]>(() => [
     {
       accessorKey: "style_number",
       header: "Style #",
@@ -218,7 +218,7 @@ export default function StylesPage() {
         </Link>
       ),
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: filtered,

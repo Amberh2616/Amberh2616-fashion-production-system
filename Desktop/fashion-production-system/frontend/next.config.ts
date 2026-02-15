@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   async rewrites() {
     return [
       {
@@ -10,8 +11,9 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Next.js 16 使用 Turbopack，不需要額外配置 react-pdf
-  // react-pdf 會自動處理 worker
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
 };
 
 export default nextConfig;

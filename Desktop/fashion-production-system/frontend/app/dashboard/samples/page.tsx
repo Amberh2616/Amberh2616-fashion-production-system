@@ -10,7 +10,7 @@
  * - Filter by status, brand
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   useReactTable,
@@ -89,7 +89,7 @@ export default function SampleRequestListPage() {
   const createMutation = useCreateSampleRequest();
 
   // Table columns
-  const columns: ColumnDef<SampleRequest>[] = [
+  const columns = useMemo<ColumnDef<SampleRequest>[]>(() => [
     {
       accessorKey: 'style_number',
       header: ({ column }) => {
@@ -193,7 +193,7 @@ export default function SampleRequestListPage() {
         <div>{format(new Date(row.original.created_at), 'MMM dd, yyyy')}</div>
       ),
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: requests,
