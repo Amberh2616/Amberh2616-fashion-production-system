@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -86,7 +86,7 @@ export default function SpecOverviewPage() {
     queryFn: () => fetchStylesList(debouncedSearch),
   });
 
-  const styles = stylesData || [];
+  const styles = useMemo(() => stylesData || [], [stylesData]);
 
   // Fetch revision IDs and measurement counts for each style
   useEffect(() => {

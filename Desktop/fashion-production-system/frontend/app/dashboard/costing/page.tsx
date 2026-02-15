@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,7 @@ export default function CostingOverviewPage() {
   const error = errorVersions || errorStyles;
 
   // Group versions by style
-  const stylesWithCosting: StyleWithCosting[] = (styles || []).map((style: any) => {
+  const stylesWithCosting: StyleWithCosting[] = useMemo(() => (styles || []).map((style: any) => {
     const versions = (costSheetVersions || []).filter(
       (v) => v.style_number === style.style_number
     );
@@ -107,7 +107,7 @@ export default function CostingOverviewPage() {
       sampleVersions: versions.filter((v) => v.costing_type === "sample"),
       bulkVersions: versions.filter((v) => v.costing_type === "bulk"),
     };
-  });
+  }), [styles, costSheetVersions]);
 
   const filteredStyles = stylesWithCosting;
 
