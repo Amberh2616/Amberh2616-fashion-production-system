@@ -360,6 +360,37 @@ const { canEdit, isAdmin, hasPermission } = usePermissions();
 
 ---
 
+## 🚀 部署規劃（2026-02-15 進行中）
+
+### 商業模式
+- **目標**：SaaS 產品，賣給成衣廠，收月費
+- **客戶**：中小型成衣廠（台灣/東南亞）
+- **現狀**：無客戶，準備 Demo Pitch
+
+### 部署計畫
+- 前端 → **Vercel**（免費）
+- 後端 → **Railway**（$5 USD/月，含 PostgreSQL + Redis）
+- 域名 → **待定**（見下方）
+- 檔案儲存 → Cloudflare R2
+- Email → SendGrid
+
+### 域名選擇（還在想）
+| 域名 | 價格 | 狀態 |
+|------|------|------|
+| garmenthandfree.com | $6.79首年 | ❌ 覺得俗氣 |
+| autoapparel.com | - | ❌ 已被買走 |
+| garmenttrack.com | $988 | ❌ Premium 太貴 |
+| appareltrack.com | $6.79首年 / $10.98/yr | ✅ 備選，不錯 |
+
+### 待做
+- [ ] 決定域名 → 買下
+- [ ] Railway 部署後端
+- [ ] Vercel 部署前端
+- [ ] 準備 Demo 資料
+- [ ] 練習 Demo Pitch 流程
+
+---
+
 ## 測試資料
 
 | 文件 | 路徑 |
