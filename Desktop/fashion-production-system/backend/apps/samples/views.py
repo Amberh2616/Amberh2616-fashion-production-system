@@ -4,7 +4,7 @@ Day 3 MVP API + SampleRun (Phase 3 Refactor)
 P0-2: Kanban View API
 """
 
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets, filters
 from rest_framework.decorators import action, api_view, permission_classes as perm_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -25,6 +25,7 @@ from .models import (
     T2POLineForSample,
     SampleMWO,
     Sample,
+    SampleRunTransitionLog,
 )
 from .serializers import (
     SampleRequestSerializer,
@@ -38,6 +39,7 @@ from .serializers import (
     T2POLineForSampleSerializer,
     SampleMWOSerializer,
     SampleSerializer,
+    SampleRunTransitionLogSerializer,
 )
 from .services.transitions import (
     transition_sample_request,
@@ -97,6 +99,14 @@ class SampleRequestViewSet(viewsets.ModelViewSet):
     """
     serializer_class = SampleRequestSerializer
     permission_classes = [AllowAny]  # TODO: Change to IsAuthenticated in production
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'revision__style__style_number',
+        'revision__style__style_name',
+        'brand_name',
+    ]
+    ordering_fields = ['created_at', 'status']
+    ordering = ['-created_at']
 
     def get_queryset(self):
         """
@@ -1287,6 +1297,20 @@ class SampleRunViewSet(viewsets.ModelViewSet):
             "errors": errors
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"], url_path="transition-logs")
+    def transition_logs(self, request, pk=None):
+        """
+        TRACK-PROGRESS: 獲取 SampleRun 的操作歷史
+
+        GET /api/v2/sample-runs/{id}/transition-logs/
+        """
+        run = self.get_object()
+        logs = SampleRunTransitionLog.objects.filter(
+            sample_run=run
+        ).select_related('actor').order_by('-created_at')
+        serializer = SampleRunTransitionLogSerializer(logs, many=True)
+        return Response(serializer.data)
+
 
 class SampleActualsViewSet(viewsets.ModelViewSet):
     """
@@ -1669,6 +1693,20 @@ def kanban_runs(request):
         revision = request_obj.revision
         style = revision.style if revision else None
 
+        # TRACK-PROGRESS: 計算停留天數
+        timestamps = run.status_timestamps or {}
+        current_ts = timestamps.get(run.status)
+        if current_ts:
+            try:
+                from datetime import datetime as dt
+                entered = dt.fromisoformat(current_ts.replace('Z', '+00:00'))
+                days_in_status = (timezone.now() - entered).days
+            except (ValueError, TypeError):
+                days_in_status = None
+        else:
+            # fallback: 用 status_updated_at
+            days_in_status = (timezone.now() - run.status_updated_at).days if run.status_updated_at else None
+
         runs.append({
             'id': str(run.id),
             'run_no': run.run_no,
@@ -1680,6 +1718,8 @@ def kanban_runs(request):
             'target_due_date': run.target_due_date.isoformat() if run.target_due_date else None,
             'is_overdue': run.target_due_date and run.target_due_date < today,
             'days_until_due': (run.target_due_date - today).days if run.target_due_date else None,
+            'days_in_status': days_in_status,
+            'status_timestamps': timestamps,
             'sample_request': {
                 'id': str(request_obj.id),
                 'request_type': request_obj.request_type,

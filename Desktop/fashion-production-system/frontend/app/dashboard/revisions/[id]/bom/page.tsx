@@ -21,7 +21,7 @@ import { BOMEditDrawer } from "@/components/bom/BOMEditDrawer";
 import { BOMTranslationDrawer } from "@/components/bom/BOMTranslationDrawer";
 import { EditableConsumptionCell } from "@/components/bom/EditableConsumptionCell";
 import type { BOMItem } from "@/lib/types/bom";
-import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft, Trash2, Plus, Ruler, DollarSign } from "lucide-react";
+import { ArrowUpDown, Languages, Sparkles, Package, ArrowLeft, Trash2, Plus, Ruler, DollarSign, LayoutDashboard } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,8 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { API_BASE_URL } from "@/lib/api/client";
+import { ReadinessWarningBanner } from "@/components/styles/ReadinessWarningBanner";
+import { StyleBreadcrumb } from "@/components/styles/StyleBreadcrumb";
 
 const API_BASE = API_BASE_URL;
 
@@ -380,6 +382,17 @@ export default function BOMPage() {
                 報價
               </Button>
             </Link>
+            {styleData?.id && (
+              <>
+                <div className="h-4 w-px bg-border" />
+                <Link href={`/dashboard/styles/${styleData.id}`}>
+                  <Button variant="ghost" size="sm" className="gap-1 text-blue-600 hover:text-blue-700">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Style Center
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Package className="h-6 w-6 text-blue-600" />
@@ -412,6 +425,12 @@ export default function BOMPage() {
           </Badge>
         </div>
       </div>
+
+      {/* Breadcrumb + Readiness Warning Banner */}
+      {styleData?.id && (
+        <StyleBreadcrumb styleId={styleData.id} styleNumber={styleData.style_number} currentPage="BOM" />
+      )}
+      <ReadinessWarningBanner styleId={styleData?.id} />
 
       {/* Search */}
       <div className="flex items-center gap-4">

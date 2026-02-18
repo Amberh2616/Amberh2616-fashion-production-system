@@ -21,7 +21,6 @@ import {
   useStartExecutionSampleRun,
   useCompleteSampleRun,
   useCancelSampleRun,
-  useConfirmSampleRequest,
   useCreateNextRun,
 } from '@/lib/hooks/useSamples';
 import type { CreateSampleRunPayload, UpdateSampleRequestPayload } from '@/types/samples';
@@ -113,26 +112,7 @@ export default function SampleRequestDetailPage() {
   const startExecutionMutation = useStartExecutionSampleRun(requestId);
   const completeRunMutation = useCompleteSampleRun(requestId);
   const cancelRunMutation = useCancelSampleRun(requestId);
-  const confirmMutation = useConfirmSampleRequest();
   const createNextRunMutation = useCreateNextRun(requestId);
-
-  // 確認樣衣 handler
-  const handleConfirmSample = async () => {
-    try {
-      await confirmMutation.mutateAsync(requestId);
-      alert('✅ 確認成功！已生成 Run、MWO 和報價單。');
-    } catch (err: any) {
-      console.error('Failed to confirm sample:', err);
-      // 處理已確認過的情況（冪等性錯誤）
-      if (err?.message?.includes('已確認過') || err?.message?.includes('已有 Sample Run')) {
-        alert('⚠️ 此請求已確認過，請刷新頁面查看最新狀態。');
-        // 刷新數據
-        window.location.reload();
-      } else {
-        alert(`❌ 確認失敗：${err?.message || '未知錯誤'}`);
-      }
-    }
-  };
 
   // 創建下一輪 handler（多輪 Fit Sample 支援）
   const handleCreateNextRun = async () => {
@@ -360,47 +340,34 @@ export default function SampleRequestDetailPage() {
 
             {!isConfirmed && (
               <div className="text-xs text-muted-foreground bg-white/60 p-2 rounded">
-                💡 請確認上述 Tech Pack、BOM、Spec 資料正確後，按下「確認樣衣」按鈕生成 MWO 與報價單。
+                💡 請到 Kanban 進行樣衣流程，系統會在正確狀態下生成 MWO 與報價單。
               </div>
             )}
             {isConfirmed && (
               <div className="text-xs text-green-700 bg-green-50 p-2 rounded border border-green-200">
-                ✓ 已確認！BOM/Spec 資料已整合，MWO 與報價單已生成。
+                ✓ 已建立 Sample Run，請到 Kanban 繼續後續流程。
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* 確認樣衣按鈕區塊 - 只在未確認時顯示 */}
-      {!isConfirmed && revisionInfo && (
-        <Card className="border-green-200 bg-green-50/50">
+      {/* Kanban CTA */}
+      {revisionInfo && (
+        <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="py-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-green-800">準備好了嗎？</h3>
-                <p className="text-sm text-green-700 mt-1">
-                  確認後系統將整合 BOM/Spec 資料，生成 MWO 製造工單與報價單
+                <h3 className="text-lg font-semibold text-blue-800">下一步</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  在 Kanban 中依狀態推進、生成 MWO 與報價單
                 </p>
               </div>
-              <Button
-                size="lg"
-                className="bg-green-600 hover:bg-green-700 text-white px-8"
-                onClick={handleConfirmSample}
-                disabled={confirmMutation.isPending}
-              >
-                {confirmMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    處理中...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="mr-2 h-5 w-5" />
-                    確認樣衣
-                  </>
-                )}
-              </Button>
+              <Link href="/dashboard/samples/kanban">
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white px-8">
+                  前往 Kanban
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

@@ -476,6 +476,13 @@ class SampleRun(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
 
+    # ⭐ TRACK-PROGRESS: 狀態時間戳 JSON（每個狀態的進入時間）
+    status_timestamps = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='{"draft": "2026-01-01T00:00:00Z", "materials_planning": "2026-01-02T...", ...}'
+    )
+
     # ⭐ 只保留單向 FK：samples → costing（避免循環依賴）
     guidance_usage = models.ForeignKey(
         'costing.UsageScenario',
@@ -1374,3 +1381,44 @@ class SampleAttachment(models.Model):
             raise ValidationError(
                 'At least one of sample_request or sample must be specified.'
             )
+
+
+class SampleRunTransitionLog(models.Model):
+    """
+    TRACK-PROGRESS: 狀態轉換操作歷史表
+    記錄每次狀態轉換/回退的完整審計資訊
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    sample_run = models.ForeignKey(
+        SampleRun,
+        on_delete=models.CASCADE,
+        related_name='transition_logs'
+    )
+
+    from_status = models.CharField(max_length=24)
+    to_status = models.CharField(max_length=24)
+    action = models.CharField(
+        max_length=32,
+        help_text="Action name: submit, approve, rollback, cancel, etc."
+    )
+
+    actor = models.ForeignKey(
+        'core.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    note = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'sample_run_transition_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['sample_run', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.from_status} → {self.to_status} ({self.action})"

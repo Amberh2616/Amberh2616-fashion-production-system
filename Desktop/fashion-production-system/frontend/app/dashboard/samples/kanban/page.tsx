@@ -10,7 +10,8 @@
  * - Visual priority and overdue indicators
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -37,7 +38,33 @@ import { ExportReadinessDialog } from '@/components/samples/ExportReadinessDialo
 import { BatchTransitionDialog } from '@/components/samples/BatchTransitionDialog';
 import { RollbackDialog } from '@/components/samples/RollbackDialog';
 import { MWOPrecheckDialog } from '@/components/samples/MWOPrecheckDialog';
-import { FileText, DollarSign, ShoppingCart, Download, Package, RotateCcw, ClipboardCheck } from 'lucide-react';
+import {
+  FileText,
+  DollarSign,
+  ShoppingCart,
+  Download,
+  Package,
+  RotateCcw,
+  ClipboardCheck,
+  MoreHorizontal,
+  ExternalLink,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { getStyleReadiness } from '@/lib/api/style-detail';
+import { ReadinessWarningBanner } from '@/components/styles/ReadinessWarningBanner';
 
 // Status to action mapping (backend API endpoints)
 const STATUS_TO_ACTION: Record<string, { action: string; label: string }> = {
@@ -106,10 +133,18 @@ const VISIBLE_LANES = [
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const styleFilter = searchParams.get('style') || '';
 
   // Filter state
   const [activePreset, setActivePreset] = useState<ViewPreset>('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(styleFilter);
+  const [debouncedSearch, setDebouncedSearch] = useState(styleFilter);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [priority, setPriority] = useState('');
   const [runType, setRunType] = useState('');
   const [expandedLanes, setExpandedLanes] = useState<Set<string>>(new Set(VISIBLE_LANES));
@@ -135,17 +170,26 @@ export default function KanbanPage() {
   // P1: MWO Precheck dialog state
   const [precheckDialogRun, setPrecheckDialogRun] = useState<KanbanRunItem | null>(null);
 
+  // Missing reasons dialog state
+  const [missingDialogRun, setMissingDialogRun] = useState<KanbanRunItem | null>(null);
+  const missingStyleId = missingDialogRun?.style?.id ?? null;
+  const { data: missingReadiness, isLoading: isMissingLoading } = useQuery({
+    queryKey: ['style-readiness', missingStyleId],
+    queryFn: () => getStyleReadiness(missingStyleId as string),
+    enabled: Boolean(missingStyleId),
+  });
+
   // Build filters
   const filters: KanbanFilters = useMemo(() => {
     const presetFilters = VIEW_PRESETS.find((p) => p.key === activePreset)?.filters || {};
     return {
       ...presetFilters,
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       priority: priority || presetFilters.priority,
       run_type: runType || undefined,
       limit: 100,
     };
-  }, [activePreset, search, priority, runType]);
+  }, [activePreset, debouncedSearch, priority, runType]);
 
   // Fetch counts
   const { data: countsData, isLoading: countsLoading } = useQuery({
@@ -236,6 +280,13 @@ export default function KanbanPage() {
     return STATUS_TO_ACTION[selectedRunsStatus] || null;
   }, [selectedRunsStatus]);
 
+  // Resolve style ID from filtered runs (for ReadinessWarningBanner)
+  const filteredStyleId = useMemo(() => {
+    if (!styleFilter || !runsData?.runs) return undefined;
+    const firstRun = runsData.runs.find((r) => r.style?.id);
+    return firstRun?.style?.id;
+  }, [styleFilter, runsData]);
+
   // Group runs by status
   const runsByStatus = useMemo(() => {
     if (!runsData?.runs) return {};
@@ -304,6 +355,11 @@ export default function KanbanPage() {
             ×
           </button>
         </div>
+      )}
+
+      {/* Style Readiness Banner (when filtered by style) */}
+      {styleFilter && filteredStyleId && (
+        <ReadinessWarningBanner styleId={filteredStyleId} />
       )}
 
       {/* Header */}
@@ -551,6 +607,7 @@ export default function KanbanPage() {
             onOpenReadinessDialog={(run) => setReadinessDialogRun(run)}
             onOpenRollbackDialog={(run) => setRollbackDialogRun(run)}
             onOpenPrecheckDialog={(run) => setPrecheckDialogRun(run)}
+            onOpenMissingDialog={(run) => setMissingDialogRun(run)}
           />
         ))}
       </div>
@@ -595,6 +652,13 @@ export default function KanbanPage() {
           if (!open) setPrecheckDialogRun(null);
         }}
       />
+
+      <MissingItemsDialog
+        run={missingDialogRun}
+        readiness={missingReadiness}
+        isLoading={isMissingLoading}
+        onClose={() => setMissingDialogRun(null)}
+      />
     </div>
   );
 }
@@ -614,6 +678,7 @@ function KanbanLaneComponent({
   onOpenReadinessDialog,
   onOpenRollbackDialog,
   onOpenPrecheckDialog,
+  onOpenMissingDialog,
 }: {
   lane: KanbanLane;
   runs: KanbanRunItem[];
@@ -628,6 +693,7 @@ function KanbanLaneComponent({
   onOpenReadinessDialog: (run: KanbanRunItem) => void;
   onOpenRollbackDialog: (run: KanbanRunItem) => void;
   onOpenPrecheckDialog: (run: KanbanRunItem) => void;
+  onOpenMissingDialog: (run: KanbanRunItem) => void;
 }) {
   return (
     <div
@@ -698,6 +764,7 @@ function KanbanLaneComponent({
                 onOpenReadinessDialog={onOpenReadinessDialog}
                 onOpenRollbackDialog={onOpenRollbackDialog}
                 onOpenPrecheckDialog={onOpenPrecheckDialog}
+                onOpenMissingDialog={() => onOpenMissingDialog(run)}
               />
             ))
           )}
@@ -719,6 +786,7 @@ function KanbanCard({
   onOpenReadinessDialog,
   onOpenRollbackDialog,
   onOpenPrecheckDialog,
+  onOpenMissingDialog,
 }: {
   run: KanbanRunItem;
   onNextAction: (run: KanbanRunItem) => void;
@@ -730,6 +798,7 @@ function KanbanCard({
   onOpenReadinessDialog: (run: KanbanRunItem) => void;
   onOpenRollbackDialog: (run: KanbanRunItem) => void;
   onOpenPrecheckDialog: (run: KanbanRunItem) => void;
+  onOpenMissingDialog: () => void;
 }) {
   const runTypeBadge = RUN_TYPE_BADGES[run.run_type] || RUN_TYPE_BADGES.other;
   const priorityColor = PRIORITY_COLORS[run.sample_request.priority] || PRIORITY_COLORS.normal;
@@ -771,14 +840,24 @@ function KanbanCard({
         </span>
       </div>
 
-      {/* Style Number */}
+      {/* Style Number + Style Center */}
       {run.style && (
-        <Link
-          href={`/dashboard/samples/${run.sample_request.id}/runs/${run.id}`}
-          className="block text-sm font-semibold text-gray-900 truncate hover:text-blue-600"
-        >
-          {run.style.style_number}
-        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <Link
+            href={`/dashboard/samples/${run.sample_request.id}/runs/${run.id}`}
+            className="block text-sm font-semibold text-gray-900 truncate hover:text-blue-600"
+          >
+            {run.style.style_number}
+          </Link>
+          <Link
+            href={`/dashboard/styles/${run.style.id}`}
+            className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-blue-600"
+            title="Open Style Center"
+          >
+            Style
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+        </div>
       )}
 
       {/* Brand & Qty */}
@@ -808,42 +887,40 @@ function KanbanCard({
         </div>
       )}
 
+      {/* Days in Status Warning (TRACK-PROGRESS) */}
+      {run.days_in_status != null && run.days_in_status > 3 && (
+        <div
+          className={cn(
+            'text-xs mt-1 px-1.5 py-0.5 rounded inline-block',
+            run.days_in_status >= 7
+              ? 'bg-amber-100 text-amber-800 font-semibold'
+              : 'text-gray-400'
+          )}
+        >
+          {run.days_in_status}d in status
+        </div>
+      )}
+
+      {/* Next Step Hint */}
+      {nextAction && (
+        <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+          <span>Next: {nextAction.label}</span>
+          {run.style?.id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenMissingDialog();
+              }}
+              className="text-[11px] text-blue-600 hover:underline"
+            >
+              Missing reasons
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Action Buttons */}
-      <div className="flex gap-1 mt-2">
-        {/* MWO Precheck Button - show for statuses before MWO generation */}
-        {['draft', 'materials_planning', 'po_drafted', 'po_issued'].includes(run.status) && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenPrecheckDialog(run);
-            }}
-            className={cn(
-              'px-2 py-1 text-xs font-medium rounded transition-colors',
-              'bg-blue-100 text-blue-700 hover:bg-blue-200'
-            )}
-            title="MWO 預檢"
-          >
-            <ClipboardCheck className="h-3 w-3" />
-          </button>
-        )}
-
-        {/* Rollback Button */}
-        {run.status !== 'draft' && run.status !== 'accepted' && run.status !== 'cancelled' && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenRollbackDialog(run);
-            }}
-            className={cn(
-              'px-2 py-1 text-xs font-medium rounded transition-colors',
-              'bg-amber-100 text-amber-700 hover:bg-amber-200'
-            )}
-            title="回退狀態"
-          >
-            <RotateCcw className="h-3 w-3" />
-          </button>
-        )}
-
+      <div className="flex gap-2 mt-2 items-center">
         {/* Next Action Button */}
         {nextAction && (
           <button
@@ -861,136 +938,204 @@ function KanbanCard({
             {isTransitioning ? '...' : `→ ${nextAction.label}`}
           </button>
         )}
-      </div>
 
-      {/* P2: Excel Export Buttons */}
-      <div className="flex gap-1 mt-2 pt-2 border-t border-gray-100">
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const blob = await exportMWO(run.id);
-              downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
-            } catch (error) {
-              console.error('Export MWO failed:', error);
-              alert('Failed to export MWO. Please try again.');
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-blue-50 hover:bg-blue-100 rounded transition-colors"
-          title="Download MWO"
-        >
-          <FileText className="h-3 w-3" />
-          <span>MWO</span>
-        </button>
-
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const blob = await exportEstimate(run.id);
-              downloadBlob(blob, `Estimate_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
-            } catch (error) {
-              console.error('Export Estimate failed:', error);
-              alert('Failed to export Estimate. Please try again.');
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-green-50 hover:bg-green-100 rounded transition-colors"
-          title="Download Estimate"
-        >
-          <DollarSign className="h-3 w-3" />
-          <span>Quote</span>
-        </button>
-
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const blob = await exportPO(run.id);
-              downloadBlob(blob, `T2PO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
-            } catch (error) {
-              console.error('Export PO failed:', error);
-              alert('Failed to export PO. Please try again.');
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-purple-50 hover:bg-purple-100 rounded transition-colors"
-          title="Download T2 PO"
-        >
-          <ShoppingCart className="h-3 w-3" />
-          <span>PO</span>
-        </button>
-      </div>
-
-      {/* P3: PDF Export Buttons */}
-      <div className="flex gap-1 mt-1">
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const blob = await exportMWOCompletePDF(run.id, false);  // 不含 Tech Pack，快速匯出
-              downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
-            } catch (error) {
-              console.error('Export MWO PDF failed:', error);
-              alert('Failed to export MWO PDF. Please try again.');
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-blue-100 hover:bg-blue-200 rounded transition-colors"
-          title="Download MWO as PDF (支援中文)"
-        >
-          <FileText className="h-3 w-3" />
-          <span>PDF</span>
-        </button>
-
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const blob = await exportEstimatePDF(run.id);
-              downloadBlob(blob, `Estimate_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
-            } catch (error) {
-              console.error('Export Estimate PDF failed:', error);
-              alert('Failed to export Estimate PDF. Please try again.');
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-green-100 hover:bg-green-200 rounded transition-colors"
-          title="Download Estimate as PDF"
-        >
-          <DollarSign className="h-3 w-3" />
-          <span>PDF</span>
-        </button>
-
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const blob = await exportPOPDF(run.id);
-              downloadBlob(blob, `T2PO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
-            } catch (error) {
-              console.error('Export PO PDF failed:', error);
-              alert('Failed to export PO PDF. Please try again.');
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 py-1 text-xs bg-purple-100 hover:bg-purple-200 rounded transition-colors"
-          title="Download T2 PO as PDF"
-        >
-          <ShoppingCart className="h-3 w-3" />
-          <span>PDF</span>
-        </button>
-      </div>
-
-      {/* Complete MWO Export (Tech Pack + BOM + Spec) - Now opens readiness dialog */}
-      <div className="mt-2">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenReadinessDialog(run);
-          }}
-          className="w-full flex items-center justify-center gap-1 py-1.5 text-xs rounded transition-colors font-medium bg-indigo-100 hover:bg-indigo-200"
-          title="檢查並匯出完整 MWO (Tech Pack + BOM + Spec)"
-        >
-          <Package className="h-3 w-3" />
-          <span>Complete MWO</span>
-        </button>
+        {/* Secondary Actions */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                'px-2 py-1 text-xs font-medium rounded transition-colors',
+                'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              )}
+              title="More actions"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            {run.status === 'po_issued' && (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  onOpenPrecheckDialog(run);
+                }}
+              >
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                MWO Precheck
+              </DropdownMenuItem>
+            )}
+            {run.status !== 'draft' && run.status !== 'accepted' && run.status !== 'cancelled' && (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  onOpenRollbackDialog(run);
+                }}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Rollback Status
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Exports</DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={async (e) => {
+                e.preventDefault();
+                try {
+                  const blob = await exportMWO(run.id);
+                  downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
+                } catch (error) {
+                  console.error('Export MWO failed:', error);
+                  alert('Failed to export MWO. Please try again.');
+                }
+              }}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              MWO (XLSX)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async (e) => {
+                e.preventDefault();
+                try {
+                  const blob = await exportMWOCompletePDF(run.id, false);
+                  downloadBlob(blob, `MWO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+                } catch (error) {
+                  console.error('Export MWO PDF failed:', error);
+                  alert('Failed to export MWO PDF. Please try again.');
+                }
+              }}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              MWO (PDF)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async (e) => {
+                e.preventDefault();
+                try {
+                  const blob = await exportEstimate(run.id);
+                  downloadBlob(blob, `Estimate_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
+                } catch (error) {
+                  console.error('Export Estimate failed:', error);
+                  alert('Failed to export Estimate. Please try again.');
+                }
+              }}
+            >
+              <DollarSign className="h-4 w-4 mr-2" />
+              Quote (XLSX)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async (e) => {
+                e.preventDefault();
+                try {
+                  const blob = await exportEstimatePDF(run.id);
+                  downloadBlob(blob, `Estimate_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+                } catch (error) {
+                  console.error('Export Estimate PDF failed:', error);
+                  alert('Failed to export Estimate PDF. Please try again.');
+                }
+              }}
+            >
+              <DollarSign className="h-4 w-4 mr-2" />
+              Quote (PDF)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async (e) => {
+                e.preventDefault();
+                try {
+                  const blob = await exportPO(run.id);
+                  downloadBlob(blob, `T2PO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.xlsx`);
+                } catch (error) {
+                  console.error('Export PO failed:', error);
+                  alert('Failed to export PO. Please try again.');
+                }
+              }}
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              PO (XLSX)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async (e) => {
+                e.preventDefault();
+                try {
+                  const blob = await exportPOPDF(run.id);
+                  downloadBlob(blob, `T2PO_${run.style?.style_number || 'unknown'}_Run${run.run_no}.pdf`);
+                } catch (error) {
+                  console.error('Export PO PDF failed:', error);
+                  alert('Failed to export PO PDF. Please try again.');
+                }
+              }}
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              PO (PDF)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                onOpenReadinessDialog(run);
+              }}
+            >
+              <Package className="h-4 w-4 mr-2" />
+              Complete MWO
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
+  );
+}
+
+function MissingItemsDialog({
+  run,
+  readiness,
+  isLoading,
+  onClose,
+}: {
+  run: KanbanRunItem | null;
+  readiness: Awaited<ReturnType<typeof getStyleReadiness>> | undefined;
+  isLoading: boolean;
+  onClose: () => void;
+}) {
+  const hasTechPack = Boolean(readiness?.tech_pack_revision_id);
+  const bomReady = readiness ? readiness.bom.total > 0 && readiness.bom.verified === readiness.bom.total : false;
+  const specReady = readiness ? readiness.spec.total > 0 && readiness.spec.verified === readiness.spec.total : false;
+
+  const missing = [
+    !hasTechPack ? 'Tech Pack not approved' : null,
+    !bomReady ? 'BOM not fully verified' : null,
+    !specReady ? 'Spec not fully verified' : null,
+    readiness && !readiness.sample_request ? 'Sample Request not created' : null,
+  ].filter(Boolean) as string[];
+
+  return (
+    <Dialog open={Boolean(run)} onOpenChange={(open) => (!open ? onClose() : null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Missing reasons</DialogTitle>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="text-sm text-slate-500">Loading...</div>
+        ) : (
+          <div className="space-y-2">
+            <div className="text-sm font-medium">
+              {run?.style?.style_number || 'Style'} / Run #{run?.run_no}
+            </div>
+            {missing.length === 0 ? (
+              <div className="text-sm text-green-700">All prerequisites met.</div>
+            ) : (
+              <ul className="text-sm text-slate-600 list-disc pl-5">
+                {missing.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+            <div className="text-xs text-slate-400">
+              Open Style Center to check readiness and next steps.
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

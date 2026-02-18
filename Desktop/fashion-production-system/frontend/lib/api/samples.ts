@@ -19,6 +19,7 @@ import type {
   UpdateSampleRunPayload,
   TransitionSampleRunPayload,
   CreateSampleAttachmentPayload,
+  SampleRunTransitionLog,
 } from '@/types/samples';
 
 // ========================================
@@ -33,8 +34,10 @@ export async function fetchSampleRequests(params?: {
   revision_id?: string;
   status?: string;
   brand_name?: string;
+  search?: string;
 }): Promise<SampleRequest[]> {
   const searchParams = new URLSearchParams();
+  searchParams.set('page_size', '500');
 
   if (params?.revision_id) {
     searchParams.set('revision_id', params.revision_id);
@@ -45,9 +48,11 @@ export async function fetchSampleRequests(params?: {
   if (params?.brand_name) {
     searchParams.set('brand_name', params.brand_name);
   }
+  if (params?.search) {
+    searchParams.set('search', params.search);
+  }
 
-  const queryString = searchParams.toString();
-  const url = `/sample-requests/${queryString ? `?${queryString}` : ''}`;
+  const url = `/sample-requests/?${searchParams.toString()}`;
 
   // Backend returns paginated response
   const response = await apiClient<{ results: SampleRequest[] }>(url);
@@ -626,6 +631,8 @@ export interface KanbanRunItem {
   target_due_date: string | null;
   is_overdue: boolean | null;
   days_until_due: number | null;
+  days_in_status: number | null; // TRACK-PROGRESS
+  status_timestamps: Record<string, string> | null; // TRACK-PROGRESS
   sample_request: {
     id: string;
     request_type: string;
@@ -1304,6 +1311,17 @@ export async function rollbackSampleRun(
       reason: reason || '',
     }),
   });
+}
+
+
+// ==================== TRACK-PROGRESS: Transition Logs API ====================
+
+/**
+ * Fetch transition logs for a SampleRun
+ * GET /sample-runs/{id}/transition-logs/
+ */
+export async function fetchTransitionLogs(runId: string): Promise<SampleRunTransitionLog[]> {
+  return apiClient<SampleRunTransitionLog[]>(`/sample-runs/${runId}/transition-logs/`);
 }
 
 

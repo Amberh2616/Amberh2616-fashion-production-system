@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -117,7 +117,7 @@ export default function MaterialsPage() {
   const deleteMaterial = useDeleteMaterial();
 
   // Table columns
-  const columns: ColumnDef<Material>[] = [
+  const columns = useMemo<ColumnDef<Material>[]>(() => [
     {
       accessorKey: "article_no",
       header: "Article No.",
@@ -221,7 +221,7 @@ export default function MaterialsPage() {
         </DropdownMenu>
       ),
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: data?.results || [],

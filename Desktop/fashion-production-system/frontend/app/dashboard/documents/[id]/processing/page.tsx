@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { CheckCircle2, Loader2, AlertCircle, Clock, XCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { API_BASE_URL } from '@/lib/api/client'
@@ -66,7 +66,9 @@ function formatElapsedTime(seconds: number): string {
 export default function ProcessingPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const documentId = params.id as string
+  const styleId = searchParams.get('style_id')
 
   const [status, setStatus] = useState<ProcessingStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +148,7 @@ export default function ProcessingPage() {
   const handleCancel = () => {
     setIsCancelled(true)
     abortControllerRef.current?.abort()
-    router.push('/dashboard/upload')
+    router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')
   }
 
   const triggerClassification = async () => {
@@ -234,7 +236,8 @@ export default function ProcessingPage() {
         toast.success('AI 分類完成！', {
           description: `共 ${data.classification_result?.total_pages || 0} 頁`
         })
-        router.push(`/dashboard/documents/${documentId}/review`)
+        const styleParam = styleId ? `?style_id=${styleId}` : ''
+        router.push(`/dashboard/documents/${documentId}/review${styleParam}`)
       }
 
       // Handle failed status
@@ -281,10 +284,10 @@ export default function ProcessingPage() {
               重試
             </button>
             <button
-              onClick={() => router.push('/dashboard/upload')}
+              onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
             >
-              返回上傳
+              {styleId ? '返回款式' : '返回上傳'}
             </button>
           </div>
         </div>

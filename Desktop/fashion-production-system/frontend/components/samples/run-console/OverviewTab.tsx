@@ -143,38 +143,30 @@ export function OverviewTab({ run, t2pos, mwos, actuals }: OverviewTabProps) {
             </div>
           </div>
 
-          {/* Timeline Steps */}
+          {/* Timeline Steps (with real timestamps from status_timestamps) */}
           <div className="space-y-3">
-            <TimelineStep
-              label="Materials Planning"
-              completed={progress >= 20}
-              active={run.status === 'materials_planning'}
-            />
-            <TimelineStep
-              label="PO Issued"
-              completed={progress >= 40}
-              active={run.status === 'po_drafted' || run.status === 'po_issued'}
-            />
-            <TimelineStep
-              label="MWO Issued"
-              completed={progress >= 60}
-              active={run.status === 'mwo_drafted' || run.status === 'mwo_issued'}
-            />
-            <TimelineStep
-              label="In Production"
-              completed={progress >= 75}
-              active={run.status === 'in_progress'}
-            />
-            <TimelineStep
-              label="Sample Done"
-              completed={progress >= 90}
-              active={run.status === 'sample_done'}
-            />
-            <TimelineStep
-              label="Actuals Recorded"
-              completed={progress >= 95}
-              active={run.status === 'actuals_recorded'}
-            />
+            {[
+              { key: 'materials_planning', label: 'Materials Planning', threshold: 20 },
+              { key: 'po_issued', label: 'PO Issued', threshold: 40, altKeys: ['po_drafted'] },
+              { key: 'mwo_issued', label: 'MWO Issued', threshold: 60, altKeys: ['mwo_drafted'] },
+              { key: 'in_progress', label: 'In Production', threshold: 75 },
+              { key: 'sample_done', label: 'Sample Done', threshold: 90 },
+              { key: 'actuals_recorded', label: 'Actuals Recorded', threshold: 95 },
+            ].map((step) => {
+              const ts = run.status_timestamps;
+              const timestamp = ts?.[step.key]
+                || step.altKeys?.map(k => ts?.[k]).find(Boolean)
+                || undefined;
+              return (
+                <TimelineStep
+                  key={step.key}
+                  label={step.label}
+                  completed={progress >= step.threshold}
+                  active={run.status === step.key || (step.altKeys?.includes(run.status) ?? false)}
+                  timestamp={timestamp}
+                />
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -251,9 +243,10 @@ interface TimelineStepProps {
   label: string;
   completed: boolean;
   active: boolean;
+  timestamp?: string;
 }
 
-function TimelineStep({ label, completed, active }: TimelineStepProps) {
+function TimelineStep({ label, completed, active, timestamp }: TimelineStepProps) {
   return (
     <div className="flex items-center gap-3">
       <div
@@ -268,13 +261,20 @@ function TimelineStep({ label, completed, active }: TimelineStepProps) {
         {completed && <CheckCircle2 className="h-4 w-4" />}
         {active && !completed && <Clock className="h-4 w-4 text-blue-500" />}
       </div>
-      <span
-        className={`text-sm ${
-          completed || active ? 'font-medium' : 'text-muted-foreground'
-        }`}
-      >
-        {label}
-      </span>
+      <div className="flex-1 flex items-center justify-between">
+        <span
+          className={`text-sm ${
+            completed || active ? 'font-medium' : 'text-muted-foreground'
+          }`}
+        >
+          {label}
+        </span>
+        {timestamp && (
+          <span className="text-xs text-muted-foreground">
+            {format(new Date(timestamp), 'MMM dd, HH:mm')}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

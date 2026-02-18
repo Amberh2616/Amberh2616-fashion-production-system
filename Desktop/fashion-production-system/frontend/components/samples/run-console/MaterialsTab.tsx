@@ -141,7 +141,7 @@ export function MaterialsTab({ run, t2pos, isLoading }: MaterialsTabProps) {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {t2po.currency} {t2po.total_amount.toFixed(2)}
+                      {t2po.currency} {Number(t2po.total_amount).toFixed(2)}
                     </TableCell>
                     <TableCell>
                       {t2po.delivery_date
@@ -238,7 +238,7 @@ export function MaterialsTab({ run, t2pos, isLoading }: MaterialsTabProps) {
                 <div>
                   <div className="text-muted-foreground">Total Amount</div>
                   <div className="font-medium">
-                    {selectedT2PO.currency} {selectedT2PO.total_amount.toFixed(2)}
+                    {selectedT2PO.currency} {Number(selectedT2PO.total_amount).toFixed(2)}
                   </div>
                 </div>
                 <div>
@@ -282,9 +282,9 @@ export function MaterialsTab({ run, t2pos, isLoading }: MaterialsTabProps) {
                           <TableCell>
                             {line.quantity_requested} {line.uom}
                           </TableCell>
-                          <TableCell>${line.unit_price.toFixed(2)}</TableCell>
+                          <TableCell>${Number(line.unit_price).toFixed(2)}</TableCell>
                           <TableCell className="font-medium">
-                            ${line.line_total.toFixed(2)}
+                            ${Number(line.line_total).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { CheckCircle2, FileText, AlertCircle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -47,13 +47,39 @@ interface TaskStatus {
   }
 }
 
+// Helper: resolve styleId from style_revision_id
+async function resolveStyleId(styleRevisionId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/style-revisions/${styleRevisionId}/`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.data?.style || data.style || null
+  } catch {
+    return null
+  }
+}
+
+// Helper: resolve styleId from tech pack revision
+async function resolveStyleIdFromTechPackRevision(techPackRevisionId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/revisions/${techPackRevisionId}/`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.data?.style || data.style || null
+  } catch {
+    return null
+  }
+}
+
 // DA-2: Async mode disabled - Redis not running
 const USE_ASYNC_MODE = false
 
 export default function ReviewPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const documentId = params.id as string
+  const styleId = searchParams.get('style_id')
 
   const [status, setStatus] = useState<DocumentStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -126,7 +152,21 @@ export default function ReviewPage() {
           setIsCompleted(true)
           toast.success('AI 提取完成!')
 
-          // Navigate to Documents page after extraction
+          // If style_id was provided via URL, use it directly
+          if (styleId) {
+            router.push(`/dashboard/styles/${styleId}`)
+            return
+          }
+
+          // Otherwise resolve from revision
+          const revId = data.result.style_revision_id
+          if (revId) {
+            const sid = await resolveStyleId(revId)
+            if (sid) {
+              router.push(`/dashboard/styles/${sid}`)
+              return
+            }
+          }
           router.push('/dashboard/tech-packs')
         } else if (data.result.error) {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -173,29 +213,37 @@ export default function ReviewPage() {
 
       // Redirect based on status
       if (data.status === 'uploaded' || data.status === 'classifying') {
-        router.push(`/dashboard/documents/${documentId}/processing`)
+        const param = styleId ? `?style_id=${styleId}` : ''
+        router.push(`/dashboard/documents/${documentId}/processing${param}`)
       } else if (data.status === 'extracted' || data.status === 'completed') {
         // Mark as completed
         setIsCompleted(true)
 
-        // ⚡ Auto-navigate based on file type
+        // If style_id was provided via URL, use it directly
+        if (styleId) {
+          router.push(`/dashboard/styles/${styleId}`)
+          return
+        }
+
+        // ⚡ Auto-navigate to Style Center if possible
         const styleRevId = data.style_revision_id
         const techPackRevId = data.tech_pack_revision_id
 
-        if (styleRevId || techPackRevId) {
-          const fileType = data.classification_result?.file_type || 'tech_pack'
-          const hasBOM = data.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'bom_table')
-          const hasSpec = data.classification_result?.pages?.some((p: ClassificationPage) => p.type === 'measurement_table')
-
-          // 立即跳轉，不等待
-          if ((fileType === 'bom' || hasBOM) && styleRevId) {
-            router.push(`/dashboard/revisions/${styleRevId}/bom`)
-          } else if ((fileType === 'measurement' || hasSpec) && styleRevId) {
-            router.push(`/dashboard/revisions/${styleRevId}/spec`)
-          } else if (techPackRevId) {
-            router.push(`/dashboard/revisions/${techPackRevId}/review`)
+        if (styleRevId) {
+          const sid = await resolveStyleId(styleRevId)
+          if (sid) {
+            router.push(`/dashboard/styles/${sid}`)
+            return
           }
         }
+        if (techPackRevId) {
+          const sid = await resolveStyleIdFromTechPackRevision(techPackRevId)
+          if (sid) {
+            router.push(`/dashboard/styles/${sid}`)
+            return
+          }
+        }
+        router.push('/dashboard/tech-packs')
       }
     } catch (err) {
       console.error('Failed to fetch status:', err)
@@ -211,10 +259,13 @@ export default function ReviewPage() {
     setExtractTaskStatus(null)
 
     try {
+      // Build extract URL with optional style_id
+      const styleParam = styleId ? `&style_id=${styleId}` : ''
+
       // DA-2: Use async mode if enabled
       if (USE_ASYNC_MODE) {
         const response = await fetch(
-          `${API_BASE_URL}/uploaded-documents/${documentId}/extract/?async=true`,
+          `${API_BASE_URL}/uploaded-documents/${documentId}/extract/?async=true${styleParam}`,
           { method: 'POST' }
         )
 
@@ -234,8 +285,12 @@ export default function ReviewPage() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 600000)
 
+      const syncUrl = styleId
+        ? `${API_BASE_URL}/uploaded-documents/${documentId}/extract/?style_id=${styleId}`
+        : `${API_BASE_URL}/uploaded-documents/${documentId}/extract/`
+
       const response = await fetch(
-        `${API_BASE_URL}/uploaded-documents/${documentId}/extract/`,
+        syncUrl,
         {
           method: 'POST',
           signal: controller.signal,
@@ -260,16 +315,31 @@ export default function ReviewPage() {
         // Extraction completed - redirect immediately
         setIsExtracting(false)
         setIsCompleted(true)
-
-        const fileType = extractData.classification_result?.file_type || status?.classification_result?.file_type || 'tech_pack'
-        const hasBOM = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'bom_table')
-        const hasSpec = (extractData.classification_result?.pages || status?.classification_result?.pages)?.some((p: ClassificationPage) => p.type === 'measurement_table')
-
-        // Redirect to Documents page after extraction
-        const targetUrl = '/dashboard/tech-packs'
-        console.log('Redirecting to:', targetUrl)
         toast.success('Extraction completed!')
-        router.push(targetUrl)
+
+        // If style_id was provided via URL, use it directly (fastest)
+        if (styleId) {
+          router.push(`/dashboard/styles/${styleId}`)
+          return
+        }
+
+        // Otherwise resolve from revision
+        if (styleRevId) {
+          const sid = await resolveStyleId(styleRevId)
+          if (sid) {
+            router.push(`/dashboard/styles/${sid}`)
+            return
+          }
+        }
+        if (techPackRevId) {
+          const sid = await resolveStyleIdFromTechPackRevision(techPackRevId)
+          if (sid) {
+            router.push(`/dashboard/styles/${sid}`)
+            return
+          }
+        }
+        // Fallback to Documents
+        router.push('/dashboard/tech-packs')
         return
       }
 
@@ -285,12 +355,31 @@ export default function ReviewPage() {
           setIsExtracting(false)
           setIsCompleted(true)
           setStatus(statusData)
-
-          const pollStyleRevId = statusData.style_revision_id
-          const pollTechPackRevId = statusData.tech_pack_revision_id
-
-          // Redirect to Documents page after extraction
           toast.success('Extraction completed!')
+
+          // If style_id was provided via URL, use it directly
+          if (styleId) {
+            router.push(`/dashboard/styles/${styleId}`)
+            return
+          }
+
+          // Otherwise resolve from revision
+          const pollStyleRevId = statusData.style_revision_id
+          if (pollStyleRevId) {
+            const sid = await resolveStyleId(pollStyleRevId)
+            if (sid) {
+              router.push(`/dashboard/styles/${sid}`)
+              return
+            }
+          }
+          const pollTechPackRevId = statusData.tech_pack_revision_id
+          if (pollTechPackRevId) {
+            const sid = await resolveStyleIdFromTechPackRevision(pollTechPackRevId)
+            if (sid) {
+              router.push(`/dashboard/styles/${sid}`)
+              return
+            }
+          }
           router.push('/dashboard/tech-packs')
         } else if (statusData.status === 'failed') {
           clearInterval(pollInterval)
@@ -341,10 +430,10 @@ export default function ReviewPage() {
             </div>
           </div>
           <button
-            onClick={() => router.push('/dashboard/upload')}
+            onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
           >
-            Back to Upload
+            {styleId ? 'Back to Style Center' : 'Back to Upload'}
           </button>
         </div>
       </div>
@@ -366,14 +455,29 @@ export default function ReviewPage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">
+      {/* Style context banner */}
+      {styleId && (
+        <div className="mb-4 flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-2.5 rounded-lg text-sm">
+          <button
+            onClick={() => router.push(`/dashboard/styles/${styleId}`)}
+            className="flex items-center gap-1 text-xs text-blue-700 hover:text-blue-900 font-medium"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Back to Style Center
+          </button>
+          <span className="text-blue-400">|</span>
+          <span>Extracting for this style. Data will be linked automatically.</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-8">
         <button
-          onClick={() => router.push('/dashboard/upload')}
+          onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Upload
+          {styleId ? 'Back to Style Center' : 'Back to Upload'}
         </button>
         <h1 className="text-3xl font-bold">Review Classification Results</h1>
         <p className="text-gray-600 mt-2">
@@ -493,9 +597,7 @@ export default function ReviewPage() {
             <div>
               <h2 className="font-semibold">Extraction Completed</h2>
               <p className="text-sm mt-1">
-                {status?.tech_pack_revision_id
-                  ? 'Redirecting to Tech Pack translation review interface...'
-                  : 'Data has been successfully extracted. Ready to create Sample Request.'}
+                Redirecting to Style Center...
               </p>
             </div>
           </div>
@@ -552,10 +654,10 @@ export default function ReviewPage() {
             : 'Confirm & Extract Data'}
         </button>
         <button
-          onClick={() => router.push('/dashboard/upload')}
+          onClick={() => router.push(styleId ? `/dashboard/styles/${styleId}` : '/dashboard/upload')}
           className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
         >
-          {isCompleted ? 'Back to Upload' : 'Cancel'}
+          {isCompleted ? (styleId ? 'Back to Style' : 'Back to Upload') : 'Cancel'}
         </button>
         <Link
           href="/dashboard/tech-packs"

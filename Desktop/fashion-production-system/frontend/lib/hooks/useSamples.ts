@@ -67,6 +67,7 @@ export function useSampleRequests(params?: {
   revision_id?: string;
   status?: string;
   brand_name?: string;
+  search?: string;
 }) {
   return useQuery({
     queryKey: ['sample-requests', params],

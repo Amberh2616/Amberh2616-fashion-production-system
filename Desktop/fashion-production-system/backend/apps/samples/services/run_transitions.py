@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from ..models import SampleRun, SampleRunStatus
+from ..models import SampleRun, SampleRunStatus, SampleRunTransitionLog
 
 
 @dataclass
@@ -336,21 +336,37 @@ def transition_sample_run(
         action_meta = execute_action_side_effects(sample_run, action, payload)
 
     # Execute transition
+    now = timezone.now()
     sample_run.status = new_status
-    sample_run.status_updated_at = timezone.now()
+    sample_run.status_updated_at = now
+
+    # TRACK-PROGRESS: 更新 status_timestamps
+    timestamps = sample_run.status_timestamps or {}
+    timestamps[new_status] = now.isoformat()
+    sample_run.status_timestamps = timestamps
 
     # Append notes if provided
     if payload.get('notes'):
-        notes_entry = f"\n[{timezone.now().isoformat()}] {action}: {payload['notes']}"
+        notes_entry = f"\n[{now.isoformat()}] {action}: {payload['notes']}"
         sample_run.notes = (sample_run.notes or '') + notes_entry
 
-    sample_run.save(update_fields=['status', 'status_updated_at', 'notes'])
+    sample_run.save(update_fields=['status', 'status_updated_at', 'status_timestamps', 'notes'])
+
+    # TRACK-PROGRESS: 寫入操作歷史
+    SampleRunTransitionLog.objects.create(
+        sample_run=sample_run,
+        from_status=old_status,
+        to_status=new_status,
+        action=action,
+        actor=actor if actor and hasattr(actor, 'pk') else None,
+        note=payload.get('notes', '') or payload.get('reason', ''),
+    )
 
     return TransitionResult(
         old_status=old_status,
         new_status=new_status,
         action=action,
-        changed_at=sample_run.status_updated_at,
+        changed_at=now,
         meta={
             'actor': str(actor) if actor else None,
             'reason': payload.get('reason', ''),
@@ -701,22 +717,38 @@ def rollback_sample_run(
         )
 
     # Execute rollback
+    now = timezone.now()
     sample_run.status = target_status
-    sample_run.status_updated_at = timezone.now()
+    sample_run.status_updated_at = now
+
+    # TRACK-PROGRESS: 更新 status_timestamps（回退時覆蓋目標狀態的時間）
+    timestamps = sample_run.status_timestamps or {}
+    timestamps[target_status] = now.isoformat()
+    sample_run.status_timestamps = timestamps
 
     # Append rollback note
-    notes_entry = f"\n[{timezone.now().isoformat()}] ROLLBACK: {old_status} → {target_status}"
+    notes_entry = f"\n[{now.isoformat()}] ROLLBACK: {old_status} → {target_status}"
     if reason:
         notes_entry += f" | Reason: {reason}"
     sample_run.notes = (sample_run.notes or '') + notes_entry
 
-    sample_run.save(update_fields=['status', 'status_updated_at', 'notes'])
+    sample_run.save(update_fields=['status', 'status_updated_at', 'status_timestamps', 'notes'])
+
+    # TRACK-PROGRESS: 寫入操作歷史
+    SampleRunTransitionLog.objects.create(
+        sample_run=sample_run,
+        from_status=old_status,
+        to_status=target_status,
+        action='rollback',
+        actor=actor if actor and hasattr(actor, 'pk') else None,
+        note=reason,
+    )
 
     return TransitionResult(
         old_status=old_status,
         new_status=target_status,
         action='rollback',
-        changed_at=sample_run.status_updated_at,
+        changed_at=now,
         meta={
             'actor': str(actor) if actor else None,
             'reason': reason,

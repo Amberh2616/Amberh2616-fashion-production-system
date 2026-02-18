@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -98,7 +98,7 @@ export default function SuppliersPage() {
   const deleteSupplier = useDeleteSupplier();
 
   // Table columns
-  const columns: ColumnDef<Supplier>[] = [
+  const columns = useMemo<ColumnDef<Supplier>[]>(() => [
     {
       accessorKey: "name",
       header: "Name / Code",
@@ -207,7 +207,7 @@ export default function SuppliersPage() {
         </DropdownMenu>
       ),
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: data?.results || [],

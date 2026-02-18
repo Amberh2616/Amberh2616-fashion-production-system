@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -38,6 +38,8 @@ import {
   type StyleResult,
 } from '@/lib/api/batch-upload';
 import { API_BASE_URL } from '@/lib/api/client';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 // ============================================
 // Single Upload Types
@@ -58,9 +60,25 @@ type BatchStep = 'upload' | 'preview' | 'processing' | 'complete';
 
 export default function UploadPage() {
   const [activeTab, setActiveTab] = useState<string>('single');
+  const searchParams = useSearchParams();
+  const styleId = searchParams.get('style_id');
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">
+      {/* Style context banner */}
+      {styleId && (
+        <div className="mb-4 flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-2.5 rounded-lg text-sm">
+          <Link href={`/dashboard/styles/${styleId}`}>
+            <Button variant="ghost" size="sm" className="gap-1 h-7 text-xs text-blue-700">
+              <ArrowLeft className="w-3 h-3" />
+              Back to Style Center
+            </Button>
+          </Link>
+          <span className="text-blue-600">|</span>
+          <span>Uploading for this style. Files will be linked automatically.</span>
+        </div>
+      )}
+
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Upload Documents</h1>
         <p className="text-muted-foreground">
@@ -81,7 +99,7 @@ export default function UploadPage() {
         </TabsList>
 
         <TabsContent value="single">
-          <SingleUpload />
+          <SingleUpload styleId={styleId} />
         </TabsContent>
 
         <TabsContent value="batch">
@@ -95,7 +113,7 @@ export default function UploadPage() {
 // ============================================
 // Single Upload Component
 // ============================================
-function SingleUpload() {
+function SingleUpload({ styleId }: { styleId?: string | null }) {
   const router = useRouter();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -220,7 +238,8 @@ function SingleUpload() {
     const successfulIds = documentIds.filter((id) => id !== null) as string[];
 
     if (successfulIds.length > 0) {
-      router.push(`/dashboard/documents/${successfulIds[0]}/processing`);
+      const styleParam = styleId ? `?style_id=${styleId}` : '';
+      router.push(`/dashboard/documents/${successfulIds[0]}/processing${styleParam}`);
     }
   };
 

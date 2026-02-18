@@ -5,7 +5,7 @@
  * Shows readiness status for each style (Tech Pack, BOM/Spec, Sample/MWO)
  */
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   useReactTable,
@@ -84,14 +84,23 @@ function formatDate(dateString: string): string {
 
 export default function StylesPage() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "ready" | "incomplete">("all");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(1);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data, isLoading, isError } = useStyles({
     page,
-    page_size: 50,
-    search: search || undefined,
+    page_size: 100,
+    search: debouncedSearch || undefined,
     ordering: sorting[0]
       ? `${sorting[0].desc ? "-" : ""}${sorting[0].id}`
       : "-created_at",
@@ -101,7 +110,7 @@ export default function StylesPage() {
   const results = (data?.results || []) as unknown as StyleListItemWithReadiness[];
 
   // Client-side filter for readiness
-  const filtered = results.filter((s) => {
+  const filtered = useMemo(() => results.filter((s) => {
     if (filter === "all") return true;
     const r = s.readiness;
     if (!r) return filter === "incomplete";
@@ -112,9 +121,9 @@ export default function StylesPage() {
       r.spec_total > 0 &&
       r.spec_verified === r.spec_total;
     return filter === "ready" ? isReady : !isReady;
-  });
+  }), [results, filter]);
 
-  const columns: ColumnDef<StyleListItemWithReadiness>[] = [
+  const columns = useMemo<ColumnDef<StyleListItemWithReadiness>[]>(() => [
     {
       accessorKey: "style_number",
       header: "Style #",
@@ -209,7 +218,7 @@ export default function StylesPage() {
         </Link>
       ),
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: filtered,

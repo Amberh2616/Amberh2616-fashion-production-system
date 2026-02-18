@@ -13,6 +13,7 @@ import logging
 import pdfplumber
 import fitz  # PyMuPDF
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.parsing.models import UploadedDocument
@@ -22,12 +23,14 @@ from apps.styles.models import Style, StyleRevision
 logger = logging.getLogger(__name__)
 
 
-def perform_extraction(doc: UploadedDocument) -> dict:
+def perform_extraction(doc: UploadedDocument, target_style_id: str = None) -> dict:
     """
     Perform AI extraction on a classified document.
 
     Args:
         doc: UploadedDocument instance (must be in 'classified' or 'extracting' status)
+        target_style_id: Optional UUID of an existing Style to link this document to.
+                         If provided, skips style creation from filename.
 
     Returns:
         dict: {
@@ -50,19 +53,36 @@ def perform_extraction(doc: UploadedDocument) -> dict:
         raise ValueError("No classification result found")
 
     # 1. Create Revision (for Tech Pack review) and StyleRevision (for BOM/Measurement)
-    # Extract style number from filename (e.g., "LW1FLWS TECH PACK.pdf" → "LW1FLWS")
-    style_number = doc.filename.split()[0] if ' ' in doc.filename else doc.filename.split('.')[0]
+    if target_style_id:
+        # Use existing Style if target_style_id is provided
+        try:
+            style = Style.objects.get(id=target_style_id)
+        except (Style.DoesNotExist, ValueError, ValidationError):
+            # Not found or invalid UUID → fallback to filename
+            logger.warning(f"target_style_id {target_style_id} invalid or not found, falling back to filename")
+            target_style_id = None
+        else:
+            # Found — enforce org boundary (both non-NULL and different → reject)
+            if doc.organization and style.organization and doc.organization != style.organization:
+                raise ValueError(
+                    f"Cross-organization binding rejected: "
+                    f"document org={doc.organization} vs style org={style.organization}"
+                )
 
-    # Get or create Style
-    style, _ = Style.objects.get_or_create(
-        organization=doc.organization,
-        style_number=style_number,
-        defaults={
-            'style_name': f'{style_number} (Auto-generated)',
-            'season': 'SS25',  # Default season
-            'customer': 'Unknown',  # Default customer
-        }
-    )
+    if not target_style_id:
+        # Extract style number from filename (e.g., "LW1FLWS TECH PACK.pdf" → "LW1FLWS")
+        style_number = doc.filename.split()[0] if ' ' in doc.filename else doc.filename.split('.')[0]
+
+        # Get or create Style
+        style, _ = Style.objects.get_or_create(
+            organization=doc.organization,
+            style_number=style_number,
+            defaults={
+                'style_name': f'{style_number} (Auto-generated)',
+                'season': 'SS25',  # Default season
+                'customer': 'Unknown',  # Default customer
+            }
+        )
 
     # Create StyleRevision (for BOM and Measurement)
     style_revision = StyleRevision.objects.create(

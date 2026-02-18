@@ -1,9 +1,9 @@
 /**
- * Progress Tab Component
- * Production tracking and status update controls
+ * Progress Tab Component (TRACK-PROGRESS rewrite)
+ * Milestones with real timestamps + Transition History table
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,138 +18,251 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { SampleRun, SampleRunStatusLabels } from '@/types/samples';
-import { PlayCircle, CheckCircle, AlertCircle, Clock, Package } from 'lucide-react';
+import {
+  SampleRun,
+  SampleRunStatusLabels,
+  SampleRunTransitionLog,
+} from '@/types/samples';
+import { fetchTransitionLogs } from '@/lib/api/samples';
+import {
+  PlayCircle,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Package,
+  History,
+  ArrowRight,
+} from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ProgressTabProps {
   run: SampleRun;
 }
 
+// Milestone definitions
+const MILESTONES = [
+  { key: 'draft', label: 'Draft Created', icon: Package },
+  { key: 'materials_planning', label: 'Materials Planning', icon: Package },
+  { key: 'po_drafted', label: 'PO Drafted', icon: Package },
+  { key: 'po_issued', label: 'PO Issued', icon: Package },
+  { key: 'mwo_drafted', label: 'MWO Drafted', icon: Package },
+  { key: 'mwo_issued', label: 'MWO Issued', icon: Package },
+  { key: 'in_progress', label: 'In Production', icon: Clock },
+  { key: 'sample_done', label: 'Sample Done', icon: CheckCircle },
+  { key: 'actuals_recorded', label: 'Actuals Recorded', icon: CheckCircle },
+  { key: 'costing_generated', label: 'Costing Generated', icon: CheckCircle },
+  { key: 'quoted', label: 'Quoted', icon: CheckCircle },
+  { key: 'accepted', label: 'Accepted', icon: CheckCircle },
+] as const;
+
+// Status order for progress calculation
+const STATUS_ORDER: Record<string, number> = {
+  draft: 0,
+  materials_planning: 1,
+  po_drafted: 2,
+  po_issued: 3,
+  mwo_drafted: 4,
+  mwo_issued: 5,
+  in_progress: 6,
+  sample_done: 7,
+  actuals_recorded: 8,
+  costing_generated: 9,
+  quoted: 10,
+  accepted: 11,
+  revise_needed: 5,
+  cancelled: -1,
+};
+
 export function ProgressTab({ run }: ProgressTabProps) {
   const [isStartDialogOpen, setIsStartDialogOpen] = useState(false);
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false);
   const [notes, setNotes] = useState('');
+  const [logs, setLogs] = useState<SampleRunTransitionLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+
+  // Fetch transition logs
+  useEffect(() => {
+    let cancelled = false;
+    setLogsLoading(true);
+    fetchTransitionLogs(run.id)
+      .then((data) => {
+        if (!cancelled) setLogs(data);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch transition logs:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setLogsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [run.id]);
 
   // Check if actions are available
   const canStartProduction =
     run.status === 'mwo_issued' || run.status === 'po_issued';
   const canMarkDone = run.status === 'in_progress';
 
-  // Handle start production
   const handleStartProduction = async () => {
-    // TODO: Call API to start production
     console.log('Start production for run:', run.id, 'Notes:', notes);
     setIsStartDialogOpen(false);
     setNotes('');
   };
 
-  // Handle mark sample done
   const handleMarkSampleDone = async () => {
-    // TODO: Call API to mark sample done
     console.log('Mark sample done for run:', run.id, 'Notes:', notes);
     setIsCompleteDialogOpen(false);
     setNotes('');
   };
 
-  // Get progress percentage based on status
-  const getProgressPercentage = (status: string) => {
-    const progressMap: Record<string, number> = {
-      draft: 0,
-      materials_planning: 10,
-      po_drafted: 20,
-      po_issued: 30,
-      mwo_drafted: 40,
-      mwo_issued: 50,
-      in_progress: 75,
-      sample_done: 100,
-      actuals_recorded: 100,
-      costing_generated: 100,
-      quoted: 100,
-      accepted: 100,
-      revise_needed: 50,
-      cancelled: 0,
-    };
-    return progressMap[status] || 0;
-  };
-
-  const progress = getProgressPercentage(run.status);
+  const currentOrder = STATUS_ORDER[run.status] ?? -1;
+  const ts = run.status_timestamps || {};
 
   return (
     <div className="space-y-6">
-      {/* Current Status Card */}
+      {/* Milestones Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Current Production Status</CardTitle>
+          <CardTitle>Milestones</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Status Badge and Info */}
-          <div className="flex items-center gap-4">
-            <div className="flex-shrink-0">
-              {run.status === 'in_progress' ? (
-                <Clock className="h-12 w-12 text-blue-500" />
-              ) : run.status === 'sample_done' ? (
-                <CheckCircle className="h-12 w-12 text-green-500" />
-              ) : run.status === 'cancelled' ? (
-                <AlertCircle className="h-12 w-12 text-red-500" />
-              ) : (
-                <Package className="h-12 w-12 text-gray-400" />
-              )}
-            </div>
-            <div className="flex-1">
-              <Badge className="mb-2">{SampleRunStatusLabels[run.status]}</Badge>
-              <div className="text-sm text-muted-foreground">
-                Last updated: {format(new Date(run.status_updated_at), 'MMM dd, yyyy HH:mm')}
-              </div>
-            </div>
-          </div>
+        <CardContent>
+          <div className="space-y-1">
+            {MILESTONES.map((ms) => {
+              const msOrder = STATUS_ORDER[ms.key] ?? -1;
+              const isCompleted = currentOrder > msOrder && run.status !== 'cancelled';
+              const isActive = run.status === ms.key;
+              const timestamp = ts[ms.key];
 
-          {/* Progress Bar */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Production Progress</span>
-              <span className="text-sm text-muted-foreground">{progress}%</span>
-            </div>
-            <div className="w-full bg-secondary h-3 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-500 ${
-                  run.status === 'cancelled'
-                    ? 'bg-red-500'
-                    : run.status === 'sample_done'
-                      ? 'bg-green-500'
-                      : 'bg-blue-500'
-                }`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
+              // Calculate duration to next milestone
+              let durationLabel: string | null = null;
+              if (timestamp && isCompleted) {
+                const nextMs = MILESTONES.find(
+                  (m) => (STATUS_ORDER[m.key] ?? -1) > msOrder && ts[m.key]
+                );
+                if (nextMs && ts[nextMs.key]) {
+                  const diffMs = new Date(ts[nextMs.key]).getTime() - new Date(timestamp).getTime();
+                  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                  const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                  durationLabel = diffDays > 0 ? `${diffDays}d ${diffHours}h` : `${diffHours}h`;
+                }
+              }
 
-          {/* Timeline */}
-          <div className="space-y-3 pt-4">
-            <div className="text-sm font-medium">Production Timeline</div>
-            <div className="space-y-2">
-              <TimelineItem
-                label="Materials Issued"
-                completed={progress >= 30}
-                timestamp={run.created_at}
-              />
-              <TimelineItem
-                label="MWO Issued"
-                completed={progress >= 50}
-                timestamp={run.status === 'mwo_issued' ? run.status_updated_at : undefined}
-              />
-              <TimelineItem
-                label="Production Started"
-                completed={progress >= 75}
-                timestamp={run.status === 'in_progress' ? run.status_updated_at : undefined}
-              />
-              <TimelineItem
-                label="Sample Completed"
-                completed={progress >= 100}
-                timestamp={run.status === 'sample_done' ? run.status_updated_at : undefined}
-              />
-            </div>
+              return (
+                <div
+                  key={ms.key}
+                  className={`flex items-center gap-3 py-2 px-3 rounded-md ${
+                    isActive ? 'bg-blue-50 border border-blue-200' : ''
+                  }`}
+                >
+                  {/* Status indicator */}
+                  <div
+                    className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isCompleted
+                        ? 'bg-green-500 text-white'
+                        : isActive
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-200'
+                    }`}
+                  >
+                    {isCompleted && <CheckCircle className="h-3.5 w-3.5" />}
+                    {isActive && <Clock className="h-3.5 w-3.5" />}
+                  </div>
+
+                  {/* Label */}
+                  <div className="flex-1 min-w-0">
+                    <span
+                      className={`text-sm ${
+                        isCompleted || isActive ? 'font-medium' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {ms.label}
+                    </span>
+                  </div>
+
+                  {/* Duration badge */}
+                  {durationLabel && (
+                    <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                      {durationLabel}
+                    </span>
+                  )}
+
+                  {/* Timestamp */}
+                  <div className="flex-shrink-0 text-xs text-muted-foreground whitespace-nowrap">
+                    {timestamp
+                      ? format(new Date(timestamp), 'MMM dd, HH:mm')
+                      : isActive
+                        ? 'Current'
+                        : '—'}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Transition History Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Transition History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {logsLoading ? (
+            <div className="text-sm text-muted-foreground text-center py-6">Loading...</div>
+          ) : logs.length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-6">
+              No transitions recorded yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-start gap-3 py-2 border-b last:border-b-0"
+                >
+                  {/* Icon */}
+                  <div className="flex-shrink-0 mt-0.5">
+                    {log.action === 'rollback' ? (
+                      <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
+                        <ArrowRight className="h-3.5 w-3.5 text-amber-600 rotate-180" />
+                      </div>
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                        <ArrowRight className="h-3.5 w-3.5 text-blue-600" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-[11px]">
+                        {SampleRunStatusLabels[log.from_status as keyof typeof SampleRunStatusLabels] || log.from_status}
+                      </Badge>
+                      <ArrowRight className="h-3 w-3 text-gray-400" />
+                      <Badge variant="outline" className="text-[11px]">
+                        {SampleRunStatusLabels[log.to_status as keyof typeof SampleRunStatusLabels] || log.to_status}
+                      </Badge>
+                      <span className="text-[11px] text-gray-500">
+                        ({log.action})
+                      </span>
+                    </div>
+                    {log.note && (
+                      <p className="text-xs text-muted-foreground mt-1">{log.note}</p>
+                    )}
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      {format(new Date(log.created_at), 'MMM dd, yyyy HH:mm')}
+                      {log.actor_name && (
+                        <span className="ml-2">by {log.actor_name}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -159,7 +272,6 @@ export function ProgressTab({ run }: ProgressTabProps) {
           <CardTitle>Production Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Start Production */}
           <div className="flex items-center justify-between p-4 border rounded-lg">
             <div className="flex-1">
               <div className="font-medium">Start Production</div>
@@ -177,7 +289,6 @@ export function ProgressTab({ run }: ProgressTabProps) {
             </Button>
           </div>
 
-          {/* Mark Sample Done */}
           <div className="flex items-center justify-between p-4 border rounded-lg">
             <div className="flex-1">
               <div className="font-medium">Mark Sample Done</div>
@@ -195,7 +306,6 @@ export function ProgressTab({ run }: ProgressTabProps) {
             </Button>
           </div>
 
-          {/* Status Info */}
           {!canStartProduction && !canMarkDone && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
@@ -236,7 +346,7 @@ export function ProgressTab({ run }: ProgressTabProps) {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                This will update the run status to "In Progress".
+                This will update the run status to &quot;In Progress&quot;.
               </AlertDescription>
             </Alert>
           </div>
@@ -275,7 +385,7 @@ export function ProgressTab({ run }: ProgressTabProps) {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                This will update the run status to "Sample Done". You can record actuals next.
+                This will update the run status to &quot;Sample Done&quot;. You can record actuals next.
               </AlertDescription>
             </Alert>
           </div>
@@ -290,37 +400,6 @@ export function ProgressTab({ run }: ProgressTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// Timeline Item Component
-interface TimelineItemProps {
-  label: string;
-  completed: boolean;
-  timestamp?: string;
-}
-
-function TimelineItem({ label, completed, timestamp }: TimelineItemProps) {
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-          completed ? 'bg-green-500 text-white' : 'bg-gray-200'
-        }`}
-      >
-        {completed && <CheckCircle className="h-3.5 w-3.5" />}
-      </div>
-      <div className="flex-1 flex items-center justify-between">
-        <span className={`text-sm ${completed ? 'font-medium' : 'text-muted-foreground'}`}>
-          {label}
-        </span>
-        {timestamp && (
-          <span className="text-xs text-muted-foreground">
-            {format(new Date(timestamp), 'MMM dd, HH:mm')}
-          </span>
-        )}
-      </div>
     </div>
   );
 }

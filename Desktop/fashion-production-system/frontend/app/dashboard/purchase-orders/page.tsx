@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -135,7 +135,7 @@ export default function PurchaseOrdersPage() {
   const shipPOMutation = useShipPO();
 
   // Table columns
-  const columns: ColumnDef<PurchaseOrder>[] = [
+  const columns = useMemo<ColumnDef<PurchaseOrder>[]>(() => [
     {
       accessorKey: "po_number",
       header: "PO Number",
@@ -312,7 +312,7 @@ export default function PurchaseOrdersPage() {
         );
       },
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: data?.results || [],

@@ -1,17 +1,20 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v2", "") ?? "http://localhost:8000";
     return [
       {
         source: "/api/:path*",
-        destination: "http://localhost:8000/api/:path*", // Django backend
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
-  // Next.js 16 使用 Turbopack，不需要額外配置 react-pdf
-  // react-pdf 會自動處理 worker
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
 };
 
 export default nextConfig;

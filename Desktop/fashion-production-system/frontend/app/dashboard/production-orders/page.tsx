@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -175,7 +175,7 @@ export default function ProductionOrdersPage() {
   };
 
   // Table columns
-  const columns: ColumnDef<ProductionOrder>[] = [
+  const columns = useMemo<ColumnDef<ProductionOrder>[]>(() => [
     {
       accessorKey: "order_number",
       header: "Order Number",
@@ -314,7 +314,7 @@ export default function ProductionOrdersPage() {
         );
       },
     },
-  ];
+  ], []);
 
   const table = useReactTable({
     data: data?.results || [],
