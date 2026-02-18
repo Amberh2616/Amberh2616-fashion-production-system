@@ -1,11 +1,12 @@
 # Fashion Production System - Production Requirements
-# v3: consolidated (openai, pdfplumber, reportlab, whitenoise)
+# v4: added django-filter
 
 # Core Django
 Django==4.2.8
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
 djangorestframework-simplejwt==5.3.1
+django-filter==23.5
 
 # Database
 psycopg2-binary==2.9.9
